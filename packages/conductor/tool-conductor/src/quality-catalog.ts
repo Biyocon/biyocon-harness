@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { isAbsolute, normalize, sep } from 'node:path'
 import { QualityCommandId } from '@deepseek-ai/dsh-conductor'
 import type { QualityPolicyStage } from '@deepseek-ai/dsh-conductor'
+import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 
 /** Configured exact-argv quality command. */
 export interface QualityCommandConfig {
@@ -54,6 +55,14 @@ function relativePath(value: string, field: string): string {
 
 function positiveInteger(value: number, field: string): number {
   if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`${field} must be a positive safe integer`)
+  return value
+}
+
+function timerDelay(value: number, field: string): number {
+  positiveInteger(value, field)
+  if (value > MAX_TIMER_DELAY_MS) {
+    throw new TypeError(`${field} must be no greater than ${MAX_TIMER_DELAY_MS}`)
+  }
   return value
 }
 
@@ -111,9 +120,9 @@ export function resolveQualityCatalog(configs: readonly QualityCommandConfig[]):
       ...writeRoot === undefined ? {} : { writeRoot },
       allowedStages: Object.freeze([...allowedStages]),
       sandboxMode,
-      timeoutMs: positiveInteger(config.timeoutMs, `qualityCommands.${id}.timeoutMs`),
+      timeoutMs: timerDelay(config.timeoutMs, `qualityCommands.${id}.timeoutMs`),
       maxOutputBytes: positiveInteger(config.maxOutputBytes, `qualityCommands.${id}.maxOutputBytes`),
-      graceMs: positiveInteger(config.graceMs, `qualityCommands.${id}.graceMs`),
+      graceMs: timerDelay(config.graceMs, `qualityCommands.${id}.graceMs`),
     }
     const definitionHash = createHash('sha256').update(JSON.stringify(normalized)).digest('hex')
     catalog.set(id, Object.freeze({ ...normalized, id: QualityCommandId(id), definitionHash }))

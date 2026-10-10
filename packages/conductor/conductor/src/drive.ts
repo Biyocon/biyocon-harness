@@ -31,6 +31,8 @@ import { executionBaselineHash, nextQualityCycle, snapshotQualityBindings } from
 export interface SpecialistDispatchResult {
   /** Model-authored specialist envelope after boundary validation. */
   envelope: SpecialistEnvelope
+  /** Model-boundary validation failure discovered while resolving host-owned fields. */
+  boundaryProblem?: string
   /** Host-produced records completed during this dispatch. */
   qualityExecutions: QualityExecutionRecord[]
   /** Stage-applicable baseline bindings that this gate requires. */
@@ -109,7 +111,7 @@ export async function drive(
       : { envelope: dispatched, qualityExecutions: [], requiredQualityCommands: [] }
     const envelope = dispatch.envelope
     const qualityExecutions = [...current.qualityExecutions, ...structuredClone(dispatch.qualityExecutions)]
-    const malformed = envelopeProblem(envelope, stage, current)
+    const malformed = dispatch.boundaryProblem ?? envelopeProblem(envelope, stage, current)
     if (malformed !== undefined) {
       current = recordGate({ ...current, qualityExecutions }, {
         decision: 'escalate',

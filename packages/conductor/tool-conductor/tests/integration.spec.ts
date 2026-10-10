@@ -312,7 +312,11 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
         STRUCTURED_OUTPUT_TOOL,
         readyEnvelope(extractRunId(options), 'devils-advocate', [], ['unit-check']),
       ),
-      () => toolCallResponse('ralph-quality', 'conductor_quality_check', { command_id: 'unit-check' }),
+      (options: GenerateOptions) => {
+        expect(promptText(options)).toContain('"id": "unit-check"')
+        expect(promptText(options)).toContain('Run the focused unit check.')
+        return toolCallResponse('ralph-quality', 'conductor_quality_check', { command_id: 'unit-check' })
+      },
       () => toolCallResponse('ralph-report', STRUCTURED_OUTPUT_TOOL, {
         status: 'complete',
         summary: 'bounded implementation and quality command complete',
@@ -428,6 +432,95 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     ])
     expect(record.qualityExecutions[0]!.childSessionId)
       .not.toBe(record.qualityExecutions[1]!.childSessionId)
+  }, 15_000)
+
+  it('records an invalid Gate C quality-command selection as a blocked checkpoint', async () => {
+    const script: ((options: GenerateOptions) => ReturnType<typeof toolCallResponse>)[] = [
+      ...(['detective', 'strategist'] as const).map(stage => (options: GenerateOptions) =>
+        toolCallResponse(stage, STRUCTURED_OUTPUT_TOOL, readyEnvelope(extractRunId(options), stage))),
+      (options: GenerateOptions) => toolCallResponse(
+        'devils-advocate',
+        STRUCTURED_OUTPUT_TOOL,
+        readyEnvelope(extractRunId(options), 'devils-advocate', [], ['unknown-check']),
+      ),
+    ]
+    const ctx = new Context()
+    const adapter = new MockAdapter(script)
+    await mountAgentLoopTestDependencies(ctx)
+    await mountQualityServices(ctx)
+    await ctx.plugin(AgentLoop, { agents: [] })
+    await ctx.plugin(SubagentRuntime)
+    await ctx.plugin(spawn, { providerName: 'spawn' })
+    await ctx.plugin(SkillRegistry)
+    await ctx.plugin(WorkflowWorker, { provider: 'spawn' })
+    ctx.on('session/flush', () => {})
+    for (const name of [
+      'conductor-detective', 'conductor-strategist', 'conductor-devils-advocate',
+      'conductor-headsman', 'conductor-auditor', 'conductor-integrator', 'conductor-arbiter',
+      'conductor-specialist', 'conductor-ralph', 'conductor-closeout',
+    ]) {
+      ctx.skills.register({ name, description: name, content: `${name} instructions`, source: 'test' })
+    }
+    await ctx.plugin(toolConductor, {
+      subagentProvider: 'spawn',
+      qualityCommands: [{
+        id: 'unit-check',
+        modelSafeDescription: 'Run the focused unit check.',
+        argv: ['node', '--version'],
+        cwd: '.',
+        allowedStages: ['headsman'],
+        sandboxMode: 'read-only',
+        timeoutMs: 1000,
+        maxOutputBytes: 4096,
+        graceMs: 100,
+      }],
+    })
+    for (const name of ['read', 'read_image', 'grep', 'glob']) {
+      ctx.tools.register(defineContentToolFixture({
+        name, description: name, parameters: {},
+        execute: () => Promise.resolve([{ type: 'text', text: name }]),
+      }))
+    }
+    ctx.llm.registerAdapter(['mock'], adapter)
+    const parent = ctx.agentLoop.create(
+      SessionId('conductor-invalid-gate-c-parent'),
+      { provider: 'mock', model: 'mock' },
+      { cwd: process.cwd() },
+    )
+
+    const result = await ctx.tools.execute({
+      signal: testToolSignal,
+      callId: CallId('conductor-invalid-gate-c'),
+      name: 'conductor',
+      arguments: {
+        objective: 'Reject a model-selected command outside the deployment catalog.',
+        acceptanceCriteria: ['Gate C records the invalid specialist output'],
+        allowedPaths: ['packages/conductor'],
+        sourceBaseline: 'HEAD',
+        authority: {
+          owner: 'user',
+          permittedActions: ['read'],
+          executionPermissions: ['quality-execute'],
+        },
+      },
+      agent: parent,
+    })
+
+    expect(result.isError, JSON.stringify(result)).toBe(false)
+    const checkpoint = parent.session.events.filter(event => event.type === 'conductor/checkpoint').at(-1)
+    if (checkpoint?.type !== 'conductor/checkpoint' || checkpoint.data.record === null) {
+      throw new Error('missing invalid Gate C checkpoint')
+    }
+    const record = JSON.parse(checkpoint.data.record) as {
+      status: string
+      history: { gate: string; decision: string; basis: string[] }[]
+    }
+    expect(record.status, JSON.stringify(record)).toBe('escalated')
+    expect(record.history.at(-1), JSON.stringify(record)).toMatchObject({
+      gate: 'C',
+      decision: 'escalate',
+      basis: ['Gate C selected unknown quality command "unknown-check"'],
+    })
   }, 15_000)
 
   it('durably checkpoints quality evidence when the specialist fails after execution', async () => {

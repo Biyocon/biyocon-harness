@@ -1,6 +1,6 @@
 # Agent Note: Conductor quality-command executor
 
-Status: proposed
+Status: implemented
 
 English | [中文](2026-10-10-conductor-quality-command-executor.zh.md)
 
@@ -8,7 +8,7 @@ English | [中文](2026-10-10-conductor-quality-command-executor.zh.md)
 
 The Conductor runtime deliberately removes general shell access from every specialist, but its Headsman and Ralph instructions require implementation checks and Gate E requires independent Auditor verification. Specialists can currently inspect existing results but cannot reproduce configured tests, compilers, schema validators, or generators through Conductor. Adding an ordinary shell tool would let model output select an executable, arguments, and effects beyond the approved execution baseline.
 
-## Proposal
+## Decision
 
 `dsh-tool-conductor` owns an empty-by-default deployment catalog of quality commands. Each definition has an opaque id, a model-safe description, exact argv, permitted Headsman or Auditor stages, a canonical workspace-relative cwd, an optional write root, sandbox mode, timeout, output limit, and termination grace period. Shell interpreters and invalid path relationships fail at plugin load. Gate C selects only ids; the host resolves them to immutable definition hashes and records the catalog hash in the execution baseline. Selecting a command requires the separate `quality-execute` execution permission.
 
@@ -28,7 +28,7 @@ The sandbox policy covers filesystem effects only. This design makes no network-
 - Letting Ralph or Auditor decide a gate was rejected because Conductor is the sole owner of workflow state and gate decisions.
 - Allowing partial sandbox enforcement was rejected because a declared file policy that the host cannot fully enforce must fail closed.
 
-## Acceptance criteria
+## Verification
 
 - The catalog validates and freezes exact command definitions, rejects shell interpreters, duplicate ids, invalid paths, Auditor writes, and missing write roots.
 - The private tool rejects unknown ids, extra input fields, stale bindings, unauthorized stages, missing execution permission, and partial or unavailable sandbox enforcement before command execution.
@@ -37,9 +37,11 @@ The sandbox policy covers filesystem effects only. This design makes no network-
 - Gate D accepts Ralph-produced Headsman evidence when it is fresh and passing; Gate E requires a distinct fresh Auditor run and cannot reuse Gate-D evidence.
 - Workflow, Ralph, and subagent providers preflight the trusted child-tool capability without exposing the callback to model or worker-script input.
 - The Conductor package builds its root and invariant companion as self-contained published entries without undeclared runtime chunks.
-- Focused Conductor tests, typecheck, documentation synchronization, and lint pass.
+- `pnpm exec vitest run examples/headless-agent/tests/headless.snapshot.ts -t "replays Conductor quality commands" --config vitest.snapshot.config.ts` passes the keyless assembled application through Detective to Arbiter, executes the binding independently under Headsman and Auditor, persists all eight run checkpoints, and ends at `awaiting_authorization`.
+- `pnpm run test -t conductor` passes 82 focused tests across 10 files, including catalog validation, model-boundary escalation, Ralph command handoff, stage independence, persistence, and gate evidence rules.
+- `pnpm run typecheck`, `pnpm run lint`, `pnpm run doc-sync`, `pnpm run verify-cordis-config`, and `pnpm run verify-built-package-invariants` pass; doc-sync reports 28 gates, config validation reports 124 files, and built-package validation reports 222 companions.
 
-## Risks
+## Consequences
 
 - Hosts without a fully enforcing sandbox backend cannot run quality commands; this is an intentional fail-closed availability cost, especially on Windows configurations with partial enforcement.
 - A deployment catalog is executable host policy. Incorrect definitions can still run an unintended reviewed argv, so deployment review remains required.

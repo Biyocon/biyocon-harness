@@ -46,7 +46,10 @@ const invalidCredentialScenarioDir = join(snapshotsDir, 'invalid-credential')
 const ralphScenarioDir = join(snapshotsDir, 'ralph-loop')
 const ralphConfigPath = fileURLToPath(new URL('../ralph.cordis.snapshot.yml', import.meta.url))
 const conductorScenarioDir = join(snapshotsDir, 'conductor-closeout-authorization')
+const conductorQualityScenarioDir = join(snapshotsDir, 'conductor-quality-command')
 const conductorConfigPath = fileURLToPath(new URL('../conductor.cordis.snapshot.yml', import.meta.url))
+const conductorAgentsHome = fileURLToPath(new URL('../../../.agents', import.meta.url))
+const conductorRoleDir = fileURLToPath(new URL('../../../.agents/conductor/roles', import.meta.url))
 const settlementScenarioDir = join(snapshotsDir, 'subagent-settlement')
 const settlementConfigPath = fileURLToPath(new URL('../subagent-settlement.cordis.snapshot.yml', import.meta.url))
 const startupFailureConfigPath = fileURLToPath(new URL('./fixtures/startup-activation-error/cordis.yml', import.meta.url))
@@ -154,6 +157,13 @@ function normalizeHeadlessStream(rawStdout: string, cwd: string): string {
     ? { ...record, event: normalizedEvents[index] }
     : record)
   return normalizeStdout(`${normalizedRecords.map(record => JSON.stringify(record)).join('\n')}\n`, context)
+}
+
+function normalizeConductorStream(rawStdout: string, cwd: string): string {
+  return normalizeHeadlessStream(rawStdout, cwd)
+    .replace(/CON-\d{4}-\d{4}/g, '{{runId}}')
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, '{{evidenceId}}')
+    .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g, '{{isoTime}}')
 }
 
 /** Zero durable goal timestamps inside both metadata records and rendered XML JSON. */
@@ -815,6 +825,98 @@ describe('headless stream-json snapshots', () => {
 
     expect(result.stderr).toBe('')
     const normalized = normalizeHeadlessStream(result.stdout, runCwd)
+    if (refreshing) await writeFile(streamExpected, normalized)
+    expect(normalized).toBe(await readFile(streamExpected, 'utf8'))
+  }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+
+  it('replays Conductor quality commands through the assembled headless app', async () => {
+    const prompt = await scenarioPrompt(conductorQualityScenarioDir, 'conductor-quality-command')
+    const streamExpected = join(conductorQualityScenarioDir, 'stream-json.expected.jsonl')
+    const childFiles = Array.from({ length: 7 }, (_, index) =>
+      join(conductorQualityScenarioDir, `session.${index + 1}.jsonl`))
+    let runCwd = ''
+    const result = await runLoaderSmoke({
+      label: 'Conductor quality-command headless stream-json snapshot',
+      tempDirPrefix: 'headless-snapshot-conductor-quality-',
+      binScript,
+      libBinScript: binScript,
+      configPath: conductorConfigPath,
+      binArgs: [conductorConfigPath, prompt],
+      tsconfigPath,
+      env: {
+        DSH_SNAPSHOT: 'replay',
+        DSH_SNAPSHOT_FILE: join(conductorQualityScenarioDir, 'session.jsonl'),
+        DSH_SNAPSHOT_OVERRIDE: join(conductorQualityScenarioDir, 'replay.override.json'),
+        DSH_SNAPSHOT_CHILD_FILES: childFiles.join(delimiter),
+        DSH_AGENTS_HOME: conductorAgentsHome,
+        DSH_CONDUCTOR_ROLE_DIR: conductorRoleDir,
+        NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
+      },
+      prepare: (cwd) => { runCwd = cwd },
+      inspect: async (cwd) => {
+        const logs = await persistedLogs(cwd)
+        if (logs.length !== 8) {
+          const diagnostics = logs.flatMap(log => parseJsonl(log.content)
+            .filter(record => record.type === 'tool/result' || record.type === 'conductor/checkpoint'))
+          throw new Error(`Conductor quality snapshot persisted ${logs.length} logs; diagnostics: ${JSON.stringify(diagnostics)}`)
+        }
+        const parent = logs.find(log => typeof log.header.parentSession !== 'string')
+        if (parent === undefined) throw new Error('Conductor quality snapshot did not persist its parent session')
+        const children = logs.filter(log => typeof log.header.parentSession === 'string')
+        expect(children).toHaveLength(7)
+
+        const promptText = (log: PersistedLog): string => parseJsonl(log.content)
+          .filter(record => record.type === 'user/message')
+          .flatMap((record) => {
+            const content = (record.data as JsonObject | undefined)?.content
+            if (!Array.isArray(content)) return []
+            return (content as JsonObject[]).flatMap(block => typeof block.text === 'string' ? [block.text] : [])
+          })
+          .join('\n')
+        const stageLog = (stage: string): PersistedLog => {
+          const match = children.find(child => promptText(child).includes(`"stage": "${stage}",\n  "objective"`))
+          if (match === undefined) throw new Error(`missing Conductor ${stage} child log`)
+          return match
+        }
+
+        const devilsAdvocatePrompt = promptText(stageLog('devils-advocate'))
+        expect(devilsAdvocatePrompt).toContain('"quality_command_catalog"')
+        expect(devilsAdvocatePrompt).toContain('"id": "snapshot-check"')
+        expect(devilsAdvocatePrompt).toContain('Run the deterministic snapshot quality check.')
+
+        for (const stage of ['headsman', 'auditor']) {
+          const records = parseJsonl(stageLog(stage).content)
+          const requestHeaders = records.filter(record => record.type === 'request/header')
+          expect(JSON.stringify(requestHeaders)).toContain('conductor_quality_check')
+          const calls = records.filter(record => record.type === 'tool/call')
+          expect(calls.map(record => (record.data as JsonObject | undefined)?.name))
+            .toContain('conductor_quality_check')
+          const results = records.filter(record => record.type === 'tool/result')
+          expect(JSON.stringify(results)).toContain('QUALITY_OK')
+        }
+
+        const parentRecords = parseJsonl(parent.content)
+        const checkpoints = parentRecords.filter(record => record.type === 'conductor/checkpoint')
+        expect(checkpoints).toHaveLength(8)
+        const finalCheckpoint = checkpoints.at(-1)
+        const recordText = (finalCheckpoint?.data as JsonObject | undefined)?.record
+        if (typeof recordText !== 'string') throw new Error('missing final Conductor quality checkpoint record')
+        const record = JSON.parse(recordText) as {
+          status: string
+          qualityExecutions: { gate: string; policyStage: string; executorStage: string; outcome: string; childSessionId: string }[]
+        }
+        expect(record.status).toBe('awaiting_authorization')
+        expect(record.qualityExecutions).toMatchObject([
+          { gate: 'D', policyStage: 'headsman', executorStage: 'headsman', outcome: 'passed' },
+          { gate: 'E', policyStage: 'auditor', executorStage: 'auditor', outcome: 'passed' },
+        ])
+        expect(record.qualityExecutions[0]?.childSessionId)
+          .not.toBe(record.qualityExecutions[1]?.childSessionId)
+      },
+    })
+
+    expect(result.stderr).toBe('')
+    const normalized = normalizeConductorStream(result.stdout, runCwd)
     if (refreshing) await writeFile(streamExpected, normalized)
     expect(normalized).toBe(await readFile(streamExpected, 'utf8'))
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)

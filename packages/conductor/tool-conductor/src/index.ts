@@ -49,6 +49,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ObjectJsonSchema, ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools'
 import type { WorkflowResult, WorkflowRun } from '@deepseek-ai/dsh-workflow'
 import { runRalphWorkflow } from '@deepseek-ai/dsh-tool-ralph'
+import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 // Declaration merge only: makes ctx.skills visible for the role-skill lookup.
 import type {} from '@deepseek-ai/dsh-skill'
 import { nextQualityCycle } from '@deepseek-ai/dsh-conductor'
@@ -87,9 +88,9 @@ export const Config: z<Config> = z.object({
     writeRoot: z.string().default(undefined as unknown as string),
     allowedStages: z.array(z.union(['headsman', 'auditor'])),
     sandboxMode: z.union(['read-only', 'workspace-write']),
-    timeoutMs: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER),
+    timeoutMs: z.number().step(1).min(1).max(MAX_TIMER_DELAY_MS),
     maxOutputBytes: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER),
-    graceMs: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER),
+    graceMs: z.number().step(1).min(1).max(MAX_TIMER_DELAY_MS),
   })).default([]),
 })
 
@@ -472,43 +473,61 @@ function assertCatalogBindings(
   }
 }
 
+interface ResolvedSpecialistEnvelope {
+  readonly envelope: SpecialistEnvelope
+  readonly boundaryProblem?: string
+}
+
+function unresolvedEnvelope(value: unknown, problem: string): ResolvedSpecialistEnvelope {
+  return { envelope: value as SpecialistEnvelope, boundaryProblem: problem }
+}
+
 /** Resolve model-selected Gate-C command ids to host-owned immutable bindings. */
 function resolveSpecialistEnvelope(
   value: unknown,
   stage: ConductorStage,
   run: ConductorRun,
   catalog: ReadonlyMap<string, QualityCommandDefinition>,
-): SpecialistEnvelope {
-  if (!isRecord(value)) return value as SpecialistEnvelope
-  if (stage !== 'devils-advocate' || value['status'] !== 'ready') return value as unknown as SpecialistEnvelope
+): ResolvedSpecialistEnvelope {
+  if (!isRecord(value)) return { envelope: value as SpecialistEnvelope }
+  if (stage !== 'devils-advocate' || value['status'] !== 'ready') {
+    return { envelope: value as unknown as SpecialistEnvelope }
+  }
   const proposal = value['execution_baseline']
   if (!isRecord(proposal) || !Array.isArray(proposal['qualityCommandIds'])) {
-    return value as unknown as SpecialistEnvelope
+    return { envelope: value as unknown as SpecialistEnvelope }
   }
   const ids = proposal['qualityCommandIds'] as unknown[]
   if (ids.some(id => typeof id !== 'string' || id.length === 0 || id !== id.trim())) {
-    throw new Error('Gate C qualityCommandIds must contain normalized strings')
+    return unresolvedEnvelope(value, 'Gate C qualityCommandIds must contain normalized strings')
   }
-  if (new Set(ids).size !== ids.length) throw new Error('Gate C qualityCommandIds must not contain duplicates')
+  if (new Set(ids).size !== ids.length) {
+    return unresolvedEnvelope(value, 'Gate C qualityCommandIds must not contain duplicates')
+  }
   if (ids.length > 0 && !run.authority.executionPermissions.includes('quality-execute')) {
-    throw new Error('Gate C quality commands require quality-execute authority')
+    return unresolvedEnvelope(value, 'Gate C quality commands require quality-execute authority')
   }
   const normalizedIds = ids as string[]
-  const qualityCommands: QualityCommandBinding[] = normalizedIds.map((id) => {
+  const qualityCommands: QualityCommandBinding[] = []
+  for (const id of normalizedIds) {
     const definition = catalog.get(id)
-    if (definition === undefined) throw new Error(`Gate C selected unknown quality command "${id}"`)
-    return {
+    if (definition === undefined) {
+      return unresolvedEnvelope(value, `Gate C selected unknown quality command "${id}"`)
+    }
+    qualityCommands.push({
       id: QualityCommandId(id),
       definitionHash: definition.definitionHash,
       requiredGates: definition.allowedStages.map(value => value === 'headsman' ? 'D' : 'E'),
-    }
-  })
+    })
+  }
   const { qualityCommandIds: _qualityCommandIds, ...baseline } = proposal
   return {
-    ...(value as unknown as Omit<SpecialistEnvelope, 'execution_baseline'>),
-    execution_baseline: {
-      ...(baseline as Omit<NonNullable<SpecialistEnvelope['execution_baseline']>, 'qualityCommands'>),
-      qualityCommands,
+    envelope: {
+      ...(value as unknown as Omit<SpecialistEnvelope, 'execution_baseline'>),
+      execution_baseline: {
+        ...(baseline as Omit<NonNullable<SpecialistEnvelope['execution_baseline']>, 'qualityCommands'>),
+        qualityCommands,
+      },
     },
   }
 }
@@ -591,10 +610,19 @@ async function runSpecialist(
       subprocess: ctx.subprocess,
     })
     : undefined
+  const ralphObjective = [
+    `Implement the approved Conductor baseline for: ${run.objective}`,
+    'Approved Gate C quality commands available through conductor_quality_check:\n'
+      + JSON.stringify(requiredQualityCommands.map(binding => ({
+        id: binding.id,
+        description: catalog.get(binding.id)?.modelSafeDescription,
+      })), null, 2),
+    'Run every listed command and retain its host evidence for the Headsman report.',
+  ].join('\n\n')
   try {
     const ralphOutcome = stage === 'headsman' && run.budget.maxRalphRounds > 0
       ? await runRalphWorkflow(ctx, {
-        objective: `Implement the approved Conductor baseline for: ${run.objective}`,
+        objective: ralphObjective,
         maxRounds: run.budget.maxRalphRounds,
         maxHandoffChars: maxRalphHandoffChars,
         maxResultChars: maxRalphHandoffChars,
@@ -630,8 +658,8 @@ async function runSpecialist(
         quality_evidence_ids: [],
       }, qualityExecutions, requiredQualityCommands }
     }
-    const envelope = resolveSpecialistEnvelope(structured, stage, run, catalog)
-    return { envelope, qualityExecutions, requiredQualityCommands }
+    const resolved = resolveSpecialistEnvelope(structured, stage, run, catalog)
+    return { ...resolved, qualityExecutions, requiredQualityCommands }
   } catch (error) {
     if (qualityExecutions.length === 0) throw error
     return { envelope: {

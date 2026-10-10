@@ -1,4 +1,4 @@
-# Replay composition for the Conductor closeout-authorization snapshot.
+# Replay composition for Conductor closeout and quality-command snapshots.
 - id: base
   name: '@deepseek-ai/cordis-plugin-include'
   config:
@@ -13,6 +13,24 @@
       - insert:
           - id: llm-replay
             name: '@deepseek-ai/dsh-llm-replay'
+          - id: conductor-roles
+            name: '@deepseek-ai/dsh-skill-filesystem'
+            config:
+              providerName: conductor-snapshot-roles
+              includeDefaultRoots: false
+              customSkillDirs:
+                - !!js process.env.DSH_CONDUCTOR_ROLE_DIR
+              watch: false
+          - id: conductor-search-tools
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: conductor-attachments
+            name: '@deepseek-ai/dsh-attachment-local'
+          # Test-only full-enforcement wrapper: the snapshot exercises the
+          # shipped executor without depending on one CI host's sandbox runner.
+          - id: conductor-snapshot-sandbox
+            name: ./tests/fixtures/conductor-snapshot-sandbox.ts
           - id: tool-conductor
             name: '@deepseek-ai/dsh-tool-conductor'
             config:
@@ -20,3 +38,18 @@
               maxReworkCycles: 3
               maxRalphRounds: 0
               maxRalphHandoffChars: 16384
+              qualityCommands:
+                - id: snapshot-check
+                  modelSafeDescription: Run the deterministic snapshot quality check.
+                  argv:
+                    - node
+                    - -e
+                    - process.stdout.write('QUALITY_OK')
+                  cwd: .
+                  allowedStages:
+                    - headsman
+                    - auditor
+                  sandboxMode: read-only
+                  timeoutMs: 5000
+                  maxOutputBytes: 4096
+                  graceMs: 100

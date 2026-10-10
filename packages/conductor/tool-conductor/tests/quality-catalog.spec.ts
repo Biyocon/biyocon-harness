@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { resolveQualityCatalog } from '../src/quality-catalog.ts'
 import type { QualityCommandConfig } from '../src/quality-catalog.ts'
 
@@ -45,5 +46,12 @@ describe('Conductor quality catalog', () => {
     expect(() => resolveQualityCatalog([command({
       allowedStages: ['integrator' as 'headsman'],
     })])).toThrow(/distinct headsman\/auditor stages/)
+  })
+
+  it('rejects timer delays that Node would clamp to one millisecond', () => {
+    expect(() => resolveQualityCatalog([command({ timeoutMs: MAX_TIMER_DELAY_MS + 1 })]))
+      .toThrow(`timeoutMs must be no greater than ${MAX_TIMER_DELAY_MS}`)
+    expect(() => resolveQualityCatalog([command({ graceMs: MAX_TIMER_DELAY_MS + 1 })]))
+      .toThrow(`graceMs must be no greater than ${MAX_TIMER_DELAY_MS}`)
   })
 })

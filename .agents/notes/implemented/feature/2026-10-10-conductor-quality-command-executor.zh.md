@@ -1,6 +1,6 @@
 # Agent Note：Conductor quality-command executor
 
-Status: proposed
+Status: implemented
 
 [English](2026-10-10-conductor-quality-command-executor.md) | 中文
 
@@ -8,7 +8,7 @@ Status: proposed
 
 Conductor runtime 刻意移除了所有专家的通用 shell 访问，但 Headsman 和 Ralph 指令要求执行实现检查，Gate E 也要求 Auditor 独立验证。当前专家只能检查已有结果，无法通过 Conductor 重现已配置的测试、编译器、schema validator 或 generator。若增加普通 shell 工具，模型输出就能选择超出已批准 execution baseline 的可执行文件、参数和影响。
 
-## 提案
+## 决策
 
 `dsh-tool-conductor` 拥有默认空的部署 quality-command catalog。每个定义包含不透明 id、模型安全描述、精确 argv、允许的 Headsman 或 Auditor stage、规范化的 workspace 相对 cwd、可选 write root、sandbox mode、timeout、输出上限和终止宽限期。Shell interpreter 和无效路径关系会在插件加载时失败。Gate C 只选择 id；host 将其解析为不可变 definition hash，并把 catalog hash 记录在 execution baseline 中。选择命令还要求独立的 `quality-execute` execution permission。
 
@@ -28,7 +28,7 @@ Sandbox policy 只覆盖文件系统影响。本设计不声称提供网络隔�
 - 拒绝让 Ralph 或 Auditor 决定 gate，因为 Conductor 是 workflow state 和 gate decision 的唯一 owner。
 - 拒绝允许 partial sandbox enforcement，因为 host 无法完全执行的文件 policy 必须 fail closed。
 
-## 验收标准
+## 验证
 
 - Catalog 校验并冻结精确 command definition，拒绝 shell interpreter、重复 id、无效路径、Auditor 写入和缺少 write root 的定义。
 - 私有工具在执行命令前拒绝未知 id、额外输入字段、过期 binding、未授权 stage、缺少 execution permission 以及 partial 或 unavailable sandbox enforcement。
@@ -37,9 +37,11 @@ Sandbox policy 只覆盖文件系统影响。本设计不声称提供网络隔�
 - Gate D 接受 Ralph 生成的全新通过 Headsman evidence；Gate E 要求不同的全新 Auditor run，不能复用 Gate-D evidence。
 - Workflow、Ralph 和 subagent provider 预检可信 child-tool capability，不向模型或 worker-script input 暴露 callback。
 - Conductor package 将根入口和 invariant companion 构建为自包含的发布入口，不依赖未声明的 runtime chunk。
-- 聚焦的 Conductor 测试、typecheck、文档同步和 lint 全部通过。
+- `pnpm exec vitest run examples/headless-agent/tests/headless.snapshot.ts -t "replays Conductor quality commands" --config vitest.snapshot.config.ts` 让无密钥 assembled application 从 Detective 运行到 Arbiter，在 Headsman 与 Auditor 下独立执行 binding，持久化全部八个 run checkpoint，并以 `awaiting_authorization` 结束。
+- `pnpm run test -t conductor` 在 10 个文件中通过 82 个聚焦测试，覆盖 catalog 校验、模型边界升级、Ralph 命令交接、stage 独立性、持久化和 gate evidence 规则。
+- `pnpm run typecheck`、`pnpm run lint`、`pnpm run doc-sync`、`pnpm run verify-cordis-config` 和 `pnpm run verify-built-package-invariants` 全部通过；doc-sync 报告 28 个 gate，config 校验报告 124 个文件，built-package 校验报告 222 个 companion。
 
-## 风险
+## 后果
 
 - 没有 fully enforcing sandbox backend 的 host 无法运行 quality command；这是有意的 fail-closed 可用性代价，尤其影响只有 partial enforcement 的 Windows 配置。
 - 部署 catalog 是可执行的 host policy。错误定义仍可能运行非预期但已审查的 argv，因此部署审查仍然必要。
