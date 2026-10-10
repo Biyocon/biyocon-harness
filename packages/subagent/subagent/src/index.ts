@@ -76,6 +76,7 @@ export type {
   ContinuableCreateSpec,
   ResolvedSubagentStartRequest,
   SubagentCapabilities,
+  SubagentChildToolContribution,
   SubagentProvider,
   SubagentResult,
   SubagentRun,
@@ -485,6 +486,7 @@ export class SubagentRuntime extends Service {
       { when: request.toolFilter !== undefined, cap: 'toolFilter' },
       { when: request.toolGuard !== undefined, cap: 'toolGuard' },
       { when: request.persona !== undefined, cap: 'persona' },
+      { when: request.toolContribution !== undefined, cap: 'toolContribution' },
     ]
     for (const { when, cap } of needs) {
       if (when && !provider.capabilities[cap]) {

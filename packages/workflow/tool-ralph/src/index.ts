@@ -9,7 +9,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
-import type { SubagentProvider } from '@deepseek-ai/dsh-subagent'
+import type { SubagentChildToolContribution, SubagentProvider } from '@deepseek-ai/dsh-subagent'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolCallView, ToolGuard, ToolRestriction, ToolResultView } from '@deepseek-ai/dsh-tools'
 import type { WorkflowResult, WorkflowRun } from '@deepseek-ai/dsh-workflow'
@@ -103,6 +103,8 @@ export interface RalphWorkflowRequest {
   readonly childToolFilter?: ToolRestriction
   /** Optional trusted argument-aware child tool guard. */
   readonly childToolGuard?: ToolGuard
+  /** Optional trusted host-only child tool installer for every Ralph round. */
+  readonly childToolContribution?: SubagentChildToolContribution
   /** Optional persona applied to every round. */
   readonly childPersona?: string
 }
@@ -462,7 +464,10 @@ export async function runRalphWorkflow(ctx: Context, request: RalphWorkflowReque
   if (!Number.isSafeInteger(request.maxResultChars) || request.maxResultChars < 1) {
     throw new TypeError('Ralph maxResultChars must be a positive safe integer')
   }
-  void requireFreshProvider(ctx, request.subagentProvider)
+  const provider = requireFreshProvider(ctx, request.subagentProvider)
+  if (request.childToolContribution !== undefined && !provider.capabilities.toolContribution) {
+    throw new Error(`Ralph subagent provider "${request.subagentProvider}" does not support child tool contributions`)
+  }
 
   const run: WorkflowRun = ctx.workflowEngine.start({
     script: RALPH_SCRIPT,
@@ -474,6 +479,9 @@ export async function runRalphWorkflow(ctx: Context, request: RalphWorkflowReque
     signal: request.signal,
     ...request.childToolFilter !== undefined ? { childToolFilter: request.childToolFilter } : {},
     ...request.childToolGuard !== undefined ? { childToolGuard: request.childToolGuard } : {},
+    ...request.childToolContribution !== undefined
+      ? { childToolContribution: request.childToolContribution }
+      : {},
     ...request.childPersona !== undefined ? { childPersona: request.childPersona } : {},
   })
   const onAbort = (): void => { run.cancel('parent step aborted') }

@@ -10,10 +10,10 @@
  * @module @deepseek-ai/dsh-tool-conductor/capability
  */
 
-import { existsSync, realpathSync } from 'node:fs'
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { relative, sep } from 'node:path'
 import type { ConductorAction, ConductorStage, ExecutionBaseline } from '@deepseek-ai/dsh-conductor'
 import type { ToolExecution, ToolGuard, ToolRestriction } from '@deepseek-ai/dsh-tools'
+import { canonicalAbsolute, containsPath } from './path-policy.ts'
 
 /** Global read/search tool names a read-only specialist keeps visible. */
 export const READ_TOOLS = ['read', 'read_image', 'grep', 'glob'] as const
@@ -104,34 +104,14 @@ function writePolicyDenial(
   } catch (error) {
     return `Conductor ${stage} write denied: path could not be canonicalized (${String(error)})`
   }
-  const excluded = excludedRoots.some(path => contains(path, target))
+  const excluded = excludedRoots.some(path => containsPath(path, target))
   if (excluded) return `Conductor ${stage} write denied: path is excluded by the execution baseline`
-  const allowed = allowedRoots.some(path => contains(path, target))
+  const allowed = allowedRoots.some(path => containsPath(path, target))
   if (!allowed) return `Conductor ${stage} write denied: path is outside allowed_paths`
   if (stage === 'integrator' && !isDocumentationPath(canonicalAbsolute(cwd, cwd), target)) {
     return 'Conductor integrator write denied: path is outside docs/notes'
   }
   return undefined
-}
-
-function canonicalAbsolute(cwd: string, path: string): string {
-  const absolute = resolve(cwd, isAbsolute(path) ? path : resolve(cwd, path))
-  const remainder: string[] = []
-  let existing = absolute
-  while (!existsSync(existing)) {
-    const parent = dirname(existing)
-    if (parent === existing) throw new Error(`no existing ancestor for ${absolute}`)
-    remainder.unshift(relative(parent, existing))
-    existing = parent
-  }
-  return resolve(realpathSync.native(existing), ...remainder)
-}
-
-function contains(root: string, candidate: string): boolean {
-  const comparisonRoot = process.platform === 'win32' ? root.toLowerCase() : root
-  const comparisonCandidate = process.platform === 'win32' ? candidate.toLowerCase() : candidate
-  const suffix = relative(comparisonRoot, comparisonCandidate)
-  return suffix === '' || (!suffix.startsWith(`..${sep}`) && suffix !== '..' && !isAbsolute(suffix))
 }
 
 function isDocumentationPath(cwd: string, target: string): boolean {

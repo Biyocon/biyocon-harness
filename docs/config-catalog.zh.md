@@ -2378,7 +2378,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-tool-conductor`
 
-需要：`tools` · `subagents` · `skills` · `sessions` · `workflowEngine`
+需要：`tools` · `subagents` · `skills` · `sessions` · `workflowEngine` · `sandbox` · `subprocess`
 
 ```ts config-catalog
 /** Deployment policy for the Conductor tool. */
@@ -2391,10 +2391,38 @@ export interface Config {
   maxRalphRounds?: number
   /** Maximum serialized characters in one Ralph handoff (default 16384). */
   maxRalphHandoffChars?: number
+  /** Deployment-owned exact-argv command catalog; empty by default. */
+  qualityCommands?: QualityCommandConfig[]
+}
+
+/** Configured exact-argv quality command. */
+export interface QualityCommandConfig {
+  /** Opaque normalized id exposed to specialists. */
+  id: string
+  /** Command purpose text safe to include in a model prompt. */
+  modelSafeDescription: string
+  /** Exact executable and argument vector; shell interpreters are forbidden. */
+  argv: string[]
+  /** Workspace-relative working directory. */
+  cwd: string
+  /** Workspace-relative writable root required by workspace-write mode. */
+  writeRoot?: string
+  /** Specialist policy stages permitted to execute the command. */
+  allowedStages: QualityPolicyStage[]
+  /** Required filesystem confinement mode. */
+  sandboxMode: 'read-only' | 'workspace-write'
+  /** Maximum execution time in milliseconds. */
+  timeoutMs: number
+  /** Maximum collected bytes for each output stream. */
+  maxOutputBytes: number
+  /** Termination grace period in milliseconds. */
+  graceMs: number
 }
 ```
 
-来源：[`packages/conductor/tool-conductor/src/index.ts:52`](../packages/conductor/tool-conductor/src/index.ts)
+依赖：[`QualityPolicyStage`](../packages/conductor/conductor/src/index.ts)
+
+来源：[`packages/conductor/tool-conductor/src/index.ts:63`](../packages/conductor/tool-conductor/src/index.ts)
 
 <a id="deepseek-aidsh-tool-fs"></a>
 

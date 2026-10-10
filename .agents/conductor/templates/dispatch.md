@@ -19,7 +19,8 @@ acceptance_criteria: []
 constraints: []
 questions_to_resolve: []
 required_evidence: []
+quality_command_bindings: []
 return_format: specialist-envelope
 ```
 
-Load the matching role file as the child persona and the specialist skill as the envelope contract. Use fresh spawn for every specialist. Never let one specialist send work directly to another; every result returns to the Conductor.
+Load the matching role file as the child persona and the specialist skill as the envelope contract. Use fresh spawn for every specialist. A quality binding exposes only its opaque id and model-safe description; the private tool resolves exact argv and accepts no raw command or extra arguments. Never let one specialist send work directly to another; every result returns to the Conductor.

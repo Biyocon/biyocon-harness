@@ -26,6 +26,7 @@ describe('dsh-tool-conductor capability policies', () => {
     const guard = toolGuardForStage('headsman', {
       scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
       allowedPaths: ['packages/conductor'], excludedPaths: ['packages/conductor/private'], rollbackReference: 'HEAD',
+      qualityCommands: [],
     }, ['read', 'write'])
     const execution = (file_path: string) => ({
       name: 'write', arguments: { file_path }, agent: { session: { header: { cwd: process.cwd() } } },
@@ -39,6 +40,7 @@ describe('dsh-tool-conductor capability policies', () => {
     const guard = toolGuardForStage('integrator', {
       scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
       allowedPaths: ['.'], excludedPaths: [], rollbackReference: 'HEAD',
+      qualityCommands: [],
     }, ['read', 'write'])
     const execution = (file_path: string) => ({
       name: 'edit', arguments: { file_path }, agent: { session: { header: { cwd: process.cwd() } } },
@@ -59,6 +61,7 @@ describe('dsh-tool-conductor capability policies', () => {
       const guard = toolGuardForStage('headsman', {
         scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
         allowedPaths: [allowed], excludedPaths: [], rollbackReference: 'HEAD',
+        qualityCommands: [],
       }, ['read', 'write'])
       const execution = {
         name: 'write',
@@ -80,6 +83,7 @@ describe('dsh-tool-conductor capability policies', () => {
     const guard = toolGuardForStage('headsman', {
       scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
       allowedPaths: ['.'], excludedPaths: [], rollbackReference: 'HEAD',
+      qualityCommands: [],
     }, ['read'])
     expect(guard({ name: 'write', arguments: { file_path: 'sandbox/output.txt' } } as ToolExecution)).toMatch(/does not permit write/)
   })

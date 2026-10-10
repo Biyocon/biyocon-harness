@@ -14,6 +14,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {
   ConductorRunId,
+  QualityCommandId,
   closeRun,
   createRun,
   drive,
@@ -25,11 +26,16 @@ import {
 import type {
   ConductorAction,
   ConductorAuthority,
+  ConductorExecutionPermission,
   ConductorRun,
   ConductorStage,
   CloseoutAuthorization,
   DecisionRecord,
+  QualityCommandBinding,
+  QualityExecutionRecord,
+  QualityPolicyStage,
   SpecialistEnvelope,
+  SpecialistDispatchResult,
 } from '@deepseek-ai/dsh-conductor'
 import { toolGuardForStage, toolRestrictionForStage } from './capability.ts'
 import { ralphDirective } from './ralph.ts'
@@ -38,15 +44,20 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import type { SubagentProvider } from '@deepseek-ai/dsh-subagent'
+import type { SubagentChildToolContribution } from '@deepseek-ai/dsh-subagent'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ObjectJsonSchema, ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools'
 import type { WorkflowResult, WorkflowRun } from '@deepseek-ai/dsh-workflow'
 import { runRalphWorkflow } from '@deepseek-ai/dsh-tool-ralph'
 // Declaration merge only: makes ctx.skills visible for the role-skill lookup.
 import type {} from '@deepseek-ai/dsh-skill'
+import { nextQualityCycle } from '@deepseek-ai/dsh-conductor'
+import { qualityToolContribution } from './quality-executor.ts'
+import { resolveQualityCatalog } from './quality-catalog.ts'
+import type { QualityCommandConfig, QualityCommandDefinition } from './quality-catalog.ts'
 
 export const name = 'tool-conductor'
-export const inject = ['tools', 'subagents', 'skills', 'sessions', 'workflowEngine']
+export const inject = ['tools', 'subagents', 'skills', 'sessions', 'workflowEngine', 'sandbox', 'subprocess']
 
 /** Deployment policy for the Conductor tool. */
 export interface Config {
@@ -58,6 +69,8 @@ export interface Config {
   maxRalphRounds?: number
   /** Maximum serialized characters in one Ralph handoff (default 16384). */
   maxRalphHandoffChars?: number
+  /** Deployment-owned exact-argv command catalog; empty by default. */
+  qualityCommands?: QualityCommandConfig[]
 }
 
 /** Schemastery configuration for the Conductor tool. */
@@ -66,6 +79,18 @@ export const Config: z<Config> = z.object({
   maxReworkCycles: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(3),
   maxRalphRounds: z.number().step(1).min(0).max(Number.MAX_SAFE_INTEGER).default(0),
   maxRalphHandoffChars: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(16_384),
+  qualityCommands: z.array(z.object({
+    id: z.string(),
+    modelSafeDescription: z.string(),
+    argv: z.array(z.string()),
+    cwd: z.string(),
+    writeRoot: z.string().default(undefined as unknown as string),
+    allowedStages: z.array(z.union(['headsman', 'auditor'])),
+    sandboxMode: z.union(['read-only', 'workspace-write']),
+    timeoutMs: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER),
+    maxOutputBytes: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER),
+    graceMs: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER),
+  })).default([]),
 })
 
 interface ResolvedConfig {
@@ -73,6 +98,7 @@ interface ResolvedConfig {
   readonly maxReworkCycles: number
   readonly maxRalphRounds: number
   readonly maxRalphHandoffChars: number
+  readonly qualityCommands: ReadonlyMap<string, QualityCommandDefinition>
 }
 
 interface ConductorCallArgs {
@@ -84,12 +110,13 @@ interface ConductorCallArgs {
   sourceBaseline?: string
   constraints?: string[]
   acceptanceCriteria?: string[]
-  authority?: { owner: string; permittedActions: string[] }
+  authority?: { owner: string; permittedActions: string[]; executionPermissions?: string[] }
   runId?: string
   closeoutAuthorization?: CloseoutAuthorization
 }
 
 const VALID_ACTIONS = ['read', 'write', 'commit', 'push', 'merge', 'release', 'publish', 'deploy'] as const
+const VALID_EXECUTION_PERMISSIONS = ['quality-execute'] as const
 
 const DESCRIPTION = 'Run a multi-role, gated Conductor workflow toward one objective. '
   + 'The tool drives Detective → Strategist → Devil\'s Advocate → Headsman → Auditor → Integrator → Arbiter, '
@@ -160,9 +187,11 @@ const ENVELOPE_SCHEMA = {
         allowedPaths: { type: 'array', items: { type: 'string' } },
         excludedPaths: { type: 'array', items: { type: 'string' } },
         rollbackReference: { type: 'string' },
+        qualityCommandIds: { type: 'array', items: { type: 'string' } },
       },
       required: [
         'scopeVersion', 'planVersion', 'acceptanceVersion', 'allowedPaths', 'excludedPaths', 'rollbackReference',
+        'qualityCommandIds',
       ],
     },
     recommended_transition: {
@@ -175,10 +204,11 @@ const ENVELOPE_SCHEMA = {
       required: ['target', 'rationale'],
     },
     confidence: { type: 'string', enum: ['low', 'medium', 'high'] },
+    quality_evidence_ids: { type: 'array', items: { type: 'string' } },
   },
   required: [
     'run_id', 'stage', 'baseline_ref', 'status', 'summary', 'evidence', 'findings', 'assumptions',
-    'blockers', 'artifacts', 'change_requests', 'recommended_transition', 'confidence',
+    'blockers', 'artifacts', 'change_requests', 'recommended_transition', 'confidence', 'quality_evidence_ids',
   ],
 } satisfies ObjectJsonSchema
 
@@ -203,6 +233,7 @@ function resolveConfig(config: Config): ResolvedConfig {
   const maxReworkCycles = config.maxReworkCycles ?? 3
   const maxRalphRounds = config.maxRalphRounds ?? 0
   const maxRalphHandoffChars = config.maxRalphHandoffChars ?? 16_384
+  const qualityCommands = resolveQualityCatalog(config.qualityCommands ?? [])
   if (subagentProvider.length === 0 || subagentProvider !== subagentProvider.trim()) {
     throw new TypeError('subagentProvider must be a non-empty normalized string')
   }
@@ -215,7 +246,7 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(maxRalphHandoffChars) || maxRalphHandoffChars < 1) {
     throw new TypeError('maxRalphHandoffChars must be a positive safe integer')
   }
-  return { subagentProvider, maxReworkCycles, maxRalphRounds, maxRalphHandoffChars }
+  return { subagentProvider, maxReworkCycles, maxRalphRounds, maxRalphHandoffChars, qualityCommands }
 }
 
 /** Require a genuinely fresh structured-output provider for specialists. */
@@ -236,6 +267,9 @@ function requireFreshProvider(ctx: Context, name: string): SubagentProvider {
   if (!provider.capabilities.persona) {
     throw new Error(`Conductor subagent provider "${name}" does not support child personas`)
   }
+  if (!provider.capabilities.toolContribution) {
+    throw new Error(`Conductor subagent provider "${name}" does not support child tool contributions`)
+  }
   if (provider.inheritsParentContext) {
     throw new Error(`Conductor subagent provider "${name}" inherits parent context; Conductor requires a fresh provider`)
   }
@@ -249,11 +283,26 @@ function resolveAuthority(value: ConductorCallArgs['authority']): ConductorAutho
     throw new Error('Conductor authority requires a non-empty normalized owner')
   }
   const actions = value?.permittedActions
-  if (actions === undefined) return { owner, permittedActions: ['read'] }
+  const executionPermissions = value?.executionPermissions ?? []
+  if (!Array.isArray(executionPermissions)
+    || !executionPermissions.every(permission => typeof permission === 'string'
+      && (VALID_EXECUTION_PERMISSIONS as readonly string[]).includes(permission))
+    || new Set(executionPermissions).size !== executionPermissions.length) {
+    throw new Error('Conductor authority executionPermissions must be a distinct subset of quality-execute')
+  }
+  if (actions === undefined) return {
+    owner,
+    permittedActions: ['read'],
+    executionPermissions: executionPermissions as ConductorExecutionPermission[],
+  }
   if (!Array.isArray(actions) || !actions.every(a => typeof a === 'string' && (VALID_ACTIONS as readonly string[]).includes(a))) {
     throw new Error(`Conductor authority permittedActions must be a subset of ${VALID_ACTIONS.join(', ')}`)
   }
-  return { owner, permittedActions: actions as ConductorAction[] }
+  return {
+    owner,
+    permittedActions: actions as ConductorAction[],
+    executionPermissions: executionPermissions as ConductorExecutionPermission[],
+  }
 }
 
 function resolvePathList(value: string[] | undefined, field: string): string[] {
@@ -278,6 +327,8 @@ function resolveStringList(value: string[] | undefined, field: string): string[]
 function composeSpecialistPrompt(
   stage: ConductorStage,
   run: ConductorRun,
+  catalog: ReadonlyMap<string, QualityCommandDefinition>,
+  qualityExecutions: readonly QualityExecutionRecord[],
   ralphResult?: unknown,
 ): string {
   const stageActions: ConductorAction[] = [
@@ -305,6 +356,17 @@ function composeSpecialistPrompt(
       input_artifacts: run.inputArtifacts,
       questions_to_resolve: [],
       required_evidence: [],
+      quality_command_catalog: [...catalog.values()].map(command => ({
+        id: command.id,
+        description: command.modelSafeDescription,
+        allowed_stages: command.allowedStages,
+      })),
+      quality_execution_evidence: qualityExecutions.map(record => ({
+        evidence_id: record.evidenceId,
+        command_id: record.commandId,
+        executor_stage: record.executorStage,
+        outcome: record.outcome,
+      })),
     }, null, 2),
     'Return the structured result in exactly the fields the schema requires.',
   ]
@@ -367,6 +429,7 @@ async function runWorkflowChild(
   prompt: string,
   schema: ObjectJsonSchema,
   persona: string,
+  childToolContribution?: SubagentChildToolContribution,
 ): Promise<unknown> {
   const workflow: WorkflowRun = ctx.workflowEngine.start({
     script: SPECIALIST_WORKFLOW_SCRIPT,
@@ -379,6 +442,7 @@ async function runWorkflowChild(
     childToolFilter: toolRestrictionForStage(stage, run.authority.permittedActions),
     childToolGuard: toolGuardForStage(stage, run.baseline, run.authority.permittedActions),
     childPersona: persona,
+    ...childToolContribution === undefined ? {} : { childToolContribution },
   })
   try {
     const result: WorkflowResult = await workflow.result
@@ -386,6 +450,66 @@ async function runWorkflowChild(
     return result.value
   } finally {
     await workflow.dispose()
+  }
+}
+
+/** Reject removed or changed command definitions before every resumed dispatch. */
+function assertCatalogBindings(
+  run: ConductorRun,
+  catalog: ReadonlyMap<string, QualityCommandDefinition>,
+): void {
+  for (const binding of run.baseline?.qualityCommands ?? []) {
+    const current = catalog.get(binding.id)
+    if (current === undefined) throw new Error(`Gate C quality command "${binding.id}" is no longer configured`)
+    if (current.definitionHash !== binding.definitionHash) {
+      throw new Error(`Gate C quality command "${binding.id}" definition changed; resume is refused`)
+    }
+    const requiredGates = current.allowedStages.map(value => value === 'headsman' ? 'D' : 'E')
+    if (requiredGates.length !== binding.requiredGates.length
+      || requiredGates.some((gate, index) => binding.requiredGates[index] !== gate)) {
+      throw new Error(`Gate C quality command "${binding.id}" gate applicability changed; resume is refused`)
+    }
+  }
+}
+
+/** Resolve model-selected Gate-C command ids to host-owned immutable bindings. */
+function resolveSpecialistEnvelope(
+  value: unknown,
+  stage: ConductorStage,
+  run: ConductorRun,
+  catalog: ReadonlyMap<string, QualityCommandDefinition>,
+): SpecialistEnvelope {
+  if (!isRecord(value)) return value as SpecialistEnvelope
+  if (stage !== 'devils-advocate' || value['status'] !== 'ready') return value as unknown as SpecialistEnvelope
+  const proposal = value['execution_baseline']
+  if (!isRecord(proposal) || !Array.isArray(proposal['qualityCommandIds'])) {
+    return value as unknown as SpecialistEnvelope
+  }
+  const ids = proposal['qualityCommandIds'] as unknown[]
+  if (ids.some(id => typeof id !== 'string' || id.length === 0 || id !== id.trim())) {
+    throw new Error('Gate C qualityCommandIds must contain normalized strings')
+  }
+  if (new Set(ids).size !== ids.length) throw new Error('Gate C qualityCommandIds must not contain duplicates')
+  if (ids.length > 0 && !run.authority.executionPermissions.includes('quality-execute')) {
+    throw new Error('Gate C quality commands require quality-execute authority')
+  }
+  const normalizedIds = ids as string[]
+  const qualityCommands: QualityCommandBinding[] = normalizedIds.map((id) => {
+    const definition = catalog.get(id)
+    if (definition === undefined) throw new Error(`Gate C selected unknown quality command "${id}"`)
+    return {
+      id: QualityCommandId(id),
+      definitionHash: definition.definitionHash,
+      requiredGates: definition.allowedStages.map(value => value === 'headsman' ? 'D' : 'E'),
+    }
+  })
+  const { qualityCommandIds: _qualityCommandIds, ...baseline } = proposal
+  return {
+    ...(value as unknown as Omit<SpecialistEnvelope, 'execution_baseline'>),
+    execution_baseline: {
+      ...(baseline as Omit<NonNullable<SpecialistEnvelope['execution_baseline']>, 'qualityCommands'>),
+      qualityCommands,
+    },
   }
 }
 
@@ -398,7 +522,8 @@ async function runSpecialist(
   stage: ConductorStage,
   run: ConductorRun,
   maxRalphHandoffChars: number,
-): Promise<SpecialistEnvelope> {
+  catalog: ReadonlyMap<string, QualityCommandDefinition>,
+): Promise<SpecialistDispatchResult> {
   const roleName = ROLE_SKILL[stage]
   if (roleName === undefined) throw new Error(`Conductor stage "${stage}" has no role skill`)
   const [roleBody, specialistBody] = await Promise.all([
@@ -413,42 +538,119 @@ async function runSpecialist(
     ralphBody = ralphDirective(run.budget.maxRalphRounds, ralphSkill)
   }
   const persona = [roleBody, specialistBody, ralphBody].filter(value => value !== undefined).join('\n\n')
-  const ralphOutcome = stage === 'headsman' && run.budget.maxRalphRounds > 0
-    ? await runRalphWorkflow(ctx, {
-      objective: `Implement the approved Conductor baseline for: ${run.objective}`,
-      maxRounds: run.budget.maxRalphRounds,
-      maxHandoffChars: maxRalphHandoffChars,
-      maxResultChars: maxRalphHandoffChars,
-      subagentProvider: providerName,
-      parent,
-      signal,
-      childToolFilter: toolRestrictionForStage(stage, run.authority.permittedActions),
-      childToolGuard: toolGuardForStage(stage, run.baseline, run.authority.permittedActions),
-      childPersona: persona,
+  assertCatalogBindings(run, catalog)
+  const qualityExecutions: QualityExecutionRecord[] = []
+  const policyStage: QualityPolicyStage | undefined = stage === 'headsman' || stage === 'auditor' ? stage : undefined
+  const requiredQualityCommands = policyStage === undefined || run.baseline === null
+    ? []
+    : run.baseline.qualityCommands.filter(binding => binding.requiredGates.includes(policyStage === 'headsman' ? 'D' : 'E'))
+  const gate = stage === 'headsman' ? 'D' : stage === 'auditor' ? 'E' : undefined
+  const cycle = gate === undefined ? undefined : nextQualityCycle(run, gate)
+  const headsmanContribution = stage === 'headsman' && gate !== undefined && cycle !== undefined
+    && requiredQualityCommands.length > 0
+    ? qualityToolContribution({
+      run,
+      policyStage: 'headsman',
+      executorStage: 'headsman',
+      gate,
+      cycle,
+      catalog,
+      requiredBindings: requiredQualityCommands,
+      records: qualityExecutions,
+      sandbox: ctx.sandbox,
+      subprocess: ctx.subprocess,
     })
     : undefined
-  const structured = await runWorkflowChild(
-    ctx, providerName, parent, signal, stage, run,
-    composeSpecialistPrompt(stage, run, ralphOutcome?.result), ENVELOPE_SCHEMA, persona,
-  )
-  if (structured === undefined || structured === null) {
-    return {
+  const auditorContribution = stage === 'auditor' && gate !== undefined && cycle !== undefined
+    && requiredQualityCommands.length > 0
+    ? qualityToolContribution({
+      run,
+      policyStage: 'auditor',
+      executorStage: 'auditor',
+      gate,
+      cycle,
+      catalog,
+      requiredBindings: requiredQualityCommands,
+      records: qualityExecutions,
+      sandbox: ctx.sandbox,
+      subprocess: ctx.subprocess,
+    })
+    : undefined
+  const ralphContribution = stage === 'headsman' && gate !== undefined && cycle !== undefined
+    && requiredQualityCommands.length > 0
+    ? qualityToolContribution({
+      run,
+      policyStage: 'headsman',
+      executorStage: 'ralph',
+      gate,
+      cycle,
+      catalog,
+      requiredBindings: requiredQualityCommands,
+      records: qualityExecutions,
+      sandbox: ctx.sandbox,
+      subprocess: ctx.subprocess,
+    })
+    : undefined
+  try {
+    const ralphOutcome = stage === 'headsman' && run.budget.maxRalphRounds > 0
+      ? await runRalphWorkflow(ctx, {
+        objective: `Implement the approved Conductor baseline for: ${run.objective}`,
+        maxRounds: run.budget.maxRalphRounds,
+        maxHandoffChars: maxRalphHandoffChars,
+        maxResultChars: maxRalphHandoffChars,
+        subagentProvider: providerName,
+        parent,
+        signal,
+        childToolFilter: toolRestrictionForStage(stage, run.authority.permittedActions),
+        childToolGuard: toolGuardForStage(stage, run.baseline, run.authority.permittedActions),
+        childPersona: persona,
+        ...ralphContribution === undefined ? {} : { childToolContribution: ralphContribution },
+      })
+      : undefined
+    const structured = await runWorkflowChild(
+      ctx, providerName, parent, signal, stage, run,
+      composeSpecialistPrompt(stage, run, catalog, qualityExecutions, ralphOutcome?.result), ENVELOPE_SCHEMA, persona,
+      headsmanContribution ?? auditorContribution,
+    )
+    if (structured === undefined || structured === null) {
+      return { envelope: {
+        run_id: run.runId,
+        stage,
+        status: 'failed',
+        baseline_ref: run.baseline?.rollbackReference ?? run.sourceBaseline ?? 'unestablished',
+        summary: 'specialist produced no structured envelope',
+        evidence: [],
+        findings: [],
+        assumptions: [],
+        blockers: ['workflow child returned no structured value'],
+        artifacts: [],
+        change_requests: [],
+        recommended_transition: { target: 'conductor', rationale: 'no structured output' },
+        confidence: 'low',
+        quality_evidence_ids: [],
+      }, qualityExecutions, requiredQualityCommands }
+    }
+    const envelope = resolveSpecialistEnvelope(structured, stage, run, catalog)
+    return { envelope, qualityExecutions, requiredQualityCommands }
+  } catch (error) {
+    if (qualityExecutions.length === 0) throw error
+    return { envelope: {
       run_id: run.runId,
       stage,
       status: 'failed',
       baseline_ref: run.baseline?.rollbackReference ?? run.sourceBaseline ?? 'unestablished',
-      summary: 'specialist produced no structured envelope',
+      summary: 'specialist execution failed after recording quality evidence',
       evidence: [],
       findings: [],
       assumptions: [],
-      blockers: ['workflow child returned no structured value'],
+      blockers: ['specialist workflow failed after a quality command completed'],
       artifacts: [],
       change_requests: [],
-      recommended_transition: { target: 'conductor', rationale: 'no structured output' },
+      recommended_transition: { target: 'conductor', rationale: 'preserve execution evidence and stop the gate' },
       confidence: 'low',
-    }
+      quality_evidence_ids: qualityExecutions.map(record => record.evidenceId),
+    }, qualityExecutions, requiredQualityCommands }
   }
-  return structured as SpecialistEnvelope
 }
 
 /** Read the Arbiter's decision across the subagent boundary. */
@@ -567,8 +769,9 @@ export function apply(ctx: Context, config: Config): void {
         properties: {
           owner: { type: 'string', required: true },
           permittedActions: { type: 'array', items: { type: 'string' } },
+          executionPermissions: { type: 'array', items: { type: 'string' } },
         },
-        description: 'The mandate owner and permitted external actions (read/write/commit/push/merge/release/publish/deploy).',
+        description: 'The mandate owner, permitted external actions, and optional quality-execute permission.',
       },
       runId: {
         type: 'string',
@@ -651,7 +854,8 @@ export function apply(ctx: Context, config: Config): void {
         run = await resumeRun(store, ConductorRunId(call.runId))
         if (run.objective !== objective) throw new Error('Conductor resume objective does not match the persisted run')
         if (run.authority.owner !== authority.owner
-          || run.authority.permittedActions.join('\0') !== authority.permittedActions.join('\0')) {
+          || run.authority.permittedActions.join('\0') !== authority.permittedActions.join('\0')
+          || run.authority.executionPermissions.join('\0') !== authority.executionPermissions.join('\0')) {
           throw new Error('Conductor resume authority does not match the persisted run')
         }
         if (!sameOrderedStrings(run.allowedPaths, allowedPaths)) {
@@ -707,11 +911,13 @@ export function apply(ctx: Context, config: Config): void {
       if (call.closeoutAuthorization !== undefined) {
         throw new Error('Conductor closeoutAuthorization is valid only after an Arbiter GO')
       }
+      assertCatalogBindings(run, resolved.qualityCommands)
 
       const dispatcher = {
         async dispatchSpecialist(stage: ConductorStage, current: ConductorRun) {
           return await runSpecialist(
             ctx, resolved.subagentProvider, parent, exec.signal, stage, current, resolved.maxRalphHandoffChars,
+            resolved.qualityCommands,
           )
         },
         async dispatchArbiter(current: ConductorRun) {

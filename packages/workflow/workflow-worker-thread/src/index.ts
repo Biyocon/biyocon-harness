@@ -144,6 +144,13 @@ class WorkerThreadWorkflowEngine extends WorkflowEngine {
     const meta = validateMeta(request.meta)
     assertBodyParses(request.script, meta.name)
     const subagentProvider = resolveSubagentProvider(this.ctx, this.config.provider, request.subagentProvider)
+    const provider = this.ctx.subagents.getProvider(subagentProvider)
+    if (request.childToolContribution !== undefined && !provider?.capabilities.toolContribution) {
+      throw new WorkflowError(
+        `subagent provider "${subagentProvider}" does not support the "toolContribution" capability`,
+        'AGENT_START',
+      )
+    }
     const maxTotalAgents = resolveMaxTotalAgents(request.maxTotalAgents, this.config.maxTotalAgents)
     const id = WorkflowRunId(randomUUID())
     const info: WorkflowRunInfo = { id, meta }
@@ -180,6 +187,9 @@ class WorkerThreadWorkflowEngine extends WorkflowEngine {
       {
         ...request.childToolFilter !== undefined ? { toolFilter: request.childToolFilter } : {},
         ...request.childToolGuard !== undefined ? { toolGuard: request.childToolGuard } : {},
+        ...request.childToolContribution !== undefined
+          ? { toolContribution: request.childToolContribution }
+          : {},
         ...request.childPersona !== undefined ? { persona: request.childPersona } : {},
       },
       this.config.disposeGraceMs,

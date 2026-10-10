@@ -7,12 +7,13 @@
  * @module @deepseek-ai/dsh-conductor
  */
 
-export { ConductorRunId } from './types.ts'
+export { ConductorRunId, QualityCommandId, QualityEvidenceId } from './types.ts'
 export type {
   ArbiterDecision,
   ChangeRequest,
   ChangeRequestTarget,
   ConductorAction,
+  ConductorExecutionPermission,
   ConductorAuthority,
   ConductorBudget,
   ConductorCloseoutAction,
@@ -27,11 +28,17 @@ export type {
   EvidenceItem,
   EvidenceKind,
   ExecutionBaseline,
+  ExecutionBaselineProposal,
   Finding,
   FindingSeverity,
   GateDecision,
   GateId,
   GateRecord,
+  QualityCommandBinding,
+  QualityExecutionFailure,
+  QualityExecutionRecord,
+  QualityExecutorStage,
+  QualityPolicyStage,
   RecommendedTransition,
   SpecialistEnvelope,
   SpecialistStatus,
@@ -50,5 +57,6 @@ export type { ConductorCheckpointData, ConductorRunStore } from './persistence.t
 export { decisionForStatus, reworkTarget, routeGate } from './routing.ts'
 export type { RoutedGate } from './routing.ts'
 export { drive } from './drive.ts'
-export type { ConductorCheckpoint, ConductorDispatcher, ConductorOutcome } from './drive.ts'
+export type { ConductorCheckpoint, ConductorDispatcher, ConductorOutcome, SpecialistDispatchResult } from './drive.ts'
+export { executionBaselineHash, nextQualityCycle, snapshotQualityBindings } from './quality.ts'
 export { isValidRunId, mintRunId } from './run-id.ts'

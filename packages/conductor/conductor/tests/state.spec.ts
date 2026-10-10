@@ -19,7 +19,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     allowedPaths: [],
     excludedPaths: [],
     sourceBaseline: null,
-    authority: { owner: 'user', permittedActions: ['read'] },
+    authority: { owner: 'user', permittedActions: ['read'], executionPermissions: [] },
     constraints: [],
     acceptanceCriteria: [],
     budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
@@ -27,6 +27,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     currentStage: 'detective',
     history: [],
     specialistReports: [],
+    qualityExecutions: [],
     status: 'running',
     ...overrides,
   }
@@ -187,7 +188,7 @@ describe('dsh-conductor gate engine', () => {
 
   it('requires explicit owner authority and records a traceable closeout without executing it', () => {
     const run = makeRun({
-      authority: { owner: 'user', permittedActions: ['read', 'deploy'] },
+      authority: { owner: 'user', permittedActions: ['read', 'deploy'], executionPermissions: [] },
       currentStage: 'closeout',
       status: 'awaiting_authorization',
       decision: {

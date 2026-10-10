@@ -1,12 +1,27 @@
 import { describe, expect, it } from 'vitest'
-import { ConductorRunId, drive } from '../src/index.ts'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import {
+  ConductorRunId,
+  QualityCommandId,
+  QualityEvidenceId,
+  drive,
+  executionBaselineHash,
+} from '../src/index.ts'
 import type {
   ConductorDispatcher,
   ConductorRun,
   ConductorStage,
   DecisionRecord,
   SpecialistEnvelope,
+  QualityCommandBinding,
+  QualityExecutionRecord,
 } from '../src/index.ts'
+
+const QUALITY_BINDING: QualityCommandBinding = {
+  id: QualityCommandId('unit-check'),
+  definitionHash: 'a'.repeat(64),
+  requiredGates: ['D', 'E'],
+}
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
@@ -17,7 +32,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     allowedPaths: ['packages/conductor'],
     excludedPaths: [],
     sourceBaseline: null,
-    authority: { owner: 'user', permittedActions: ['read'] },
+    authority: { owner: 'user', permittedActions: ['read'], executionPermissions: [] },
     constraints: [],
     acceptanceCriteria: ['feature works'],
     budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
@@ -25,6 +40,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     currentStage: 'detective',
     history: [],
     specialistReports: [],
+    qualityExecutions: [],
     status: 'running',
     ...overrides,
   }
@@ -44,12 +60,14 @@ function makeEnvelope(stage: ConductorStage, overrides: Partial<SpecialistEnvelo
     blockers: [],
     artifacts: [],
     change_requests: [],
+    quality_evidence_ids: [],
     recommended_transition: { target: 'conductor', rationale: 'evaluate' },
     confidence: 'high',
     ...stage === 'devils-advocate' ? {
       execution_baseline: {
         scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
         allowedPaths: ['packages/conductor'], excludedPaths: [], rollbackReference: 'HEAD',
+        qualityCommands: [],
       },
     } : {},
     ...overrides,
@@ -125,6 +143,7 @@ describe('dsh-conductor drive', () => {
           execution_baseline: {
             scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
             allowedPaths: ['.'], excludedPaths: [], rollbackReference: 'HEAD',
+            qualityCommands: [],
           },
         })
       },
@@ -285,5 +304,131 @@ describe('dsh-conductor drive', () => {
       expect(outcome.run.history.filter(record => record.decision === 'rework')).toHaveLength(1)
       expect(outcome.run.history.at(-1)?.decision).toBe('escalate')
     }
+  })
+
+  it('requires fresh host-owned Gate D quality evidence for every required binding', async () => {
+    const baseline = {
+      scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
+      allowedPaths: ['packages/conductor'], excludedPaths: [], rollbackReference: 'HEAD',
+      qualityCommands: [QUALITY_BINDING],
+    }
+    const run = makeRun({
+      currentStage: 'headsman',
+      sourceBaseline: 'HEAD',
+      baseline,
+      authority: { owner: 'user', permittedActions: ['read'], executionPermissions: ['quality-execute'] },
+    })
+    const envelope = makeEnvelope('headsman', { quality_evidence_ids: [] })
+    const outcome = await drive(run, {
+      async dispatchSpecialist() {
+        return { envelope, qualityExecutions: [], requiredQualityCommands: [QUALITY_BINDING] }
+      },
+      async dispatchArbiter() { return makeDecision() },
+    })
+    expect(outcome.kind).toBe('blocked')
+    if (outcome.kind === 'blocked') expect(outcome.blocker).toMatch(/fresh passing quality evidence/)
+  })
+
+  it('checkpoints completed quality evidence before rejecting a malformed specialist envelope', async () => {
+    const baseline = {
+      scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
+      allowedPaths: ['packages/conductor'], excludedPaths: [], rollbackReference: 'HEAD',
+      qualityCommands: [QUALITY_BINDING],
+    }
+    const evidenceId = QualityEvidenceId('quality-before-malformed-envelope')
+    const record: QualityExecutionRecord = {
+      evidenceId,
+      runId: ConductorRunId('CON-2026-0001'),
+      childSessionId: SessionId('child-malformed'),
+      commandId: QUALITY_BINDING.id,
+      definitionHash: QUALITY_BINDING.definitionHash,
+      executionBaselineHash: executionBaselineHash(baseline),
+      gate: 'D',
+      cycle: 1,
+      policyStage: 'headsman',
+      executorStage: 'headsman',
+      outcome: 'passed',
+      exitCode: 0,
+      signal: null,
+      startedAt: '2026-10-10T00:00:00.000Z',
+      finishedAt: '2026-10-10T00:00:01.000Z',
+      stdoutSha256: 'b'.repeat(64),
+      stderrSha256: 'c'.repeat(64),
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    }
+    const checkpoints: ConductorRun[] = []
+    const outcome = await drive(makeRun({
+      currentStage: 'headsman', sourceBaseline: 'HEAD', baseline,
+      authority: { owner: 'user', permittedActions: ['read'], executionPermissions: ['quality-execute'] },
+    }), {
+      async dispatchSpecialist() {
+        return {
+          envelope: { ...makeEnvelope('headsman'), stage: 'auditor' },
+          qualityExecutions: [record],
+          requiredQualityCommands: [QUALITY_BINDING],
+        }
+      },
+      async dispatchArbiter() { return makeDecision() },
+    }, async (run) => { checkpoints.push(structuredClone(run)) })
+    expect(outcome.kind).toBe('blocked')
+    expect(outcome.run.qualityExecutions).toEqual([record])
+    expect(checkpoints.at(-1)?.qualityExecutions).toEqual([record])
+  })
+
+  it('accepts matching Gate D evidence but cannot reuse it for Gate E', async () => {
+    const baseline = {
+      scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
+      allowedPaths: ['packages/conductor'], excludedPaths: [], rollbackReference: 'HEAD',
+      qualityCommands: [QUALITY_BINDING],
+    }
+    const evidenceId = QualityEvidenceId('quality-d')
+    const record: QualityExecutionRecord = {
+      evidenceId,
+      runId: ConductorRunId('CON-2026-0001'),
+      childSessionId: SessionId('child-d'),
+      commandId: QUALITY_BINDING.id,
+      definitionHash: QUALITY_BINDING.definitionHash,
+      executionBaselineHash: executionBaselineHash(baseline),
+      gate: 'D',
+      cycle: 1,
+      policyStage: 'headsman',
+      executorStage: 'headsman',
+      outcome: 'passed',
+      exitCode: 0,
+      signal: null,
+      startedAt: '2026-10-10T00:00:00.000Z',
+      finishedAt: '2026-10-10T00:00:01.000Z',
+      stdoutSha256: 'b'.repeat(64),
+      stderrSha256: 'c'.repeat(64),
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    }
+    const run = makeRun({
+      currentStage: 'headsman', sourceBaseline: 'HEAD', baseline,
+      authority: { owner: 'user', permittedActions: ['read'], executionPermissions: ['quality-execute'] },
+    })
+    const outcome = await drive(run, {
+      async dispatchSpecialist(stage) {
+        if (stage === 'headsman') {
+          return {
+            envelope: makeEnvelope(stage, { quality_evidence_ids: [evidenceId] }),
+            qualityExecutions: [record],
+            requiredQualityCommands: [QUALITY_BINDING],
+          }
+        }
+        if (stage === 'auditor') {
+          return {
+            envelope: makeEnvelope(stage, { quality_evidence_ids: [evidenceId] }),
+            qualityExecutions: [],
+            requiredQualityCommands: [QUALITY_BINDING],
+          }
+        }
+        return makeEnvelope(stage)
+      },
+      async dispatchArbiter() { return makeDecision() },
+    })
+    expect(outcome.kind).toBe('blocked')
+    if (outcome.kind === 'blocked') expect(outcome.blocker).toContain('Gate E')
   })
 })

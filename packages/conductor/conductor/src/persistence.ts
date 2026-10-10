@@ -13,6 +13,7 @@
 import type {
   ArbiterDecision,
   ConductorAction,
+  ConductorExecutionPermission,
   ConductorCloseoutAction,
   ConductorRun,
   ConductorRunId,
@@ -21,9 +22,14 @@ import type {
   DefectClass,
   GateDecision,
   GateId,
+  QualityExecutionRecord,
+  QualityExecutionFailure,
+  QualityExecutorStage,
+  QualityPolicyStage,
 } from './types.ts'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { isValidRunId } from './run-id.ts'
+import { executionBaselineHash } from './quality.ts'
 
 /** One whole-run checkpoint in the parent Session log. A null record is a tombstone. */
 export interface ConductorCheckpointData {
@@ -49,6 +55,7 @@ const GATE_IDS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'] as const satisfies readonly
 const GATE_DECISIONS = ['pass', 'rework', 'escalate', 'abort'] as const satisfies readonly GateDecision[]
 const DEFECT_CLASSES = ['scope', 'plan', 'implementation', 'delivery'] as const satisfies readonly DefectClass[]
 const ACTIONS = ['read', 'write', 'commit', 'push', 'merge', 'release', 'publish', 'deploy'] as const satisfies readonly ConductorAction[]
+const EXECUTION_PERMISSIONS = ['quality-execute'] as const satisfies readonly ConductorExecutionPermission[]
 const CLOSEOUT_ACTIONS = ['record-only', ...ACTIONS] as const satisfies readonly ConductorCloseoutAction[]
 const ARBITER_DECISIONS = ['go', 'no-go'] as const satisfies readonly ArbiterDecision[]
 const SPECIALIST_STATUSES = ['ready', 'rework', 'blocked', 'failed'] as const
@@ -56,6 +63,11 @@ const EVIDENCE_KINDS = ['command', 'file', 'test', 'review', 'external'] as cons
 const FINDING_SEVERITIES = ['low', 'medium', 'high', 'critical'] as const
 const CHANGE_TARGETS = ['scope', 'plan', 'baseline', 'authority'] as const
 const CONFIDENCES = ['low', 'medium', 'high'] as const
+const QUALITY_POLICY_STAGES = ['headsman', 'auditor'] as const satisfies readonly QualityPolicyStage[]
+const QUALITY_EXECUTOR_STAGES = ['headsman', 'ralph', 'auditor'] as const satisfies readonly QualityExecutorStage[]
+const QUALITY_FAILURES = [
+  'nonzero-exit', 'signal', 'timeout', 'cancelled', 'denied', 'runner-failure', 'sandbox-unavailable',
+] as const satisfies readonly QualityExecutionFailure[]
 
 const GATE_STAGE: Readonly<Record<GateId, ConductorStage>> = {
   A: 'detective',
@@ -105,6 +117,15 @@ function requireNormalizedString(value: unknown, field: string): string {
   return value
 }
 
+function requireIsoTimestamp(value: unknown, field: string): string {
+  const timestamp = requireNormalizedString(value, field)
+  const millis = Date.parse(timestamp)
+  if (!Number.isFinite(millis) || new Date(millis).toISOString() !== timestamp) {
+    throw new Error(`Conductor run record ${field} must be an ISO timestamp`)
+  }
+  return timestamp
+}
+
 function requireStringArray(value: unknown, field: string): void {
   if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) {
     throw new Error(`Conductor run record ${field} must be a string array`)
@@ -130,6 +151,79 @@ function validateBaseline(value: unknown): void {
   requireNormalizedStringArray(baseline.allowedPaths, 'baseline.allowedPaths', true)
   requireNormalizedStringArray(baseline.excludedPaths, 'baseline.excludedPaths', true)
   requireNormalizedString(baseline.rollbackReference, 'baseline.rollbackReference')
+  if (!Array.isArray(baseline.qualityCommands)) {
+    throw new Error('Conductor run record baseline.qualityCommands must be an array')
+  }
+  const ids = new Set<string>()
+  for (const [index, value] of baseline.qualityCommands.entries()) {
+    const binding = asObject(value, `baseline.qualityCommands[${index}]`)
+    const exactKeys = new Set(['id', 'definitionHash', 'requiredGates'])
+    for (const key of Object.keys(binding)) {
+      if (!exactKeys.has(key)) {
+        throw new Error(`Conductor run record baseline.qualityCommands[${index}] contains unsupported field ${key}`)
+      }
+    }
+    const id = requireNormalizedString(binding.id, `baseline.qualityCommands[${index}].id`)
+    if (!/^[a-f0-9]{64}$/.test(requireString(binding.definitionHash, `baseline.qualityCommands[${index}].definitionHash`))) {
+      throw new Error(`Conductor run record baseline.qualityCommands[${index}].definitionHash must be SHA-256`)
+    }
+    if (!Array.isArray(binding.requiredGates) || binding.requiredGates.length === 0
+      || binding.requiredGates.some(gate => gate !== 'D' && gate !== 'E')
+      || new Set(binding.requiredGates).size !== binding.requiredGates.length) {
+      throw new Error(`Conductor run record baseline.qualityCommands[${index}].requiredGates must contain distinct D/E gates`)
+    }
+    if (ids.has(id)) throw new Error('Conductor run record baseline quality command ids must not contain duplicates')
+    ids.add(id)
+  }
+}
+
+function validatePassedQualityGates(run: ConductorRun): void {
+  if (run.baseline === null || run.baseline.qualityCommands.length === 0) return
+  const baselineHash = executionBaselineHash(run.baseline)
+  const gateCycles: Record<'D' | 'E', number> = { D: 0, E: 0 }
+  const gateDChildIds = new Set(run.qualityExecutions
+    .filter(record => record.gate === 'D')
+    .map(record => record.childSessionId))
+
+  for (const gateRecord of run.history) {
+    if (gateRecord.gate !== 'D' && gateRecord.gate !== 'E') continue
+    const gate = gateRecord.gate
+    gateCycles[gate] += 1
+    if (gateRecord.decision !== 'pass') continue
+    const stage = gate === 'D' ? 'headsman' : 'auditor'
+    const required = run.baseline.qualityCommands.filter(binding => binding.requiredGates.includes(gate))
+    if (required.length === 0) continue
+    const reviewed = new Set(gateRecord.evidenceReviewed)
+    const matched: QualityExecutionRecord[] = []
+    for (const binding of required) {
+      const evidence = run.qualityExecutions.find(record => reviewed.has(record.evidenceId)
+        && record.commandId === binding.id
+        && record.definitionHash === binding.definitionHash
+        && record.runId === run.runId
+        && record.gate === gate
+        && record.cycle === gateCycles[gate]
+        && record.executionBaselineHash === baselineHash
+        && record.policyStage === stage
+        && record.outcome === 'passed')
+      if (evidence === undefined) {
+        throw new Error(`Conductor run record Gate ${gate} pass lacks fresh evidence for command "${binding.id}"`)
+      }
+      matched.push(evidence)
+    }
+    const evidenceIds = matched.map(record => record.evidenceId)
+    const report = run.specialistReports.find(candidate => candidate.stage === stage
+      && candidate.status === 'ready'
+      && evidenceIds.every(id => candidate.quality_evidence_ids.includes(id)))
+    if (report === undefined) {
+      throw new Error(`Conductor run record Gate ${gate} pass lacks a matching ready ${stage} report`)
+    }
+    if (gate === 'E') {
+      const auditorChildIds = new Set(matched.map(record => record.childSessionId))
+      if (auditorChildIds.size !== 1 || [...auditorChildIds].some(id => gateDChildIds.has(id))) {
+        throw new Error('Conductor run record Gate E pass lacks independent single-child Auditor evidence')
+      }
+    }
+  }
 }
 
 function validateSpecialistReport(value: unknown, index: number, runId: string): void {
@@ -162,6 +256,7 @@ function validateSpecialistReport(value: unknown, index: number, runId: string):
   requireStringArray(report.assumptions, `${prefix}.assumptions`)
   requireStringArray(report.blockers, `${prefix}.blockers`)
   requireStringArray(report.artifacts, `${prefix}.artifacts`)
+  requireNormalizedStringArray(report.quality_evidence_ids, `${prefix}.quality_evidence_ids`, true)
   if (!Array.isArray(report.change_requests)) throw new Error(`Conductor run record ${prefix}.change_requests must be an array`)
   for (const [requestIndex, item] of report.change_requests.entries()) {
     const request = asObject(item, `${prefix}.change_requests[${requestIndex}]`)
@@ -359,6 +454,13 @@ export function parseRun(json: string): ConductorRun {
   if (new Set(authority.permittedActions).size !== authority.permittedActions.length) {
     throw new Error('Conductor run record authority.permittedActions must not contain duplicates')
   }
+  if (!Array.isArray(authority.executionPermissions)
+    || authority.executionPermissions.some(permission => !isOneOf(permission, EXECUTION_PERMISSIONS))) {
+    throw new Error('Conductor run record authority.executionPermissions contains an invalid permission')
+  }
+  if (new Set(authority.executionPermissions).size !== authority.executionPermissions.length) {
+    throw new Error('Conductor run record authority.executionPermissions must not contain duplicates')
+  }
   requireNormalizedStringArray(record.constraints, 'constraints', true)
   requireNormalizedStringArray(record.acceptanceCriteria, 'acceptanceCriteria', true)
   const budget = asObject(record.budget, 'budget')
@@ -374,6 +476,10 @@ export function parseRun(json: string): ConductorRun {
     if (JSON.stringify(baseline.allowedPaths) !== JSON.stringify(record.allowedPaths)
       || JSON.stringify(baseline.excludedPaths) !== JSON.stringify(record.excludedPaths)) {
       throw new Error('Conductor run record baseline paths must match the owner-authorized run paths')
+    }
+    if ((baseline.qualityCommands as unknown[]).length > 0
+      && !(authority.executionPermissions as string[]).includes('quality-execute')) {
+      throw new Error('Conductor run record quality commands require quality-execute authority')
     }
   }
   if (!isOneOf(record.status, RUN_STATUSES)) {
@@ -430,6 +536,82 @@ export function parseRun(json: string): ConductorRun {
   for (const [index, report] of record.specialistReports.entries()) {
     validateSpecialistReport(report, index, record.runId)
   }
+
+  if (!Array.isArray(record.qualityExecutions)) {
+    throw new Error('Conductor run record qualityExecutions must be an array')
+  }
+  const qualityIds = new Set<string>()
+  const baseline = record.baseline as ConductorRun['baseline']
+  for (const [index, value] of record.qualityExecutions.entries()) {
+    const prefix = `qualityExecutions[${index}]`
+    const item = asObject(value, prefix)
+    const exactKeys = new Set([
+      'evidenceId', 'runId', 'childSessionId', 'commandId', 'definitionHash', 'executionBaselineHash',
+      'gate', 'cycle', 'policyStage', 'executorStage', 'outcome', 'failure', 'exitCode', 'signal',
+      'startedAt', 'finishedAt', 'stdoutSha256', 'stderrSha256', 'stdoutTruncated', 'stderrTruncated',
+    ])
+    for (const key of Object.keys(item)) {
+      if (!exactKeys.has(key)) throw new Error(`Conductor run record ${prefix} contains unsupported field ${key}`)
+    }
+    const evidenceId = requireNormalizedString(item.evidenceId, `${prefix}.evidenceId`)
+    if (qualityIds.has(evidenceId)) throw new Error('Conductor run record quality evidence ids must not contain duplicates')
+    qualityIds.add(evidenceId)
+    if (item.runId !== record.runId) throw new Error(`Conductor run record ${prefix}.runId must match runId`)
+    requireNormalizedString(item.childSessionId, `${prefix}.childSessionId`)
+    const commandId = requireNormalizedString(item.commandId, `${prefix}.commandId`)
+    const definitionHash = requireString(item.definitionHash, `${prefix}.definitionHash`)
+    if (!/^[a-f0-9]{64}$/.test(definitionHash)) throw new Error(`Conductor run record ${prefix}.definitionHash must be SHA-256`)
+    if (baseline === null) throw new Error(`Conductor run record ${prefix} requires a baseline`)
+    const binding = baseline.qualityCommands.find(candidate => candidate.id === commandId)
+    if (binding?.definitionHash !== definitionHash) throw new Error(`Conductor run record ${prefix} does not match a baseline binding`)
+    if (item.executionBaselineHash !== executionBaselineHash(baseline)) {
+      throw new Error(`Conductor run record ${prefix}.executionBaselineHash does not match baseline`)
+    }
+    if (item.gate !== 'D' && item.gate !== 'E') throw new Error(`Conductor run record ${prefix}.gate is invalid`)
+    if (!Number.isSafeInteger(item.cycle) || Number(item.cycle) < 1) throw new Error(`Conductor run record ${prefix}.cycle is invalid`)
+    const completedCycles = record.history.filter(entry => (entry as Record<string, unknown>).gate === item.gate).length
+    if (Number(item.cycle) > completedCycles) throw new Error(`Conductor run record ${prefix}.cycle has no documented gate attempt`)
+    if (!isOneOf(item.policyStage, QUALITY_POLICY_STAGES)) throw new Error(`Conductor run record ${prefix}.policyStage is invalid`)
+    if (!isOneOf(item.executorStage, QUALITY_EXECUTOR_STAGES)) throw new Error(`Conductor run record ${prefix}.executorStage is invalid`)
+    if ((item.gate === 'D' && item.policyStage !== 'headsman') || (item.gate === 'E' && item.policyStage !== 'auditor')) {
+      throw new Error(`Conductor run record ${prefix} stage does not match gate`)
+    }
+    if ((item.policyStage === 'auditor' && item.executorStage !== 'auditor')
+      || (item.policyStage === 'headsman' && item.executorStage === 'auditor')) {
+      throw new Error(`Conductor run record ${prefix} executorStage is outside the policy stage`)
+    }
+    if (item.outcome !== 'passed' && item.outcome !== 'failed') throw new Error(`Conductor run record ${prefix}.outcome is invalid`)
+    if (item.outcome === 'failed' && !isOneOf(item.failure, QUALITY_FAILURES)) throw new Error(`Conductor run record ${prefix}.failure is invalid`)
+    if (item.outcome === 'passed' && item.failure !== undefined) throw new Error(`Conductor run record ${prefix} passed with a failure`)
+    if (item.exitCode !== null && !Number.isInteger(item.exitCode)) throw new Error(`Conductor run record ${prefix}.exitCode is invalid`)
+    if (item.signal !== null && typeof item.signal !== 'string') throw new Error(`Conductor run record ${prefix}.signal is invalid`)
+    if (item.outcome === 'passed' && (item.exitCode !== 0 || item.signal !== null)) {
+      throw new Error(`Conductor run record ${prefix} passed without a clean exit`)
+    }
+    if (item.failure === 'signal' && (typeof item.signal !== 'string' || item.signal.length === 0)) {
+      throw new Error(`Conductor run record ${prefix} signal failure requires a signal`)
+    }
+    const startedAt = requireIsoTimestamp(item.startedAt, `${prefix}.startedAt`)
+    const finishedAt = requireIsoTimestamp(item.finishedAt, `${prefix}.finishedAt`)
+    if (finishedAt < startedAt) throw new Error(`Conductor run record ${prefix} finished before it started`)
+    for (const field of ['stdoutSha256', 'stderrSha256'] as const) {
+      if (!/^[a-f0-9]{64}$/.test(requireString(item[field], `${prefix}.${field}`))) {
+        throw new Error(`Conductor run record ${prefix}.${field} must be SHA-256`)
+      }
+    }
+    if (typeof item.stdoutTruncated !== 'boolean' || typeof item.stderrTruncated !== 'boolean') {
+      throw new Error(`Conductor run record ${prefix} truncation flags must be booleans`)
+    }
+  }
+  for (const [index, value] of record.specialistReports.entries()) {
+    const report = value as Record<string, unknown>
+    for (const evidenceId of report.quality_evidence_ids as string[]) {
+      if (!qualityIds.has(evidenceId)) {
+        throw new Error(`Conductor run record specialistReports[${index}] references unknown quality evidence`)
+      }
+    }
+  }
+  validatePassedQualityGates(record as unknown as ConductorRun)
 
   if (record.decision !== undefined) validateDecision(record.decision)
   if (record.closeout !== undefined) validateCloseout(record.closeout)

@@ -4,7 +4,7 @@ English | [中文](README.zh.md)
 
 The Conductor runtime owns run state, gates A–G, defect-class rework routing, source and execution baselines, and explicit closeout records. `SessionConductorRunStore` appends a complete keyed checkpoint to the parent Session log and flushes after each transition; resume accepts only the last documented gate state and rejects terminal or escalated runs.
 
-Specialists return `SpecialistEnvelope` values to Conductor and never choose the next specialist. Gate C installs the immutable execution baseline, Gate G records the Arbiter decision, and a GO remains `awaiting_authorization` until the mandate owner supplies outcome evidence and traceability. The runtime records closeout but performs no commit, push, merge, or deploy action.
+Specialists return `SpecialistEnvelope` values to Conductor and never choose the next specialist. Gate C installs the immutable execution baseline, including the deployment-resolved quality-command bindings and catalog hash. Headsman and Auditor cite durable `QualityExecutionRecord` ids rather than command text; Gate D and Gate E each require fresh passing evidence for every command bound to that gate, and Gate E accepts only evidence produced by its independent Auditor cycle. Gate G records the Arbiter decision, and a GO remains `awaiting_authorization` until the mandate owner supplies outcome evidence and traceability. The runtime records closeout but performs no commit, push, merge, or deploy action.
 
 ## Known Limitations and Deferred Work
 

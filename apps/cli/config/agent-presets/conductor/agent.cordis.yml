@@ -57,3 +57,4 @@
         maxReworkCycles: 3
         maxRalphRounds: 3
         maxRalphHandoffChars: 16384
+        qualityCommands: []

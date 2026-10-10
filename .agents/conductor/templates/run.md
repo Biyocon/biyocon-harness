@@ -12,6 +12,7 @@ excluded_paths: []
 authority:
   owner: <user, emperor, or named owner>
   permitted_actions: [read]
+  execution_permissions: []
 constraints: []
 acceptance_criteria: []
 budget:
@@ -22,8 +23,9 @@ execution_baseline: null
 current_stage: detective
 history: []
 specialist_reports: []
+quality_executions: []
 ```
 
 Use an existing `run_id` only when an unfinished run has the same objective. Resume only from the last documented valid gate.
 
-Before the first dispatch, record the objective, scope, path authority, action authority, budget, and acceptance criteria. Detective may establish an unknown source baseline; the execution baseline remains null until Gate C passes.
+Before the first dispatch, record the objective, scope, path authority, action authority, execution authority, budget, and acceptance criteria. `quality-execute` is the only quality execution permission and does not authorize arbitrary shell commands. Detective may establish an unknown source baseline; the execution baseline remains null until Gate C passes.

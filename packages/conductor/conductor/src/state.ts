@@ -67,7 +67,11 @@ export function createRun(runId: ConductorRunId, input: CreateRunInput): Conduct
     allowedPaths: input.allowedPaths ?? [],
     excludedPaths: input.excludedPaths ?? [],
     sourceBaseline: input.sourceBaseline ?? null,
-    authority: input.authority,
+    authority: {
+      owner: input.authority.owner,
+      permittedActions: [...input.authority.permittedActions],
+      executionPermissions: [...input.authority.executionPermissions],
+    },
     constraints: input.constraints ?? [],
     acceptanceCriteria: input.acceptanceCriteria ?? [],
     budget: input.budget ?? { maxReworkCycles: 3, maxRalphRounds: 0 },
@@ -75,6 +79,7 @@ export function createRun(runId: ConductorRunId, input: CreateRunInput): Conduct
     currentStage: 'detective',
     history: [],
     specialistReports: [],
+    qualityExecutions: [],
     status: 'running',
   }
 }

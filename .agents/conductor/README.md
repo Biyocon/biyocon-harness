@@ -23,6 +23,10 @@ execution_baseline: null
 acceptance_criteria: []
 constraints: []
 input_artifacts: []
+authority:
+  owner: mandate owner
+  permitted_actions: [read]
+  execution_permissions: []
 ```
 
 Et manglende mandat, uklart scope eller utilstrækkelige acceptkriterier stopper intake og sendes tilbage til brugeren. En ukendt source-baseline er Detective-arbejde; den senere execution-baseline oprettes først efter Gate C.
@@ -54,13 +58,14 @@ blockers: []
 artifacts: []
 change_requests: []
 execution_baseline: optional; ready Devil's Advocate only at Gate C
+quality_evidence_ids: []
 recommended_transition:
   target: conductor
   rationale: what Conductor should evaluate
 confidence: low|medium|high
 ```
 
-Conductor bevarer hvert valideret specialistresultat som en del af run-recorden og sender de tidligere reports til den næste specialist og Arbiter. Conductor registrerer separat hver gate `A`–`G` med `stage`, `decision: pass|rework|escalate|abort`, en kort `basis` og `next_stage`. `ready` bliver kun til et gate-pass, når runnet har acceptkriterier og specialisten leverer konkret evidens. Rework går til den ansvarlige for fejlen: scope til Detective, plan til Strategist, implementering til Headsman og leverancepakke til Integrator.
+Conductor bevarer hvert valideret specialistresultat som en del af run-recorden og sender de tidligere reports til den næste specialist og Arbiter. Conductor registrerer separat hver gate `A`–`G` med `stage`, `decision: pass|rework|escalate|abort`, en kort `basis` og `next_stage`. `ready` bliver kun til et gate-pass, når runnet har acceptkriterier og specialisten leverer konkret evidens. Gate C kan vælge opaque quality-command-id'er fra runtime-kataloget, når authority indeholder `quality-execute`; hosten binder dem til den immutable baseline. Headsman/Ralph og den uafhængige Auditor kan kun køre dem gennem den private `conductor_quality_check`, som afviser rå kommandoer og kræver fuld sandbox-håndhævelse. Gate D og E kræver hver deres friske, beståede records, citeret via `quality_evidence_ids`; Ralph kan kun bidrage til Gate D. Rework går til den ansvarlige for fejlen: scope til Detective, plan til Strategist, implementering til Headsman og leverancepakke til Integrator.
 
 ## Rettigheder og stopregler
 

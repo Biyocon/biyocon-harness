@@ -33,6 +33,7 @@ excluded_paths: []
 authority:
   owner: <menneske eller Emperor>
   permitted_actions: [read]
+  execution_permissions: []
 constraints: []
 acceptance_criteria: []
 budget:
@@ -43,6 +44,7 @@ execution_baseline: null
 current_stage: detective
 history: []
 specialist_reports: []
+quality_executions: []
 ```
 
 Brug et eksisterende `run_id`, hvis der findes et uafsluttet run med samme mål. Genoptag kun fra sidste dokumenterede, gyldige gate; opfind ikke usete mellemresultater.
@@ -101,7 +103,7 @@ Brug fresh spawn med eksplicit handoff til uafhængige reviews. Brug fork kun, n
 
 ## Baseline og ændringskontrol
 
-Efter Gate C opretter Conductor en immutable execution baseline med scope-, plan- og acceptance-versioner, ejerautoriserede stier, eksklusioner og rollback-reference. Gate C må ikke udvide runnets `allowed_paths` eller fjerne `excluded_paths`.
+Efter Gate C opretter Conductor en immutable execution baseline med scope-, plan- og acceptance-versioner, ejerautoriserede stier, eksklusioner, rollback-reference og deployment-resolverede quality-command bindings. En specialist vælger kun opaque command-id'er fra Conductorens katalog; hosten binder dem til eksakt argv og kataloghash. Gate C må ikke udvide runnets `allowed_paths` eller fjerne `excluded_paths`, og quality commands kræver `execution_permissions: [quality-execute]`.
 
 Hvis Headsman opdager et materielt afvigelsesbehov, stopper arbejdet ved grænsen og returnerer change request til Conductor. Conductor kan godkende en klart autoriseret, lille ændring eller route den til Strategist og Devil's Advocate. Udvid aldrig scope stiltiende.
 
@@ -122,7 +124,7 @@ next_stage: integrator
 state_update: <kort, konkret ændring>
 ```
 
-Et `pass` kræver relevant, frisk evidens mod acceptkriterierne. Manglende evidens er ikke et pass. Brug `rework` for en kendt, afgrænset rettelse; `escalate` når mål, risiko eller myndighed kræver en ejerbeslutning; brug `abort` ved stopbetingelse eller når videre arbejde ikke længere er forsvarligt.
+Et `pass` kræver relevant, frisk evidens mod acceptkriterierne. For Gate D og E betyder det en bestået `QualityExecutionRecord` for hver command binding, produceret i den aktuelle cycle og citeret via `quality_evidence_ids`; Gate E accepterer kun den friske Auditors egne records. Manglende evidens er ikke et pass. Brug `rework` for en kendt, afgrænset rettelse; `escalate` når mål, risiko eller myndighed kræver en ejerbeslutning; brug `abort` ved stopbetingelse eller når videre arbejde ikke længere er forsvarligt.
 
 ## Traceability og afslutning
 

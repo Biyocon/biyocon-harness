@@ -6,7 +6,7 @@ The model-facing `ralph` tool runs a fixed foreground workflow that gives one im
 
 ## Contract
 
-Trusted runtime consumers may call the exported `runRalphWorkflow(ctx, request)` with explicit bounds and optional child tool/persona policy. The model-facing tool delegates to the same runner, so Conductor does not duplicate the Ralph loop or let Ralph pass a Conductor gate.
+Trusted runtime consumers may call the exported `runRalphWorkflow(ctx, request)` with explicit bounds and optional child tool/persona policy, including a host-only child tool contribution. The runner forwards that contribution unchanged to every fresh round and rejects a provider without the advertised capability before publishing the workflow. The model-facing tool delegates to the same runner, so Conductor does not duplicate the Ralph loop or let Ralph pass a Conductor gate.
 
 `ralph({ objective, maxRounds? })` waits for the entire run. The deployment config's `maxRounds` is both the default and a ceiling on a call override. Every Ralph round starts one child through `subagentProvider`; that provider must exist, support structured output, and report `inheritsParentContext: false`. The configured provider is carried as `WorkflowStartRequest.subagentProvider`, so the fixed script cannot inspect or change routing and the ordinary model-written `workflow` tool gains no provider selector. The resolved round cap is also carried as `WorkflowStartRequest.maxTotalAgents`, coordinating the fixed loop with the engine's total-child backstop; the engine rejects a Ralph cap above its deployment ceiling before publishing a run.
 

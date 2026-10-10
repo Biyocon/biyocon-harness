@@ -3,14 +3,17 @@ import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import {
   ConductorRunId,
   InMemoryConductorRunStore,
+  QualityCommandId,
+  QualityEvidenceId,
   SessionConductorRunStore,
+  executionBaselineHash,
   parseRun,
   recordGate,
   resumeRun,
   serializeRun,
   validateResumable,
 } from '../src/index.ts'
-import type { ConductorRun, GateRecord } from '../src/index.ts'
+import type { ConductorRun, GateRecord, QualityCommandBinding } from '../src/index.ts'
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
@@ -21,7 +24,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     allowedPaths: [],
     excludedPaths: [],
     sourceBaseline: null,
-    authority: { owner: 'user', permittedActions: ['read'] },
+    authority: { owner: 'user', permittedActions: ['read'], executionPermissions: [] },
     constraints: [],
     acceptanceCriteria: [],
     budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
@@ -29,6 +32,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     currentStage: 'detective',
     history: [],
     specialistReports: [],
+    qualityExecutions: [],
     status: 'running',
     ...overrides,
   }
@@ -41,7 +45,7 @@ function gateRecord(partial: Pick<GateRecord, 'gate' | 'stage' | 'decision'> & P
 function makeClosedRun(): ConductorRun {
   return makeRun({
     acceptanceCriteria: ['feature works'],
-    authority: { owner: 'user', permittedActions: ['read', 'deploy'] },
+    authority: { owner: 'user', permittedActions: ['read', 'deploy'], executionPermissions: [] },
     currentStage: 'closeout',
     history: [gateRecord({
       gate: 'G', stage: 'arbiter', decision: 'pass', nextStage: 'closeout',
@@ -61,6 +65,71 @@ function makeClosedRun(): ConductorRun {
       },
       status: 'closed',
     },
+  })
+}
+
+function makeQualityRun(): ConductorRun {
+  const binding: QualityCommandBinding = {
+    id: QualityCommandId('unit-check'),
+    definitionHash: 'a'.repeat(64),
+    requiredGates: ['D', 'E'],
+  }
+  const baseline = {
+    scopeVersion: 'scope-v1',
+    planVersion: 'plan-v1',
+    acceptanceVersion: 'accept-v1',
+    allowedPaths: [],
+    excludedPaths: [],
+    rollbackReference: 'HEAD',
+    qualityCommands: [binding],
+  }
+  const evidenceId = QualityEvidenceId('quality-1')
+  return makeRun({
+    acceptanceCriteria: ['feature works'],
+    sourceBaseline: 'HEAD',
+    authority: { owner: 'user', permittedActions: ['read'], executionPermissions: ['quality-execute'] },
+    baseline,
+    currentStage: 'auditor',
+    history: [gateRecord({
+      gate: 'D', stage: 'headsman', decision: 'pass', nextStage: 'auditor', evidenceReviewed: [evidenceId],
+    })],
+    specialistReports: [{
+      run_id: 'CON-2026-0001',
+      stage: 'headsman',
+      baseline_ref: 'HEAD',
+      status: 'ready',
+      summary: 'implemented',
+      evidence: [{ kind: 'test', reference: 'unit-check', outcome: 'passed' }],
+      findings: [],
+      assumptions: [],
+      blockers: [],
+      artifacts: [],
+      change_requests: [],
+      quality_evidence_ids: [evidenceId],
+      recommended_transition: { target: 'conductor', rationale: 'evaluate Gate D' },
+      confidence: 'high',
+    }],
+    qualityExecutions: [{
+      evidenceId,
+      runId: ConductorRunId('CON-2026-0001'),
+      childSessionId: SessionId('quality-child'),
+      commandId: binding.id,
+      definitionHash: binding.definitionHash,
+      executionBaselineHash: executionBaselineHash(baseline),
+      gate: 'D',
+      cycle: 1,
+      policyStage: 'headsman',
+      executorStage: 'ralph',
+      outcome: 'passed',
+      exitCode: 0,
+      signal: null,
+      startedAt: '2026-10-10T00:00:00.000Z',
+      finishedAt: '2026-10-10T00:00:01.000Z',
+      stdoutSha256: 'b'.repeat(64),
+      stderrSha256: 'c'.repeat(64),
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    }],
   })
 }
 
@@ -93,7 +162,7 @@ describe('dsh-conductor persistence', () => {
   it('rejects malformed nested durable state before it reaches resume logic', () => {
     expect(() => parseRun(JSON.stringify({
       ...makeRun(),
-      authority: { owner: 'user', permittedActions: ['delete'] },
+      authority: { owner: 'user', permittedActions: ['delete'], executionPermissions: [] },
     }))).toThrow(/invalid action/)
     expect(() => parseRun(JSON.stringify({
       ...makeRun(),
@@ -104,6 +173,7 @@ describe('dsh-conductor persistence', () => {
         allowedPaths: [42],
         excludedPaths: [],
         rollbackReference: 'HEAD',
+        qualityCommands: [],
       },
     }))).toThrow(/baseline.allowedPaths/)
     expect(() => parseRun(JSON.stringify({
@@ -116,6 +186,7 @@ describe('dsh-conductor persistence', () => {
         allowedPaths: ['.'],
         excludedPaths: [],
         rollbackReference: 'HEAD',
+        qualityCommands: [],
       },
     }))).toThrow(/baseline paths must match/)
     expect(() => parseRun(JSON.stringify({
@@ -128,6 +199,7 @@ describe('dsh-conductor persistence', () => {
         allowedPaths: [],
         excludedPaths: [],
         rollbackReference: 'HEAD',
+        qualityCommands: [],
       },
     }))).toThrow(/baseline paths must match/)
     expect(() => parseRun(JSON.stringify({
@@ -142,6 +214,106 @@ describe('dsh-conductor persistence', () => {
     expect(() => parseRun(JSON.stringify({
       ...makeRun(), acceptanceCriteria: ['same', 'same'],
     }))).toThrow(/acceptanceCriteria must not contain duplicates/)
+  })
+
+  it('rejects tampered quality authority, bindings, evidence, and private fields', () => {
+    const valid = makeQualityRun()
+    expect(parseRun(serializeRun(valid))).toEqual(valid)
+    expect(() => parseRun(serializeRun({
+      ...valid,
+      authority: { ...valid.authority, executionPermissions: ['invalid' as 'quality-execute'] },
+    }))).toThrow(/invalid permission/)
+    expect(() => parseRun(serializeRun({
+      ...valid,
+      baseline: { ...valid.baseline!, qualityCommands: [...valid.baseline!.qualityCommands, valid.baseline!.qualityCommands[0]!] },
+    }))).toThrow(/ids must not contain duplicates/)
+    expect(() => parseRun(JSON.stringify({
+      ...valid,
+      qualityExecutions: [{ ...valid.qualityExecutions[0], spillPath: 'private/output.log' }],
+    }))).toThrow(/unsupported field spillPath/)
+    expect(() => parseRun(serializeRun({
+      ...valid,
+      qualityExecutions: [{ ...valid.qualityExecutions[0]!, runId: ConductorRunId('CON-2026-0002') }],
+    }))).toThrow(/runId must match/)
+    expect(() => parseRun(serializeRun({
+      ...valid,
+      qualityExecutions: [{ ...valid.qualityExecutions[0]!, executionBaselineHash: 'd'.repeat(64) }],
+    }))).toThrow(/does not match baseline/)
+  })
+
+  it('rejects impossible quality executor ownership, timestamps, and citations', () => {
+    const valid = makeQualityRun()
+    expect(() => parseRun(serializeRun({
+      ...valid,
+      qualityExecutions: [{ ...valid.qualityExecutions[0]!, executorStage: 'auditor' }],
+    }))).toThrow(/executorStage is outside the policy stage/)
+    expect(() => parseRun(serializeRun({
+      ...valid,
+      qualityExecutions: [{ ...valid.qualityExecutions[0]!, startedAt: 'not-a-time' }],
+    }))).toThrow(/must be an ISO timestamp/)
+    expect(() => parseRun(serializeRun({
+      ...valid,
+      qualityExecutions: [{
+        ...valid.qualityExecutions[0]!,
+        startedAt: '2026-10-10T00:00:02.000Z',
+        finishedAt: '2026-10-10T00:00:01.000Z',
+      }],
+    }))).toThrow(/finished before it started/)
+    expect(() => parseRun(serializeRun({
+      ...valid,
+      specialistReports: [{ ...valid.specialistReports[0]!, quality_evidence_ids: ['unknown'] }],
+    }))).toThrow(/references unknown quality evidence/)
+  })
+
+  it('rejects a passed quality gate without a ready report that cites its evidence', () => {
+    const valid = makeQualityRun()
+    expect(() => parseRun(serializeRun({
+      ...valid,
+      specialistReports: [{ ...valid.specialistReports[0]!, quality_evidence_ids: [] }],
+    }))).toThrow(/Gate D pass lacks a matching ready headsman report/)
+    expect(() => parseRun(serializeRun({
+      ...valid,
+      history: [{ ...valid.history[0]!, evidenceReviewed: [] }],
+    }))).toThrow(/Gate D pass lacks fresh evidence/)
+  })
+
+  it('rejects a Gate E pass that reuses the Gate D child identity', () => {
+    const valid = makeQualityRun()
+    const gateDEvidence = valid.qualityExecutions[0]!
+    const evidenceId = QualityEvidenceId('quality-e')
+    const gateEEvidence = {
+      ...gateDEvidence,
+      evidenceId,
+      gate: 'E' as const,
+      policyStage: 'auditor' as const,
+      executorStage: 'auditor' as const,
+      startedAt: '2026-10-10T00:00:02.000Z',
+      finishedAt: '2026-10-10T00:00:03.000Z',
+    }
+    expect(() => parseRun(serializeRun({
+      ...valid,
+      currentStage: 'integrator',
+      history: [
+        ...valid.history,
+        gateRecord({ gate: 'E', stage: 'auditor', decision: 'pass', nextStage: 'integrator', evidenceReviewed: [evidenceId] }),
+      ],
+      specialistReports: [
+        ...valid.specialistReports,
+        { ...valid.specialistReports[0]!, stage: 'auditor', summary: 'independently verified', quality_evidence_ids: [evidenceId] },
+      ],
+      qualityExecutions: [...valid.qualityExecutions, gateEEvidence],
+    }))).toThrow(/Gate E pass lacks independent single-child Auditor evidence/)
+  })
+
+  it('rejects invalid durable gate applicability metadata', () => {
+    const valid = makeQualityRun()
+    expect(() => parseRun(JSON.stringify({
+      ...valid,
+      baseline: {
+        ...valid.baseline,
+        qualityCommands: [{ ...valid.baseline!.qualityCommands[0], requiredGates: ['F'] }],
+      },
+    }))).toThrow(/requiredGates must contain distinct D\/E gates/)
   })
 
   it('rejects semantically impossible gate records and lifecycle status', () => {
@@ -208,7 +380,7 @@ describe('dsh-conductor persistence', () => {
     }))).toThrow(/authorized_by must match authority.owner/)
     expect(() => parseRun(serializeRun({
       ...valid,
-      authority: { owner: 'user', permittedActions: ['read'] },
+      authority: { owner: 'user', permittedActions: ['read'], executionPermissions: [] },
     }))).toThrow(/authorized_action is outside the run authority/)
     expect(() => parseRun(serializeRun({
       ...valid, closeout: { ...valid.closeout!, outcome_evidence: [] },

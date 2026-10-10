@@ -16,7 +16,7 @@ run_id: CON-YYYY-NNNN
 work_package: <id og mål>
 baseline: <scope, plan, acceptkriterier og tilladte områder>
 constraints: []
-quality_commands: []
+quality_command_ids: []
 stop_conditions: []
 max_rounds: <positivt heltal>
 allowed_actions: []
@@ -33,7 +33,7 @@ Hver worker skal:
 
 1. inspicere den aktuelle state;
 2. udføre den mindste næste handling mod baselinen;
-3. køre de relevante quality commands, når de er mulige;
+3. køre relevante quality commands ved kun at kalde den private `conductor_quality_check` med et tildelt opaque `command_id`;
 4. returnere ændringer, evidens, resterende arbejde og blockers i struktur;
 5. stoppe ved scope- eller myndighedsafvigelser.
 
@@ -52,3 +52,5 @@ next_handoff: <kort struktureret state>
 ```
 
 Stop på `complete`, `blocked`, `failed` eller `max_rounds`. Ved `complete` afleverer Headsman en almindelig implementation report til Conductor. Conductor sender derefter arbejdet til en uafhængig Auditor; Ralph må ikke selv passere Gate D eller E.
+
+Ralph må aldrig levere rå command text, argv eller ekstra argumenter. Hostens deployment-katalog ejer den eksakte kommando, cwd, sandbox-mode og grænser; execution afvises, hvis en fuldt håndhævende sandbox ikke er tilgængelig. Ralph kan producere Gate-D-evidens under Headsman, men ejer ingen gate og kan ikke levere Gate-E-evidens.

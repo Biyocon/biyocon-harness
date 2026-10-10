@@ -15,7 +15,7 @@ Modtag Headsmans `ImplementationReport`, den godkendte plan, acceptkriterier og 
 
 ## Handlinger
 
-Verificér adfærd, tests, dokumentation, scope, evidens og acceptkriterier med relevante read-only kontroller. Kontrollér også, at rapporterede resultater kan reproduceres på samme baseline.
+Verificér adfærd, tests, dokumentation, scope, evidens og acceptkriterier med relevante read-only kontroller. Genkør de tildelte Gate-E quality-command-id'er gennem `conductor_quality_check` som fresh, uafhængig evidens; genbrug ikke Headsmans eller Ralphs Gate-D-records. Kontrollér også, at rapporterede resultater kan reproduceres på samme baseline.
 
 ## Stop
 

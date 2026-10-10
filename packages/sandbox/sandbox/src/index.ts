@@ -19,6 +19,12 @@ export {
 } from './escalation.ts'
 export type { EscalationApproval, EscalationApprover, EscalationOutcome, EscalationRequest } from './escalation.ts'
 export { canonicalPath, writableRoots } from './roots.ts'
+export {
+  classifyRunnerFailure,
+  isRunnerSpawnFailure,
+  matchesSandboxSignature,
+} from './classification.ts'
+export type { RunnerFailureMatch } from './classification.ts'
 
 /**
  * File-effect policy for confined processes. `read-only` permits only required

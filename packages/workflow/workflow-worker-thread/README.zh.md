@@ -83,7 +83,7 @@ worker 错误、消息失败或提前退出会在清理前关闭消息接纳，�
 | `syncTimeoutMs` | `5000` | 脚本最初同步片段的 VM 超时时间。 |
 | `disposeGraceMs` | `5000` | 强制结算/终止之前的期限，也是公开 dispose 的期限。 |
 
-负责该引擎的消费方可以为一次运行设置 `WorkflowStartRequest.subagentProvider` 和 `WorkflowStartRequest.maxTotalAgents`。它们属于引擎级策略，不是脚本钩子或面向模型的选项；普通 `workflow` 工具不会设置两者。每次运行的子 agent 总数上限可以降低、但绝不能提高已配置的 `maxTotalAgents` 上限。
+负责该引擎的消费方可以为一次运行设置 `WorkflowStartRequest.subagentProvider`、`WorkflowStartRequest.maxTotalAgents` 和四个可信 `child*` policy。它们属于引擎级策略，不是脚本钩子或面向模型的选项；普通 `workflow` 工具不会设置这些字段。`childToolContribution` 始终是仅限 host 的 callback：host 把同一对象传给每次 child start，不会将其序列化进 worker protocol。每次运行的子 agent 总数上限可以降低、但绝不能提高已配置的 `maxTotalAgents` 上限。
 
 ## 模型体验
 

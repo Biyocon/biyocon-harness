@@ -61,6 +61,7 @@ class StubProvider implements SubagentProvider {
     toolFilter: true,
     toolGuard: true,
     persona: true,
+    toolContribution: true,
   }
   readonly inheritsParentContext = false
   readonly runs: ControlledRun[] = []
@@ -244,18 +245,39 @@ describe('dsh-workflow-worker-thread', () => {
       const { ctx, parent, provider } = await setup()
       const childToolFilter = { allow: ['read'] }
       const childToolGuard = () => 'owner denial'
+      const childToolContribution = () => () => {}
       const handle = ctx.workflowEngine.start({
         ...scripted("return await agent('bounded child')"),
         parent,
         childToolFilter,
         childToolGuard,
+        childToolContribution,
         childPersona: 'bounded persona',
       })
       expect((await handle.result).value).toBe('stub reply')
       await handle.dispose()
       expect(provider.runs[0]!.request.toolFilter).toBe(childToolFilter)
       expect(provider.runs[0]!.request.toolGuard).toBe(childToolGuard)
+      expect(provider.runs[0]!.request.toolContribution).toBe(childToolContribution)
       expect(provider.runs[0]!.request.persona).toBe('bounded persona')
+    })
+
+    it('rejects a child contribution synchronously when the selected provider cannot install it', async () => {
+      const { ctx, parent } = await setup()
+      const start = vi.fn<SubagentProvider['start']>()
+      ctx.subagents.registerProvider({
+        name: 'no-contribution',
+        capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, toolGuard: true, persona: true },
+        inheritsParentContext: false,
+        start,
+      })
+      expect(() => ctx.workflowEngine.start({
+        ...scripted("return await agent('must not start')"),
+        parent,
+        subagentProvider: 'no-contribution',
+        childToolContribution: () => () => {},
+      })).toThrow(/does not support.*toolContribution/)
+      expect(start).not.toHaveBeenCalled()
     })
 
     it('a start-request provider override selects every child without changing the engine default', async () => {

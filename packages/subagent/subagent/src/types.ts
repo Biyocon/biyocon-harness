@@ -9,6 +9,7 @@
  * @module @deepseek-ai/dsh-subagent/types
  */
 
+import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -89,7 +90,15 @@ export interface SubagentCapabilities {
   readonly toolFilter: boolean
   readonly toolGuard?: boolean
   readonly persona: boolean
+  readonly toolContribution?: boolean
 }
+
+/**
+ * Trusted host-only installer for one child's own tool registrations. The
+ * callback runs inside the unpublished child scope and returns one disposer
+ * that the scope owns for rollback and teardown.
+ */
+export type SubagentChildToolContribution = (childCtx: Context) => () => void
 
 /**
  * What a caller asks for when starting a ONE-SHOT subagent. The tool layer
@@ -145,6 +154,13 @@ export interface SubagentStartRequest {
    * supported only by same-process providers that advertise `toolGuard`.
    */
   readonly toolGuard?: ToolGuard
+  /**
+   * Optional trusted host-only child tool installer. Requires
+   * {@link SubagentCapabilities.toolContribution}; rejected before provider
+   * start otherwise. This callback never crosses a worker, wire, model, or
+   * persistence interface.
+   */
+  readonly toolContribution?: SubagentChildToolContribution
   /**
    * Optional per-child persona. Requires {@link SubagentCapabilities.persona};
    * rejected at start otherwise. In-process backends register it as a scoped

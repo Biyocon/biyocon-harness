@@ -24,10 +24,11 @@ assumptions: []
 blockers: []
 artifacts: []
 change_requests: []
+quality_evidence_ids: []
 recommended_transition:
   target: conductor
   rationale: <what the Conductor should decide>
 confidence: low
 ```
 
-`ready` means the specialist work is ready for Conductor review, not that a gate has passed. Omit `source_baseline` except when a ready Detective establishes the source reference missing at intake. A ready Devil's Advocate result at Gate C also includes `execution_baseline` with `scopeVersion`, `planVersion`, `acceptanceVersion`, `allowedPaths`, `excludedPaths`, and `rollbackReference`. Other stages omit that optional field. If evidence is insufficient, return `blocked` or `rework` with a concrete reason.
+`ready` means the specialist work is ready for Conductor review, not that a gate has passed. Omit `source_baseline` except when a ready Detective establishes the source reference missing at intake. A ready Devil's Advocate result at Gate C also includes an `execution_baseline` proposal with `scopeVersion`, `planVersion`, `acceptanceVersion`, `allowedPaths`, `excludedPaths`, `rollbackReference`, and `qualityCommandIds`; the host resolves those ids to immutable bindings. Other stages omit that optional field. Headsman and Auditor cite only records created by their private quality tool in `quality_evidence_ids`. If evidence is insufficient, return `blocked` or `rework` with a concrete reason.

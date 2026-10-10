@@ -18,7 +18,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     allowedPaths: ['packages/conductor'],
     excludedPaths: [],
     sourceBaseline: null,
-    authority: { owner: 'user', permittedActions: ['read'] },
+    authority: { owner: 'user', permittedActions: ['read'], executionPermissions: [] },
     constraints: [],
     acceptanceCriteria: ['feature works'],
     budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
@@ -26,6 +26,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     currentStage: 'detective',
     history: [],
     specialistReports: [],
+    qualityExecutions: [],
     status: 'running',
     ...overrides,
   }
@@ -45,12 +46,14 @@ function makeEnvelope(stage: ConductorStage): SpecialistEnvelope {
     blockers: [],
     artifacts: [],
     change_requests: [],
+    quality_evidence_ids: [],
     recommended_transition: { target: 'conductor', rationale: 'evaluate' },
     confidence: 'high',
     ...stage === 'devils-advocate' ? {
       execution_baseline: {
         scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
         allowedPaths: ['packages/conductor'], excludedPaths: [], rollbackReference: 'HEAD',
+        qualityCommands: [],
       },
     } : {},
   }
