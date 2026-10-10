@@ -36,6 +36,7 @@ Sandbox policy 只覆盖文件系统影响。本设计不声称提供网络隔�
 - 持久化 record 只包含获准的执行事实与 digest；persistence 拒绝未知字段、跨 run 引用、hash drift、无效时间和未知 evidence 引用。
 - Gate D 接受 Ralph 生成的全新通过 Headsman evidence；Gate E 要求不同的全新 Auditor run，不能复用 Gate-D evidence。
 - Workflow、Ralph 和 subagent provider 预检可信 child-tool capability，不向模型或 worker-script input 暴露 callback。
+- Conductor package 将根入口和 invariant companion 构建为自包含的发布入口，不依赖未声明的 runtime chunk。
 - 聚焦的 Conductor 测试、typecheck、文档同步和 lint 全部通过。
 
 ## 风险

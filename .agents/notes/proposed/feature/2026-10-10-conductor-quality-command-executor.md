@@ -36,6 +36,7 @@ The sandbox policy covers filesystem effects only. This design makes no network-
 - Durable records contain only approved execution facts and digests; persistence rejects unknown fields, cross-run references, hash drift, invalid timing, and unknown cited evidence.
 - Gate D accepts Ralph-produced Headsman evidence when it is fresh and passing; Gate E requires a distinct fresh Auditor run and cannot reuse Gate-D evidence.
 - Workflow, Ralph, and subagent providers preflight the trusted child-tool capability without exposing the callback to model or worker-script input.
+- The Conductor package builds its root and invariant companion as self-contained published entries without undeclared runtime chunks.
 - Focused Conductor tests, typecheck, documentation synchronization, and lint pass.
 
 ## Risks
