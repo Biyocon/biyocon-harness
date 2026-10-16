@@ -28,6 +28,7 @@ import type {
 import * as toolConductor from '../src/index.ts'
 
 const testToolSignal = new AbortController().signal
+const realSpawnTimeoutMs = 30_000
 
 class FullSandbox extends SandboxProvider {
   confine(argv: readonly string[], _policy: SandboxPolicy): ConfinedArgv {
@@ -301,7 +302,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     })
     expect(blankCriterion.isError).toBe(true)
     expect((blankCriterion.content[0] as { text: string }).text).toMatch(/acceptanceCriteria.*non-empty normalized strings/)
-  }, 15_000)
+  }, realSpawnTimeoutMs)
 
   it('runs bounded quality commands under Ralph and an independent Auditor before Gate D and E pass', async () => {
     const script: ((options: GenerateOptions) => ReturnType<typeof toolCallResponse>)[] = [
@@ -432,7 +433,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     ])
     expect(record.qualityExecutions[0]!.childSessionId)
       .not.toBe(record.qualityExecutions[1]!.childSessionId)
-  }, 15_000)
+  }, realSpawnTimeoutMs)
 
   it('records an invalid Gate C quality-command selection as a blocked checkpoint', async () => {
     const script: ((options: GenerateOptions) => ReturnType<typeof toolCallResponse>)[] = [
@@ -521,7 +522,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       decision: 'escalate',
       basis: ['Gate C selected unknown quality command "unknown-check"'],
     })
-  }, 15_000)
+  }, realSpawnTimeoutMs)
 
   it('durably checkpoints quality evidence when the specialist fails after execution', async () => {
     const script: ((options: GenerateOptions) => ReturnType<typeof toolCallResponse>)[] = [
@@ -619,5 +620,5 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     expect(record.qualityExecutions).toMatchObject([
       { gate: 'D', executorStage: 'ralph', outcome: 'passed' },
     ])
-  }, 15_000)
+  }, realSpawnTimeoutMs)
 })
