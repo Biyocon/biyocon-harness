@@ -21,7 +21,7 @@ import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
  * intentional because bwrap replaces `/tmp`, which cannot prove the workspace-root boundary.
  */
 
-const probe = spawnSync('bwrap', [...bwrapProfileArgs({ mode: 'read-only', workspaceRoot: '/' }), '--', 'true'], { timeout: 5_000, stdio: 'ignore' })
+const probe = spawnSync('bwrap', [...bwrapProfileArgs({ mode: 'read-only', network: 'inherit', workspaceRoot: '/' }), '--', 'true'], { timeout: 5_000, stdio: 'ignore' })
 const bwrapUsable = probe.status === 0
 
 let ctx: Context | undefined

@@ -3,6 +3,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import {
   executionBaselineHash,
+  executionEffectProfile,
   QualityEvidenceId,
 } from '@deepseek-ai/dsh-conductor'
 import type {
@@ -15,6 +16,7 @@ import type {
 } from '@deepseek-ai/dsh-conductor'
 import {
   classifyRunnerFailure,
+  isRunnerSpawnFailure,
   matchesSandboxSignature,
 } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxProvider } from '@deepseek-ai/dsh-sandbox'
@@ -83,6 +85,18 @@ function boundedError(error: unknown, maxBytes: number): { text: string; truncat
     }
   }
   return { text: '', truncated: true }
+}
+
+function classifySpawnFailure(
+  signal: AbortSignal,
+  error: unknown,
+  runnerProgram: string | undefined,
+  cwd: string,
+): QualityExecutionFailure {
+  if (signal.aborted) {
+    return timeoutOf(signal, TIMEOUT_CODE) === undefined ? 'cancelled' : 'timeout'
+  }
+  return isRunnerSpawnFailure(error, runnerProgram, cwd) ? 'sandbox-unavailable' : 'runner-failure'
 }
 
 function failureResult(
@@ -161,10 +175,21 @@ export function qualityToolContribution(scope: QualityToolScope): SubagentChildT
       if (!scope.requiredBindings.some(value => value.id === binding.id && value.definitionHash === binding.definitionHash)) {
         throw new Error(`quality command "${commandId}" is not allowed for ${scope.policyStage}`)
       }
-      if (!scope.run.authority.executionPermissions.includes('quality-execute')) {
-        throw new Error('Conductor run lacks quality-execute authority')
-      }
       if (scope.run.baseline === null) throw new Error('quality command requires the Gate C baseline')
+      const baselineHash = executionBaselineHash(scope.run.baseline)
+      const authorization = scope.run.executionAuthorization
+      if (authorization === null || authorization.executionBaselineHash !== baselineHash) {
+        throw new Error('quality command requires matching host authorization for the active Gate C baseline')
+      }
+      const requiredProfile = executionEffectProfile(scope.run.baseline)
+      if (authorization.effectProfile.filesystem !== requiredProfile.filesystem
+        || authorization.effectProfile.quality !== requiredProfile.quality) {
+        throw new Error('quality command is outside the host-authorized effect profile')
+      }
+      if (definition.effectProfile.filesystem === 'workspace-write'
+        && authorization.effectProfile.filesystem !== 'workspace-write') {
+        throw new Error(`quality command "${commandId}" requires workspace-write authorization`)
+      }
       const agent = exec.agent
       if (agent === undefined) throw new Error('quality command requires a child agent')
       const workspacePath = agent.session.header.cwd
@@ -173,7 +198,7 @@ export function qualityToolContribution(scope: QualityToolScope): SubagentChildT
       const cwd = canonicalAbsolute(workspace, definition.cwd)
       if (!containsPath(workspace, cwd)) throw new Error(`quality command "${commandId}" cwd escapes the workspace`)
       let workspaceRoot = workspace
-      if (definition.sandboxMode === 'workspace-write') {
+      if (definition.effectProfile.filesystem === 'workspace-write') {
         if (definition.writeRoot === undefined) throw new Error(`quality command "${commandId}" lacks writeRoot`)
         const writeRoot = canonicalAbsolute(workspace, definition.writeRoot)
         const allowed = scope.run.baseline.allowedPaths
@@ -192,7 +217,8 @@ export function qualityToolContribution(scope: QualityToolScope): SubagentChildT
       let confined
       try {
         confined = scope.sandbox.confine(definition.argv, {
-          mode: definition.sandboxMode,
+          mode: definition.effectProfile.filesystem,
+          network: definition.effectProfile.network,
           workspaceRoot,
           sessionId: childSessionId,
         })
@@ -224,8 +250,9 @@ export function qualityToolContribution(scope: QualityToolScope): SubagentChildT
           signal: commandDeadline.signal,
         })
       } catch (error) {
+        const failure = classifySpawnFailure(commandDeadline.signal, error, confined.argv[0], cwd)
         const detail = boundedError(error, definition.maxOutputBytes)
-        return failureResult(scope, definition, childSessionId, startedAt, 'runner-failure', {
+        return failureResult(scope, definition, childSessionId, startedAt, failure, {
           stderr: detail.text,
           stderrTruncated: detail.truncated,
         })
@@ -236,9 +263,7 @@ export function qualityToolContribution(scope: QualityToolScope): SubagentChildT
         outcome = await handle.done
       } catch (error) {
         await handle.waitForExit()
-        const failure = commandDeadline.signal.aborted
-          ? timeoutOf(commandDeadline.signal, TIMEOUT_CODE) === undefined ? 'cancelled' : 'timeout'
-          : 'runner-failure'
+        const failure = classifySpawnFailure(commandDeadline.signal, error, confined.argv[0], cwd)
         const detail = boundedError(error, definition.maxOutputBytes)
         return failureResult(scope, definition, childSessionId, startedAt, failure, {
           stderr: detail.text,

@@ -2,20 +2,20 @@
 
 [English](sandbox.md) | 中文
 
-[dsh-sandbox](../../packages/sandbox/sandbox) 的进程沙箱 seam 将与宿主共享文件系统和内核的子进程 argv 包装在文件效果策略中，而不将消费方耦合到特定平台运行器。[dsh-sandbox-local](../../packages/sandbox/sandbox-local) 提供 Linux bwrap/Landlock、macOS Seatbelt 与 Windows ACL 受限令牌后端；[dsh-bash-sandbox](../../packages/shell/bash-sandbox) 和 [dsh-pwsh-sandbox](../../packages/shell/pwsh-sandbox) 是其消费方。容器、microVM 和远程执行是完整能力 seam 的同级实现，而非 `ctx.sandbox` 的提供方。
+[dsh-sandbox](../../packages/sandbox/sandbox) 的进程沙箱 seam 将与宿主共享文件系统和内核的子进程 argv 包装在文件与网络策略中，而不将消费方耦合到特定平台运行器。[dsh-sandbox-local](../../packages/sandbox/sandbox-local) 提供 Linux bwrap/Landlock、macOS Seatbelt 与 Windows ACL 受限令牌后端；[dsh-bash-sandbox](../../packages/shell/bash-sandbox) 和 [dsh-pwsh-sandbox](../../packages/shell/pwsh-sandbox) 是其消费方。容器、microVM 和远程执行是完整能力 seam 的同级实现，而非 `ctx.sandbox` 的提供方。
 
 源码：[`packages/sandbox/sandbox/src/index.ts`](../../packages/sandbox/sandbox/src/index.ts)
 
 ## 模式与强制执行
 
-`SandboxMode` 仅管控文件系统效果。`read-only` 要求后端拒绝写入——POSIX runner 还会授予其 shell 所需的 `/dev/null` 接收器，而 Windows ACL runner 不授予任何显式可写根目录，并因环境 ACL 缺口报告部分强制执行；`workspace-write` 允许在工作区根目录及后端承诺的临时区域下写入；`danger-full-access` 绕过隔离。网络与进程可见性不在此处的定义范围内。
+`SandboxMode` 管控文件系统效果。`read-only` 要求后端拒绝写入——POSIX runner 还会授予其 shell 所需的 `/dev/null` 接收器，而 Windows ACL runner 不授予任何显式可写根目录，并因环境 ACL 缺口报告部分强制执行；`workspace-write` 允许在工作区根目录及后端承诺的临时区域下写入；`danger-full-access` 绕过隔离。网络隔离是直接受限调用上的独立决策。
 
 ```ts type-equiv
 /**
- * File-effect policy for confined processes. `read-only` permits only required
+ * File-effect mode for confined processes. `read-only` permits only required
  * sinks such as `/dev/null`; `workspace-write` also permits the workspace and a
  * backend-defined temp area; `danger-full-access` bypasses confinement. Network
- * and process visibility are outside this vocabulary.
+ * isolation is an independent per-call field on {@link SandboxPolicy}.
  */
 type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 ```
@@ -27,12 +27,19 @@ type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 type ConfinedSandboxMode = Exclude<SandboxMode, 'danger-full-access'>
 ```
 
-强制执行完整性是后端报告的事实。`full` 表示后端管控了该模式承诺的所有文件效果；`partial` 表示活跃后端或较旧的内核 ABI 仅管控其中一个子集，因此要求绝对保证的消费方必须拒绝或向上暴露这一区别。当前的部分强制执行情形包括较旧的 Landlock ABI，以及 Windows ACL runner 的 Everyone 与硬链接边界。
+每个直接受限策略都必须显式选择子进程继承宿主网络，还是拒绝全部网络。提供方边界不存在隐式默认值。
+
+```ts type-equiv
+/** Network policy for one confined process. */
+type SandboxNetwork = 'inherit' | 'deny'
+```
+
+强制执行完整性是后端针对具体策略报告的事实。`full` 表示后端管控了策略承诺的全部文件与网络效果；`partial` 表示只管控其中一个子集，因此要求绝对保证的消费方必须拒绝或向上暴露这一区别。当前的部分强制执行情形包括较旧的 Landlock ABI、Windows ACL runner 的 Everyone 与硬链接边界，以及通过 Bubblewrap、Landlock 或 Windows ACL 路由的每个 `network: deny` 请求。Bubblewrap 的 `--unshare-net` 会隔离 IP 网络，但不会阻止通过其挂载暴露的宿主 Unix 域套接字；Seatbelt 的 `(deny network*)` 是内置的完整网络拒绝 profile。
 
 ```ts type-equiv
 /**
  * Enforcement completeness for this host. `partial` means an active backend or
- * older kernel ABI cannot govern every promised file effect; callers requiring
+ * older kernel ABI cannot govern every promised effect; callers requiring
  * an absolute boundary must not treat it as `full`.
  */
 type SandboxEnforcement = 'full' | 'partial'
@@ -90,6 +97,8 @@ interface SandboxPolicyRequest {
 interface SandboxPolicy extends SandboxExecutionPolicy {
   /** The file-effect mode this execution runs under. */
   mode: ConfinedSandboxMode
+  /** Whether the child inherits host network access or must have all network access denied. */
+  network: SandboxNetwork
 }
 ```
 
@@ -121,12 +130,12 @@ interface RunnerFailureRule {
 /**
  * A {@link SandboxProvider.confine} result: the argv to spawn in place of
  * the caller's own, plus the enforcement completeness the selected backend
- * achieves for it.
+ * achieves for the complete file and network policy.
  */
 interface ConfinedArgv {
   /** The wrapped argv (runner, profile, separator, then the caller's argv). */
   argv: string[]
-  /** How completely the selected backend enforces the policy's file effects. */
+  /** How completely the selected backend enforces the complete file and network policy. */
   enforcement: SandboxEnforcement
   /**
    * The selected backend's denial DIALECT: the case-insensitive stderr
@@ -176,15 +185,15 @@ Abstract process-sandbox service. confine must return enforcing argv or fail clo
  * @param argv - the exact argv the caller is about to spawn (program plus
  *   arguments), NOT a shell string — a shell-shaped consumer passes
  *   `['bash', '-c', command]`.
- * @param policy - the file-effect policy this execution runs under,
+ * @param policy - the complete file and network policy this execution runs under,
  *   carried per call (see {@link SandboxPolicy}).
  * @returns the argv to spawn instead, plus the enforcement completeness
- *   the selected backend achieves for it.
+ *   the selected backend achieves for that concrete policy.
  */
 abstract confine(argv: readonly string[], policy: SandboxPolicy): ConfinedArgv
 ```
 
-Source: [`packages/sandbox/sandbox/src/index.ts:164`](../../packages/sandbox/sandbox/src/index.ts)
+Source: [`packages/sandbox/sandbox/src/index.ts:169`](../../packages/sandbox/sandbox/src/index.ts)
 
 <a id="ctxsandboxpolicy--sandboxpolicyservice"></a>
 

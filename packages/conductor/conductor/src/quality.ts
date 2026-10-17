@@ -1,7 +1,13 @@
 /** Durable Conductor quality-evidence helpers. */
 
 import { createHash } from 'node:crypto'
-import type { ConductorRun, ExecutionBaseline, GateId, QualityCommandBinding } from './types.ts'
+import type {
+  ConductorRun,
+  ExecutionBaseline,
+  ExecutionEffectProfile,
+  GateId,
+  QualityCommandBinding,
+} from './types.ts'
 
 /**
  * Hash one immutable execution baseline with fixed field ordering.
@@ -25,13 +31,29 @@ export function executionBaselineHash(baseline: ExecutionBaseline): string {
 }
 
 /**
+ * Derive the only effect profile a host may approve for a Gate-C baseline.
+ * @param baseline - resolved immutable execution baseline.
+ * @returns the required filesystem, quality, and external effects.
+ */
+export function executionEffectProfile(baseline: ExecutionBaseline): ExecutionEffectProfile {
+  return {
+    filesystem: baseline.allowedPaths.length === 0 ? 'read-only' : 'workspace-write',
+    quality: baseline.qualityCommands.length === 0 ? 'none' : 'catalog',
+    external: 'none',
+  }
+}
+
+/**
  * Number the next attempt at one gate from durable gate history.
  * @param run - current run snapshot.
  * @param gate - Gate D or E.
  * @returns one-based attempt number.
  */
 export function nextQualityCycle(run: ConductorRun, gate: Extract<GateId, 'D' | 'E'>): number {
-  return 1 + run.history.filter(record => record.gate === gate).length
+  if (run.baseline === null) return 1
+  const baselineHash = executionBaselineHash(run.baseline)
+  return 1 + run.history.filter(record => record.gate === gate
+    && record.executionBaselineHash === baselineHash).length
 }
 
 /**

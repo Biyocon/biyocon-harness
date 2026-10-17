@@ -6,6 +6,8 @@ import {
   ConductorRunId,
   QualityCommandId,
   createRun,
+  executionBaselineHash,
+  executionEffectProfile,
 } from '@deepseek-ai/dsh-conductor'
 import type { ConductorRun, QualityExecutionRecord } from '@deepseek-ai/dsh-conductor'
 import { CallId } from '@deepseek-ai/dsh-llm'
@@ -29,11 +31,13 @@ class RecordingSandbox extends SandboxProvider {
   enforcement: SandboxEnforcement = 'full'
   lastPolicy: SandboxPolicy | undefined
   confineError: Error | undefined
+  onConfine: (() => void) | undefined
   denialSignatures = ['permission denied']
   runnerFailureRules: ConfinedArgv['runnerFailureRules'] = []
   confine(argv: readonly string[], policy: SandboxPolicy): ConfinedArgv {
     if (this.confineError !== undefined) throw this.confineError
     this.lastPolicy = policy
+    this.onConfine?.()
     return {
       argv: ['sandbox-runner', ...argv],
       enforcement: this.enforcement,
@@ -50,23 +54,27 @@ class RecordingSubprocess extends SubprocessRuntime {
   stdout = 'checks passed'
   stderr = ''
   spawnError: Error | undefined
+  doneError: Error | undefined
   rejectOnAbort = false
   waitForExitCalls = 0
   resolveExecutable(command: string): Promise<string> { return Promise.resolve(command) }
   spawn(spec: SubprocessSpawnSpec): SubprocessHandle {
+    if (spec.signal?.aborted === true) throw new Error(`aborted before spawn: ${String(spec.signal.reason ?? 'aborted')}`)
     if (this.spawnError !== undefined) throw this.spawnError
     this.lastSpec = spec
     const read = (text: string): SubprocessOutputRead => ({ text, nextOffset: text.length, lossy: false })
-    const done = this.rejectOnAbort
-      ? new Promise<never>((_resolve, reject) => {
-        if (spec.signal === undefined) throw new Error('expected an execution signal')
-        const signal = spec.signal
-        signal.addEventListener('abort', () => {
-          const reason: unknown = signal.reason
-          reject(reason instanceof Error ? reason : new Error(String(reason)))
-        }, { once: true })
-      })
-      : Promise.resolve({ exitCode: this.exitCode, signal: this.signal })
+    const done = this.doneError !== undefined
+      ? Promise.reject(this.doneError)
+      : this.rejectOnAbort
+        ? new Promise<never>((_resolve, reject) => {
+          if (spec.signal === undefined) throw new Error('expected an execution signal')
+          const signal = spec.signal
+          signal.addEventListener('abort', () => {
+            const reason: unknown = signal.reason
+            reject(reason instanceof Error ? reason : new Error(String(reason)))
+          }, { once: true })
+        })
+        : Promise.resolve({ exitCode: this.exitCode, signal: this.signal })
     return {
       pid: 1,
       stdin: undefined,
@@ -95,6 +103,14 @@ class RecordingSubprocess extends SubprocessRuntime {
       terminate: () => Promise.resolve(),
     })
   }
+}
+
+function spawnFailure(code: 'EACCES' | 'ENOENT', program = 'sandbox-runner'): Error {
+  return Object.assign(new Error(`spawn ${program} ${code}`), {
+    code,
+    path: program,
+    syscall: `spawn ${program}`,
+  })
 }
 
 async function setup(commandOverrides: Partial<QualityCommandConfig> = {}) {
@@ -128,21 +144,27 @@ async function setup(commandOverrides: Partial<QualityCommandConfig> = {}) {
   }
   const base = createRun(ConductorRunId('CON-2026-0001'), {
     objective: 'verify',
-    authority: { owner: 'user', permittedActions: ['read'], executionPermissions: ['quality-execute'] },
+    authority: { owner: 'user' },
     acceptanceCriteria: ['checks pass'],
   })
+  const baseline = {
+    scopeVersion: 'scope-1',
+    planVersion: 'plan-1',
+    acceptanceVersion: 'accept-1',
+    allowedPaths: [],
+    excludedPaths: [],
+    rollbackReference: 'HEAD',
+    qualityCommands: [binding],
+  }
   const run: ConductorRun = {
     ...base,
     sourceBaseline: 'HEAD',
     currentStage: 'headsman',
-    baseline: {
-      scopeVersion: 'scope-1',
-      planVersion: 'plan-1',
-      acceptanceVersion: 'accept-1',
-      allowedPaths: [],
-      excludedPaths: [],
-      rollbackReference: 'HEAD',
-      qualityCommands: [binding],
+    baselineHistory: [baseline],
+    baseline,
+    executionAuthorization: {
+      executionBaselineHash: executionBaselineHash(baseline),
+      effectProfile: executionEffectProfile(baseline),
     },
   }
   const records: QualityExecutionRecord[] = []
@@ -183,6 +205,7 @@ describe('Conductor quality executor', () => {
     expect(records).toHaveLength(1)
     expect(records[0], JSON.stringify(result)).toMatchObject({ commandId: 'unit-check', gate: 'D', cycle: 1, outcome: 'passed', exitCode: 0 })
     expect(subprocess.lastSpec?.argv).toEqual(['sandbox-runner', 'node', '--version'])
+    expect((ctx.sandbox as RecordingSandbox).lastPolicy).toMatchObject({ mode: 'read-only', network: 'deny' })
     expect(JSON.stringify(records[0])).not.toContain('checks passed')
     dispose()
   })
@@ -257,6 +280,48 @@ describe('Conductor quality executor', () => {
     dispose()
   })
 
+  it('rejects missing or stale host authorization before confinement', async () => {
+    for (const authorization of [null, {
+      executionBaselineHash: 'f'.repeat(64),
+      effectProfile: { filesystem: 'workspace-write', quality: 'catalog', external: 'none' } as const,
+    }]) {
+      const { ctx, agent, run, records, dispose, sandbox, subprocess } = await setup()
+      run.executionAuthorization = authorization
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal,
+        callId: CallId('quality-unauthorized'),
+        name: 'conductor_quality_check',
+        arguments: { command_id: 'unit-check' },
+        agent,
+      })
+      expect(result.isError).toBe(true)
+      expect(sandbox.lastPolicy).toBeUndefined()
+      expect(subprocess.lastSpec).toBeUndefined()
+      expect(records).toEqual([])
+      dispose()
+    }
+  })
+
+  it('rejects workspace-write commands when the host authorized read-only filesystem effects', async () => {
+    const { ctx, agent, run, records, dispose, sandbox, subprocess } = await setup({
+      sandboxMode: 'workspace-write', writeRoot: '.', allowedStages: ['headsman'],
+    })
+    if (run.executionAuthorization === null) throw new Error('missing test authorization')
+    run.executionAuthorization.effectProfile.filesystem = 'read-only'
+    const result = await ctx.tools.execute({
+      signal: new AbortController().signal,
+      callId: CallId('quality-write-unauthorized'),
+      name: 'conductor_quality_check',
+      arguments: { command_id: 'unit-check' },
+      agent,
+    })
+    expect(result.isError).toBe(true)
+    expect(sandbox.lastPolicy).toBeUndefined()
+    expect(subprocess.lastSpec).toBeUndefined()
+    expect(records).toEqual([])
+    dispose()
+  })
+
   it('classifies sandbox denials, runner failures, and signals without persisting output', async () => {
     for (const scenario of [
       { id: 'denied', exitCode: 3, signal: null, stderr: 'Permission denied by profile', failure: 'denied' },
@@ -298,6 +363,67 @@ describe('Conductor quality executor', () => {
     expect(subprocess.waitForExitCalls).toBe(1)
     expect(records[0]).toMatchObject({ outcome: 'failed', failure: 'timeout' })
     dispose()
+  })
+
+  it('records pre-spawn cancellation when the subprocess rejects an already-aborted signal', async () => {
+    const { ctx, agent, records, dispose, sandbox, subprocess } = await setup()
+    const controller = new AbortController()
+    sandbox.onConfine = () => { controller.abort(new Error('caller cancelled')) }
+    const result = await ctx.tools.execute({
+      signal: controller.signal,
+      callId: CallId('quality-cancelled-before-spawn'),
+      name: 'conductor_quality_check',
+      arguments: { command_id: 'unit-check' },
+      agent,
+    })
+    expect(result).toMatchObject({ isError: true, error: { info: { code: 'ABORTED' } } })
+    expect(subprocess.lastSpec).toBeUndefined()
+    expect(records[0]).toMatchObject({ outcome: 'failed', failure: 'cancelled' })
+    dispose()
+  })
+
+  it('classifies exact sandbox-runner spawn failures from both provider delivery forms', async () => {
+    for (const scenario of [
+      { id: 'sync-enoent', delivery: 'sync', error: spawnFailure('ENOENT') },
+      { id: 'done-eacces', delivery: 'done', error: spawnFailure('EACCES') },
+    ] as const) {
+      const { ctx, agent, records, dispose, subprocess } = await setup()
+      if (scenario.delivery === 'sync') subprocess.spawnError = scenario.error
+      else subprocess.doneError = scenario.error
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal,
+        callId: CallId(`quality-${scenario.id}`),
+        name: 'conductor_quality_check',
+        arguments: { command_id: 'unit-check' },
+        agent,
+      })
+      expect(result.isError).toBe(false)
+      expect(records[0]).toMatchObject({ outcome: 'failed', failure: 'sandbox-unavailable' })
+      expect(subprocess.waitForExitCalls).toBe(scenario.delivery === 'done' ? 1 : 0)
+      dispose()
+    }
+  })
+
+  it('keeps unproven spawn errors classified as runner failures', async () => {
+    for (const scenario of [
+      { id: 'generic-sync', delivery: 'sync', error: new Error('provider failed') },
+      { id: 'wrong-program-done', delivery: 'done', error: spawnFailure('ENOENT', 'catalog-command') },
+    ] as const) {
+      const { ctx, agent, records, dispose, subprocess } = await setup()
+      if (scenario.delivery === 'sync') subprocess.spawnError = scenario.error
+      else subprocess.doneError = scenario.error
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal,
+        callId: CallId(`quality-${scenario.id}`),
+        name: 'conductor_quality_check',
+        arguments: { command_id: 'unit-check' },
+        agent,
+      })
+      expect(result.isError).toBe(false)
+      expect(records[0]).toMatchObject({ outcome: 'failed', failure: 'runner-failure' })
+      expect(subprocess.waitForExitCalls).toBe(scenario.delivery === 'done' ? 1 : 0)
+      dispose()
+    }
   })
 
   it('bounds infrastructure diagnostics and keeps them out of durable records', async () => {

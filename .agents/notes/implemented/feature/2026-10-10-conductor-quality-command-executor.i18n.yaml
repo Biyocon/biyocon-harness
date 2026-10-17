@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-10-conductor-quality-command-executor.md
-2026-10-10-conductor-quality-command-executor.md: d4f2de0ff1b1e3b62766fa681eff30bf9e1b66ac
-2026-10-10-conductor-quality-command-executor.zh.md: 9c8e12e95711bd0a06920366e4756157d7b67764
+2026-10-10-conductor-quality-command-executor.md: 317290dbe7bc5cfc3ff836fd24b1218a0586fbac
+2026-10-10-conductor-quality-command-executor.zh.md: 32a49d03e1a1055afe3cba80b22c6a53c868a181

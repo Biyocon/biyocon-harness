@@ -6,6 +6,8 @@ import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
+import UserApproval from '@deepseek-ai/dsh-user-approval'
+import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
@@ -26,6 +28,7 @@ import type {
   SubprocessTerminalSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
 import * as toolConductor from '../src/index.ts'
+import { canonicalAbsolute } from '../src/path-policy.ts'
 
 const testToolSignal = new AbortController().signal
 const realSpawnTimeoutMs = 30_000
@@ -72,6 +75,18 @@ class RecordingSubprocess extends SubprocessRuntime {
 async function mountQualityServices(ctx: Context): Promise<void> {
   await ctx.plugin(FullSandbox)
   await ctx.plugin(RecordingSubprocess)
+}
+
+async function mountExecutionApproval(
+  ctx: Context,
+  outcome: ApprovalOutcome = 'allowed-once',
+  reasons: string[] = [],
+): Promise<void> {
+  await ctx.plugin(UserApproval, { policy: 'ask' })
+  ctx.on('approval/request', (request) => {
+    reasons.push(request.reason ?? '')
+    return Promise.resolve(outcome)
+  })
 }
 
 /** Extract the run id the Conductor tool embedded in one child's dispatch prompt. */
@@ -151,6 +166,10 @@ function goDecision(runId: string): Record<string, unknown> {
   }
 }
 
+function openApprovalTurn(agent: Agent): void {
+  agent.session.append('turn/start', { turn: 1 })
+}
+
 describe('dsh-tool-conductor over the real spawn stack', () => {
   it('rejects a provider that cannot apply the required child persona', async () => {
     const ctx = new Context()
@@ -209,6 +228,8 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     await mountAgentLoopTestDependencies(ctx)
     await mountQualityServices(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
+    const approvalReasons: string[] = []
+    await mountExecutionApproval(ctx, 'allowed-once', approvalReasons)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(spawn, { providerName: 'spawn' })
     await ctx.plugin(SkillRegistry)
@@ -230,7 +251,12 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     }
     ctx.llm.registerAdapter(['mock'], adapter)
 
-    const parent = ctx.agentLoop.create(SessionId('conductor-parent'), { provider: 'mock', model: 'mock' })
+    const parent = ctx.agentLoop.create(
+      SessionId('conductor-parent'),
+      { provider: 'mock', model: 'mock' },
+      { cwd: process.cwd() },
+    )
+    openApprovalTurn(parent)
     const children: Agent[] = []
     ctx.on('subagent/start', (info) => {
       const agent = ctx.agents.get(info.id)
@@ -245,12 +271,17 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
         objective: 'Ship the feature through the full gate chain.',
         acceptanceCriteria: ['all specialist gates have evidence'],
         allowedPaths: ['packages/conductor'],
-        authority: { owner: 'user', permittedActions: ['read', 'write'] },
+        authority: { owner: 'user' },
       },
       agent: parent,
     })
 
     expect(result.isError, JSON.stringify(result)).toBe(false)
+    expect(approvalReasons).toHaveLength(1)
+    expect(approvalReasons[0]).toMatch(/execution_baseline_hash/)
+    expect(approvalReasons[0]).toContain(
+      JSON.stringify(canonicalAbsolute(process.cwd(), 'packages/conductor')).slice(1, -1),
+    )
     expect((result.content[0] as { text: string }).text).toContain('Conductor reached the Arbiter')
     expect(children).toHaveLength(8)
     for (const child of children) {
@@ -261,7 +292,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     const checkpoint = parent.session.events.filter(event => event.type === 'conductor/checkpoint').at(-1)
     expect(checkpoint).toBeDefined()
     if (checkpoint?.type !== 'conductor/checkpoint') throw new Error('missing Conductor checkpoint')
-    const closed = await ctx.tools.execute({
+    const modelCloseout = await ctx.tools.execute({
       signal: testToolSignal,
       callId: CallId('conductor-closeout'),
       name: 'conductor',
@@ -269,7 +300,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
         runId: checkpoint.data.runId,
         objective: 'Ship the feature through the full gate chain.',
         allowedPaths: ['packages/conductor'],
-        authority: { owner: 'user', permittedActions: ['read', 'write'] },
+        authority: { owner: 'user' },
         closeoutAuthorization: {
           authorizedBy: 'user',
           action: 'record-only',
@@ -286,8 +317,36 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       },
       agent: parent,
     })
-    expect(closed.isError, JSON.stringify(closed)).toBe(false)
-    expect((closed.content[0] as { text: string }).text).toContain('Conductor run closed')
+    expect(modelCloseout.isError).toBe(true)
+
+    const modelExecutionAuthority = await ctx.tools.execute({
+      signal: testToolSignal,
+      callId: CallId('conductor-model-execution-authority'),
+      name: 'conductor',
+      arguments: {
+        runId: checkpoint.data.runId,
+        objective: 'Ship the feature through the full gate chain.',
+        allowedPaths: ['packages/conductor'],
+        authority: { owner: 'user', permittedActions: ['write'], executionPermissions: ['quality-execute'] },
+      },
+      agent: parent,
+    })
+    expect(modelExecutionAuthority.isError).toBe(true)
+
+    const awaitingHost = await ctx.tools.execute({
+      signal: testToolSignal,
+      callId: CallId('conductor-awaiting-host-closeout'),
+      name: 'conductor',
+      arguments: {
+        runId: checkpoint.data.runId,
+        objective: 'Ship the feature through the full gate chain.',
+        allowedPaths: ['packages/conductor'],
+        authority: { owner: 'user' },
+      },
+      agent: parent,
+    })
+    expect(awaitingHost.isError, JSON.stringify(awaitingHost)).toBe(false)
+    expect((awaitingHost.content[0] as { text: string }).text).toContain('host-side authorization through closeRun')
 
     const blankCriterion = await ctx.tools.execute({
       signal: testToolSignal,
@@ -296,13 +355,99 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       arguments: {
         objective: 'Reject blank criteria before dispatch.',
         acceptanceCriteria: [''],
-        authority: { owner: 'user', permittedActions: ['read'] },
+        authority: { owner: 'user' },
       },
       agent: parent,
     })
     expect(blankCriterion.isError).toBe(true)
     expect((blankCriterion.content[0] as { text: string }).text).toMatch(/acceptanceCriteria.*non-empty normalized strings/)
   }, realSpawnTimeoutMs)
+
+  it.each(['rejected', 'cancelled', 'unavailable'] as const)(
+    'does not start a write-capable or quality child when Gate C approval is %s',
+    async (approvalOutcome) => {
+      const script: ((options: GenerateOptions) => ReturnType<typeof toolCallResponse>)[] = [
+        ...(['detective', 'strategist'] as const).map(stage => (options: GenerateOptions) =>
+          toolCallResponse(stage, STRUCTURED_OUTPUT_TOOL, readyEnvelope(extractRunId(options), stage))),
+        (options: GenerateOptions) => toolCallResponse(
+          'devils-advocate',
+          STRUCTURED_OUTPUT_TOOL,
+          readyEnvelope(extractRunId(options), 'devils-advocate', [], ['unit-check']),
+        ),
+      ]
+      const ctx = new Context()
+      const adapter = new MockAdapter(script)
+      await mountAgentLoopTestDependencies(ctx)
+      await mountQualityServices(ctx)
+      await ctx.plugin(AgentLoop, { agents: [] })
+      await mountExecutionApproval(ctx, approvalOutcome)
+      await ctx.plugin(SubagentRuntime)
+      await ctx.plugin(spawn, { providerName: 'spawn' })
+      await ctx.plugin(SkillRegistry)
+      await ctx.plugin(WorkflowWorker, { provider: 'spawn' })
+      ctx.on('session/flush', () => {})
+      for (const name of [
+        'conductor-detective', 'conductor-strategist', 'conductor-devils-advocate', 'conductor-specialist',
+      ]) {
+        ctx.skills.register({ name, description: name, content: `${name} instructions`, source: 'test' })
+      }
+      await ctx.plugin(toolConductor, {
+        subagentProvider: 'spawn',
+        qualityCommands: [{
+          id: 'unit-check',
+          modelSafeDescription: 'Run the focused unit check.',
+          argv: ['node', '--version'],
+          cwd: '.',
+          allowedStages: ['headsman'],
+          sandboxMode: 'read-only',
+          timeoutMs: 1000,
+          maxOutputBytes: 4096,
+          graceMs: 100,
+        }],
+      })
+      for (const name of ['read', 'read_image', 'grep', 'glob', 'write', 'edit']) {
+        ctx.tools.register(defineContentToolFixture({
+          name, description: name, parameters: {},
+          execute: () => Promise.resolve([{ type: 'text', text: name }]),
+        }))
+      }
+      ctx.llm.registerAdapter(['mock'], adapter)
+      const parent = ctx.agentLoop.create(
+        SessionId(`conductor-approval-${approvalOutcome}`),
+        { provider: 'mock', model: 'mock' },
+        { cwd: process.cwd() },
+      )
+      openApprovalTurn(parent)
+      const children: Agent[] = []
+      ctx.on('subagent/start', (info) => {
+        const agent = ctx.agents.get(info.id)
+        if (agent !== undefined) children.push(agent)
+      })
+
+      const result = await ctx.tools.execute({
+        signal: testToolSignal,
+        callId: CallId(`conductor-approval-${approvalOutcome}`),
+        name: 'conductor',
+        arguments: {
+          objective: 'Stop before execution unless the host approves the exact baseline.',
+          acceptanceCriteria: ['No execution without host approval'],
+          allowedPaths: ['packages/conductor'],
+          authority: { owner: 'user' },
+        },
+        agent: parent,
+      })
+
+      expect(result.isError, JSON.stringify(result)).toBe(false)
+      expect((result.content[0] as { text: string }).text).toMatch(/execution authorization/)
+      expect(children).toHaveLength(3)
+      expect((ctx.subprocess as RecordingSubprocess).specs).toEqual([])
+      expect(parent.session.events.filter(event => event.type === 'approval/asked')).toHaveLength(1)
+      expect(parent.session.events.filter(event => event.type === 'approval/decided')).toMatchObject([
+        { data: { outcome: approvalOutcome } },
+      ])
+    },
+    realSpawnTimeoutMs,
+  )
 
   it('runs bounded quality commands under Ralph and an independent Auditor before Gate D and E pass', async () => {
     const script: ((options: GenerateOptions) => ReturnType<typeof toolCallResponse>)[] = [
@@ -352,6 +497,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     await mountAgentLoopTestDependencies(ctx)
     await mountQualityServices(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
+    await mountExecutionApproval(ctx)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(spawn, { providerName: 'spawn' })
     await ctx.plugin(SkillRegistry)
@@ -391,6 +537,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       { provider: 'mock', model: 'mock' },
       { cwd: process.cwd() },
     )
+    openApprovalTurn(parent)
 
     const result = await ctx.tools.execute({
       signal: testToolSignal,
@@ -400,11 +547,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
         objective: 'Ship only after bounded implementation and independent verification.',
         acceptanceCriteria: ['Headsman and Auditor quality checks pass'],
         allowedPaths: ['packages/conductor'],
-        authority: {
-          owner: 'user',
-          permittedActions: ['read', 'write'],
-          executionPermissions: ['quality-execute'],
-        },
+        authority: { owner: 'user' },
       },
       agent: parent,
     })
@@ -450,6 +593,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     await mountAgentLoopTestDependencies(ctx)
     await mountQualityServices(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
+    await mountExecutionApproval(ctx)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(spawn, { providerName: 'spawn' })
     await ctx.plugin(SkillRegistry)
@@ -488,6 +632,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       { provider: 'mock', model: 'mock' },
       { cwd: process.cwd() },
     )
+    openApprovalTurn(parent)
 
     const result = await ctx.tools.execute({
       signal: testToolSignal,
@@ -498,11 +643,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
         acceptanceCriteria: ['Gate C records the invalid specialist output'],
         allowedPaths: ['packages/conductor'],
         sourceBaseline: 'HEAD',
-        authority: {
-          owner: 'user',
-          permittedActions: ['read'],
-          executionPermissions: ['quality-execute'],
-        },
+        authority: { owner: 'user' },
       },
       agent: parent,
     })
@@ -548,6 +689,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     await mountAgentLoopTestDependencies(ctx)
     await mountQualityServices(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
+    await mountExecutionApproval(ctx)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(spawn, { providerName: 'spawn' })
     await ctx.plugin(SkillRegistry)
@@ -587,6 +729,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       { provider: 'mock', model: 'mock' },
       { cwd: process.cwd() },
     )
+    openApprovalTurn(parent)
 
     const result = await ctx.tools.execute({
       signal: testToolSignal,
@@ -596,11 +739,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
         objective: 'Preserve host evidence across a specialist failure.',
         acceptanceCriteria: ['Completed quality commands remain durable'],
         allowedPaths: ['packages/conductor'],
-        authority: {
-          owner: 'user',
-          permittedActions: ['read', 'write'],
-          executionPermissions: ['quality-execute'],
-        },
+        authority: { owner: 'user' },
       },
       agent: parent,
     })

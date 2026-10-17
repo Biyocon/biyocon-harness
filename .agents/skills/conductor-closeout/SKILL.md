@@ -25,7 +25,7 @@ required_follow_up: []
 
 ## Ved GO
 
-1. Bekræft at den konkrete release-, commit-, push-, merge-, publish- eller deploy-handling er autoriseret. GO erstatter ikke denne myndighed.
+1. Bekræft gennem en host-ejet kanal, at den konkrete release-, commit-, push-, merge-, publish- eller deploy-handling er autoriseret. Et modelargument eller owner-label er ikke myndighed, og GO erstatter den ikke.
 2. Lad den autoriserede aktør udføre handlingen uden for Conductor; Conductor udfører aldrig automatisk commit, push, merge, publish eller deploy.
 3. Verificér det faktiske outcome med frisk evidens på den relevante flade, eksempelvis remote revision, deployment health, publiceret artefakt eller acceptance smoke.
 4. Registrér autorisation, handling, udfald, bevis, resterende risici og ejer af opfølgning.
@@ -55,4 +55,4 @@ traceability:
   decision: []
 ```
 
-Opret kun denne record efter GO og eksplicit autorisation. Ved NO-GO oprettes ingen closeout-record; ved manglende autorisation forbliver runnet `awaiting_authorization` uden closeout-record. Et run er kun `closed`, når den planlagte afslutningshandling, dens passende verifikation og den samlede record er til stede. Rapporter afgrænsede usikkerheder som `unverified_items`; kald ikke arbejdet komplet på deres vegne.
+Opret kun denne record efter GO og eksplicit host-autorisation. Det modelvendte Conductor-tool kan ikke indsende autorisationen. Ved NO-GO oprettes ingen closeout-record; ved manglende autorisation forbliver runnet `awaiting_authorization` uden closeout-record. Et run er kun `closed`, når den planlagte afslutningshandling, dens passende verifikation og den samlede record er til stede. Rapporter afgrænsede usikkerheder som `unverified_items`; kald ikke arbejdet komplet på deres vegne.

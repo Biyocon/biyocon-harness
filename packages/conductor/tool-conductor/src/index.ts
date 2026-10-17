@@ -15,22 +15,22 @@ import z from '@deepseek-ai/schemastery'
 import {
   ConductorRunId,
   QualityCommandId,
-  closeRun,
   createRun,
   drive,
+  executionBaselineHash,
   isValidRunId,
   mintRunId,
   resumeRun,
   SessionConductorRunStore,
 } from '@deepseek-ai/dsh-conductor'
 import type {
-  ConductorAction,
   ConductorAuthority,
-  ConductorExecutionPermission,
   ConductorRun,
   ConductorStage,
-  CloseoutAuthorization,
   DecisionRecord,
+  ExecutionAuthorization,
+  ExecutionBaseline,
+  ExecutionEffectProfile,
   QualityCommandBinding,
   QualityExecutionRecord,
   QualityPolicyStage,
@@ -41,7 +41,7 @@ import { toolGuardForStage, toolRestrictionForStage } from './capability.ts'
 import { ralphDirective } from './ralph.ts'
 import { ROLE_SKILL } from '@deepseek-ai/dsh-conductor-presets'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { CallId, ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import type { SubagentProvider } from '@deepseek-ai/dsh-subagent'
 import type { SubagentChildToolContribution } from '@deepseek-ai/dsh-subagent'
@@ -52,10 +52,13 @@ import { runRalphWorkflow } from '@deepseek-ai/dsh-tool-ralph'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 // Declaration merge only: makes ctx.skills visible for the role-skill lookup.
 import type {} from '@deepseek-ai/dsh-skill'
+// Declaration merge only: makes optional ctx.get('approval') type-safe.
+import type {} from '@deepseek-ai/dsh-user-approval'
 import { nextQualityCycle } from '@deepseek-ai/dsh-conductor'
 import { qualityToolContribution } from './quality-executor.ts'
 import { resolveQualityCatalog } from './quality-catalog.ts'
 import type { QualityCommandConfig, QualityCommandDefinition } from './quality-catalog.ts'
+import { canonicalAbsolute } from './path-policy.ts'
 
 export const name = 'tool-conductor'
 export const inject = ['tools', 'subagents', 'skills', 'sessions', 'workflowEngine', 'sandbox', 'subprocess']
@@ -111,13 +114,11 @@ interface ConductorCallArgs {
   sourceBaseline?: string
   constraints?: string[]
   acceptanceCriteria?: string[]
-  authority?: { owner: string; permittedActions: string[]; executionPermissions?: string[] }
+  authority?: { owner: string }
   runId?: string
-  closeoutAuthorization?: CloseoutAuthorization
 }
 
-const VALID_ACTIONS = ['read', 'write', 'commit', 'push', 'merge', 'release', 'publish', 'deploy'] as const
-const VALID_EXECUTION_PERMISSIONS = ['quality-execute'] as const
+const EXTERNAL_ACTIONS = ['commit', 'push', 'merge', 'release', 'publish', 'deploy'] as const
 
 const DESCRIPTION = 'Run a multi-role, gated Conductor workflow toward one objective. '
   + 'The tool drives Detective → Strategist → Devil\'s Advocate → Headsman → Auditor → Integrator → Arbiter, '
@@ -277,32 +278,24 @@ function requireFreshProvider(ctx: Context, name: string): SubagentProvider {
   return provider
 }
 
-/** Resolve and validate the model-supplied authority. */
+/** Resolve attribution without accepting model-supplied execution authority. */
 function resolveAuthority(value: ConductorCallArgs['authority']): ConductorAuthority {
   const owner = value?.owner
   if (typeof owner !== 'string' || owner.length === 0 || owner !== owner.trim()) {
     throw new Error('Conductor authority requires a non-empty normalized owner')
   }
-  const actions = value?.permittedActions
-  const executionPermissions = value?.executionPermissions ?? []
-  if (!Array.isArray(executionPermissions)
-    || !executionPermissions.every(permission => typeof permission === 'string'
-      && (VALID_EXECUTION_PERMISSIONS as readonly string[]).includes(permission))
-    || new Set(executionPermissions).size !== executionPermissions.length) {
-    throw new Error('Conductor authority executionPermissions must be a distinct subset of quality-execute')
+  return { owner }
+}
+
+function rejectModelExecutionAuthority(value: unknown): void {
+  if (!isRecord(value)) return
+  if (Object.hasOwn(value, 'closeoutAuthorization')) {
+    throw new Error('Conductor closeout authorization is host-only and is not accepted by the model-facing tool')
   }
-  if (actions === undefined) return {
-    owner,
-    permittedActions: ['read'],
-    executionPermissions: executionPermissions as ConductorExecutionPermission[],
-  }
-  if (!Array.isArray(actions) || !actions.every(a => typeof a === 'string' && (VALID_ACTIONS as readonly string[]).includes(a))) {
-    throw new Error(`Conductor authority permittedActions must be a subset of ${VALID_ACTIONS.join(', ')}`)
-  }
-  return {
-    owner,
-    permittedActions: actions as ConductorAction[],
-    executionPermissions: executionPermissions as ConductorExecutionPermission[],
+  const authority = value['authority']
+  if (!isRecord(authority)) return
+  if (Object.hasOwn(authority, 'permittedActions') || Object.hasOwn(authority, 'executionPermissions')) {
+    throw new Error('Conductor execution authority is host-owned; model input may identify only authority.owner')
   }
 }
 
@@ -332,11 +325,10 @@ function composeSpecialistPrompt(
   qualityExecutions: readonly QualityExecutionRecord[],
   ralphResult?: unknown,
 ): string {
-  const stageActions: ConductorAction[] = [
-    ...(run.authority.permittedActions.includes('read') ? ['read' as const] : []),
-    ...((stage === 'headsman' || stage === 'integrator') && run.authority.permittedActions.includes('write')
-      ? ['write' as const]
-      : []),
+  const stageActions = [
+    'read',
+    ...((stage === 'headsman' || stage === 'integrator')
+      && run.executionAuthorization?.effectProfile.filesystem === 'workspace-write' ? ['write'] : []),
   ]
   const parts = [
     'You are one specialist in a Conductor run. Work only on the dispatched stage, against the dispatch package below, and return exactly one structured result to the Conductor. You are a worker, not the workflow owner: never name the next specialist and never make a gate decision.',
@@ -351,7 +343,11 @@ function composeSpecialistPrompt(
       allowed_paths: run.allowedPaths,
       excluded_paths: run.excludedPaths,
       allowed_actions: stageActions,
-      prohibited_actions: [...VALID_ACTIONS.filter(action => !stageActions.includes(action)), 'shell'],
+      prohibited_actions: [
+        ...(stageActions.includes('write') ? [] : ['write']),
+        ...EXTERNAL_ACTIONS,
+        'shell',
+      ],
       acceptance_criteria: run.acceptanceCriteria,
       constraints: run.constraints,
       input_artifacts: run.inputArtifacts,
@@ -440,8 +436,8 @@ async function runWorkflowChild(
     maxTotalAgents: 1,
     parent,
     signal,
-    childToolFilter: toolRestrictionForStage(stage, run.authority.permittedActions),
-    childToolGuard: toolGuardForStage(stage, run.baseline, run.authority.permittedActions),
+    childToolFilter: toolRestrictionForStage(stage, run.executionAuthorization),
+    childToolGuard: toolGuardForStage(stage, run.baseline, run.executionAuthorization),
     childPersona: persona,
     ...childToolContribution === undefined ? {} : { childToolContribution },
   })
@@ -486,7 +482,6 @@ function unresolvedEnvelope(value: unknown, problem: string): ResolvedSpecialist
 function resolveSpecialistEnvelope(
   value: unknown,
   stage: ConductorStage,
-  run: ConductorRun,
   catalog: ReadonlyMap<string, QualityCommandDefinition>,
 ): ResolvedSpecialistEnvelope {
   if (!isRecord(value)) return { envelope: value as SpecialistEnvelope }
@@ -503,9 +498,6 @@ function resolveSpecialistEnvelope(
   }
   if (new Set(ids).size !== ids.length) {
     return unresolvedEnvelope(value, 'Gate C qualityCommandIds must not contain duplicates')
-  }
-  if (ids.length > 0 && !run.authority.executionPermissions.includes('quality-execute')) {
-    return unresolvedEnvelope(value, 'Gate C quality commands require quality-execute authority')
   }
   const normalizedIds = ids as string[]
   const qualityCommands: QualityCommandBinding[] = []
@@ -629,8 +621,8 @@ async function runSpecialist(
         subagentProvider: providerName,
         parent,
         signal,
-        childToolFilter: toolRestrictionForStage(stage, run.authority.permittedActions),
-        childToolGuard: toolGuardForStage(stage, run.baseline, run.authority.permittedActions),
+        childToolFilter: toolRestrictionForStage(stage, run.executionAuthorization),
+        childToolGuard: toolGuardForStage(stage, run.baseline, run.executionAuthorization),
         childPersona: persona,
         ...ralphContribution === undefined ? {} : { childToolContribution: ralphContribution },
       })
@@ -658,7 +650,7 @@ async function runSpecialist(
         quality_evidence_ids: [],
       }, qualityExecutions, requiredQualityCommands }
     }
-    const resolved = resolveSpecialistEnvelope(structured, stage, run, catalog)
+    const resolved = resolveSpecialistEnvelope(structured, stage, catalog)
     return { ...resolved, qualityExecutions, requiredQualityCommands }
   } catch (error) {
     if (qualityExecutions.length === 0) throw error
@@ -719,6 +711,59 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function sameOrderedStrings(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
+/** Ask the host for one exact Gate-C execution authorization. */
+async function requestExecutionAuthorization(
+  ctx: Context,
+  parent: Agent,
+  signal: AbortSignal,
+  callId: CallId,
+  run: ConductorRun,
+  baseline: ExecutionBaseline,
+  effectProfile: ExecutionEffectProfile,
+  catalog: ReadonlyMap<string, QualityCommandDefinition>,
+): Promise<ExecutionAuthorization | null> {
+  const approval = ctx.get('approval')
+  if (approval === undefined) {
+    throw new Error('Gate C execution approval is unavailable; no host approval service is mounted')
+  }
+  const cwd = parent.session.header.cwd
+  if (cwd === undefined) throw new Error('Gate C execution approval requires a session workspace')
+  const workspace = canonicalAbsolute(cwd, cwd)
+  const qualityCommands = baseline.qualityCommands.map((binding) => {
+    const definition = catalog.get(binding.id)
+    if (definition === undefined || definition.definitionHash !== binding.definitionHash) {
+      throw new Error(`Gate C quality command "${binding.id}" is not bound to the active deployment catalog`)
+    }
+    return {
+      id: binding.id,
+      definition_hash: binding.definitionHash,
+      description: definition.modelSafeDescription,
+    }
+  })
+  const executionBaselineHashValue = executionBaselineHash(baseline)
+  const reason = 'Approve this exact Gate C execution baseline once. Rejection, cancellation, or unavailable approval '
+    + 'prevents every write-capable specialist and quality-command spawn.\n'
+    + JSON.stringify({
+      run_id: run.runId,
+      mandate_owner: run.authority.owner,
+      execution_baseline_hash: executionBaselineHashValue,
+      effect_profile: effectProfile,
+      allowed_paths: baseline.allowedPaths.map(path => canonicalAbsolute(workspace, path)),
+      excluded_paths: baseline.excludedPaths.map(path => canonicalAbsolute(workspace, path)),
+      quality_commands: qualityCommands,
+    }, null, 2)
+  const outcome = await approval.request({ agent: parent, toolName: 'conductor', callId, reason, signal })
+  switch (outcome) {
+    case 'allowed-once':
+      return { executionBaselineHash: executionBaselineHashValue, effectProfile: { ...effectProfile } }
+    case 'rejected':
+    case 'cancelled':
+      return null
+    case 'unavailable':
+      throw new Error('Gate C execution approval is unavailable')
+  }
 }
 
 /** Render the terminal outcome without presenting self-report as certification. */
@@ -796,55 +841,12 @@ export function apply(ctx: Context, config: Config): void {
         additionalProperties: false,
         properties: {
           owner: { type: 'string', required: true },
-          permittedActions: { type: 'array', items: { type: 'string' } },
-          executionPermissions: { type: 'array', items: { type: 'string' } },
         },
-        description: 'The mandate owner, permitted external actions, and optional quality-execute permission.',
+        description: 'Mandate-owner attribution only. Execution effects require a separate host-owned Gate C approval.',
       },
       runId: {
         type: 'string',
         description: 'Optional run id to resume an existing unfinished run.',
-      },
-      closeoutAuthorization: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          authorizedBy: { type: 'string', required: true },
-          action: {
-            type: 'string',
-            required: true,
-            enum: ['record-only', ...VALID_ACTIONS],
-          },
-          outcomeEvidence: { type: 'array', required: true, items: { type: 'string' } },
-          actionsTaken: { type: 'array', required: true, items: { type: 'string' } },
-          unverifiedItems: { type: 'array', required: true, items: { type: 'string' } },
-          openRisks: { type: 'array', required: true, items: { type: 'string' } },
-          followUp: {
-            type: 'array',
-            required: true,
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                owner: { type: 'string', required: true },
-                dueCondition: { type: 'string', required: true },
-              },
-            },
-          },
-          traceability: {
-            type: 'object',
-            required: true,
-            additionalProperties: false,
-            properties: {
-              mandate: { type: 'array', required: true, items: { type: 'string' } },
-              baseline: { type: 'array', required: true, items: { type: 'string' } },
-              changes: { type: 'array', required: true, items: { type: 'string' } },
-              verification: { type: 'array', required: true, items: { type: 'string' } },
-              decision: { type: 'array', required: true, items: { type: 'string' } },
-            },
-          },
-        },
-        description: 'Explicit owner authorization used only to close a prior Arbiter GO; Conductor records but never performs the action.',
       },
     },
     output: {
@@ -865,7 +867,8 @@ export function apply(ctx: Context, config: Config): void {
       if (parent === undefined) {
         throw new Error('Conductor tool requires a calling agent (exec.agent was undefined)')
       }
-      const call = args as unknown as ConductorCallArgs
+      rejectModelExecutionAuthority(args)
+      const call: ConductorCallArgs = args
       const objective = call.objective.trim()
       if (objective.length === 0) throw new Error('Conductor objective must be a non-empty string')
       const authority = resolveAuthority(call.authority)
@@ -881,9 +884,7 @@ export function apply(ctx: Context, config: Config): void {
         if (!isValidRunId(call.runId)) throw new Error(`Conductor runId "${call.runId}" is not a valid CON-YYYY-NNNN id`)
         run = await resumeRun(store, ConductorRunId(call.runId))
         if (run.objective !== objective) throw new Error('Conductor resume objective does not match the persisted run')
-        if (run.authority.owner !== authority.owner
-          || run.authority.permittedActions.join('\0') !== authority.permittedActions.join('\0')
-          || run.authority.executionPermissions.join('\0') !== authority.executionPermissions.join('\0')) {
+        if (run.authority.owner !== authority.owner) {
           throw new Error('Conductor resume authority does not match the persisted run')
         }
         if (!sameOrderedStrings(run.allowedPaths, allowedPaths)) {
@@ -893,9 +894,6 @@ export function apply(ctx: Context, config: Config): void {
           throw new Error('Conductor resume excludedPaths do not match the persisted run')
         }
       } else {
-        if (call.closeoutAuthorization !== undefined) {
-          throw new Error('Conductor closeoutAuthorization requires an existing runId')
-        }
         let runId = mintRunId()
         for (let attempt = 0; attempt < 8 && (await store.load(runId)) !== undefined; attempt += 1) {
           runId = mintRunId()
@@ -916,32 +914,35 @@ export function apply(ctx: Context, config: Config): void {
       }
 
       if (run.currentStage === 'closeout') {
-        if (call.closeoutAuthorization === undefined) {
-          return {
-            runId: run.runId,
-            stage: run.currentStage,
-            status: run.status,
-            result: {
-              kind: 'blocked',
-              blocker: 'Arbiter GO recorded; explicit closeoutAuthorization is required to close the run',
-            } as unknown as JsonValue,
-          }
-        }
-        const closed = closeRun(run, call.closeoutAuthorization)
-        await store.save(closed)
         return {
-          runId: closed.runId,
-          stage: closed.currentStage,
-          status: closed.status,
-          result: { kind: 'closeout', closeout: closed.closeout } as unknown as JsonValue,
+          runId: run.runId,
+          stage: run.currentStage,
+          status: run.status,
+          result: {
+            kind: 'blocked',
+            blocker: 'Arbiter GO recorded; closeout requires separate host-side authorization through closeRun',
+          } as unknown as JsonValue,
         }
-      }
-      if (call.closeoutAuthorization !== undefined) {
-        throw new Error('Conductor closeoutAuthorization is valid only after an Arbiter GO')
       }
       assertCatalogBindings(run, resolved.qualityCommands)
 
       const dispatcher = {
+        async authorizeExecution(
+          current: ConductorRun,
+          baseline: ExecutionBaseline,
+          effectProfile: ExecutionEffectProfile,
+        ) {
+          return await requestExecutionAuthorization(
+            ctx,
+            parent,
+            exec.signal,
+            exec.callId,
+            current,
+            baseline,
+            effectProfile,
+            resolved.qualityCommands,
+          )
+        },
         async dispatchSpecialist(stage: ConductorStage, current: ConductorRun) {
           return await runSpecialist(
             ctx, resolved.subagentProvider, parent, exec.signal, stage, current, resolved.maxRalphHandoffChars,

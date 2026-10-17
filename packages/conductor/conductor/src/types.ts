@@ -48,27 +48,31 @@ export type ConductorStage =
   | 'arbiter'
   | 'closeout'
 
-/**
- * An external action a run's {@link ConductorAuthority} may permit. Every value
- * is negative-space: a GO from The Arbiter grants none of them; only the
- * mandate owner's explicit authority does.
- */
+/** An external action that may be recorded during owner-authorized closeout. */
 export type ConductorAction = 'read' | 'write' | 'commit' | 'push' | 'merge' | 'release' | 'publish' | 'deploy'
 
-/** Host-owned execution permissions that never authorize external release actions. */
-export type ConductorExecutionPermission = 'quality-execute'
-
-/**
- * Who owns the mandate and which external actions they permit. The permitted
- * actions bound every specialist stage and the closeout release step.
- */
+/** Attribution for the mandate; execution authorization is host-owned and separate. */
 export interface ConductorAuthority {
   /** The mandate owner: a human, the initiating agent ('emperor'), or another named owner. */
   owner: string
-  /** External actions the owner has authorized for this run. */
-  permittedActions: ConductorAction[]
-  /** Internal host capabilities the owner has authorized for this run. */
-  executionPermissions: ConductorExecutionPermission[]
+}
+
+/** Host-approved effects for one immutable execution baseline. */
+export interface ExecutionEffectProfile {
+  /** Maximum filesystem effect granted to specialists under the baseline. */
+  filesystem: 'read-only' | 'workspace-write'
+  /** Whether deployment-owned quality commands may execute. */
+  quality: 'none' | 'catalog'
+  /** External effects are never part of Conductor execution authorization. */
+  external: 'none'
+}
+
+/** Durable host authorization bound to one exact Gate-C baseline. */
+export interface ExecutionAuthorization {
+  /** SHA-256 of the baseline the host approved. */
+  executionBaselineHash: string
+  /** Exact effects approved for that baseline. */
+  effectProfile: ExecutionEffectProfile
 }
 
 /** Stable deployment-owned quality-command identity. */
@@ -206,6 +210,8 @@ export type ConductorRunStatus =
  * Arbiter can review the full record.
  */
 export interface ConductorRun {
+  /** Pre-release durable record format; unsupported versions are rejected without migration. */
+  recordFormatVersion: 1
   /** The run's id. */
   runId: ConductorRunId
   /** The desired outcome. */
@@ -220,7 +226,7 @@ export interface ConductorRun {
   excludedPaths: string[]
   /** Source state observed at intake; Detective may establish it when absent. */
   sourceBaseline: string | null
-  /** The mandate owner and permitted external actions. */
+  /** The mandate owner, used for attribution only. */
   authority: ConductorAuthority
   /** Non-negotiable constraints on the work. */
   constraints: string[]
@@ -228,8 +234,12 @@ export interface ConductorRun {
   acceptanceCriteria: string[]
   /** Rework and Ralph round limits. */
   budget: ConductorBudget
-  /** The immutable execution baseline; null until Gate C passes. */
+  /** Every host-authorized Gate-C baseline, retained append-only across rework. */
+  baselineHistory: ExecutionBaseline[]
+  /** The active immutable execution baseline; null until Gate C passes or after scope/plan rework. */
   baseline: ExecutionBaseline | null
+  /** Host-owned authorization for the active baseline, or null before approval and after invalidation. */
+  executionAuthorization: ExecutionAuthorization | null
   /** The stage the run is currently at. */
   currentStage: ConductorStage
   /** Every gate decision recorded so far, in order. */
@@ -283,6 +293,8 @@ export interface GateRecord {
   nextStage?: ConductorStage
   /** Short, concrete description of the run-state change this decision applies. */
   stateUpdate: string
+  /** Hash of the active execution baseline for Gate C pass and every later attempt under it. */
+  executionBaselineHash?: string
 }
 
 /** A specialist's delivery readiness — never a gate pass (Conductor decides that). */

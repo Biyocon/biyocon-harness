@@ -997,6 +997,11 @@
     },
     {
       "doc": "docs/subsystems/sandbox.md",
+      "symbol": "SandboxNetwork",
+      "source": "packages/sandbox/sandbox/src/index.ts"
+    },
+    {
+      "doc": "docs/subsystems/sandbox.md",
       "symbol": "SandboxExecutionPolicy",
       "source": "packages/sandbox/sandbox/src/index.ts"
     },

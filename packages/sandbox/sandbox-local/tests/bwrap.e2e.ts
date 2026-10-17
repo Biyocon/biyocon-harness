@@ -17,7 +17,7 @@ import { bwrapProfileArgs } from '../src/profiles.ts'
  * ephemeral `/tmp`, so workspace-write actually proves the workspace-root rebind.
  */
 
-const probe = spawnSync('bwrap', [...bwrapProfileArgs({ mode: 'read-only', workspaceRoot: '/' }), '--', 'true'], { timeout: 5_000, stdio: 'ignore' })
+const probe = spawnSync('bwrap', [...bwrapProfileArgs({ mode: 'read-only', network: 'inherit', workspaceRoot: '/' }), '--', 'true'], { timeout: 5_000, stdio: 'ignore' })
 const bwrapUsable = probe.status === 0
 
 let ctx: Context | undefined
@@ -54,7 +54,7 @@ describe.skipIf(!bwrapUsable)('sandbox-local: real bwrap confinement', () => {
   it('the passing probe selects the bwrap rung naturally — first in the ladder, full enforcement, EROFS dialect', async () => {
     const workdir = await tempDir(tmpdir())
     const sandbox = await provider()
-    const confined = sandbox.confine(['true'], { mode: 'read-only', workspaceRoot: workdir })
+    const confined = sandbox.confine(['true'], { mode: 'read-only', network: 'inherit', workspaceRoot: workdir })
     expect(confined.argv[0]).toBe('bwrap')
     expect(confined.enforcement).toBe('full')
     expect(confined.denialSignatures).toEqual(['read-only file system'])
@@ -63,7 +63,7 @@ describe.skipIf(!bwrapUsable)('sandbox-local: real bwrap confinement', () => {
   it('read-only denies a write — the file must NOT exist, and the kernel speaks the advertised dialect', async () => {
     const workdir = await tempDir(tmpdir())
     const sandbox = await provider()
-    const { result } = runConfined(sandbox, `echo hi > ${workdir}/denied.txt`, { mode: 'read-only', workspaceRoot: workdir })
+    const { result } = runConfined(sandbox, `echo hi > ${workdir}/denied.txt`, { mode: 'read-only', network: 'inherit', workspaceRoot: workdir })
     expect(result.status).not.toBe(0)
     // The wrap's denialSignatures must be what the kernel actually prints.
     expect(result.stderr.toLowerCase()).toContain('read-only file system')
@@ -73,7 +73,7 @@ describe.skipIf(!bwrapUsable)('sandbox-local: real bwrap confinement', () => {
   it('read-only keeps the tree readable/executable and the fresh /dev/null writable', async () => {
     const workdir = await tempDir(tmpdir())
     const sandbox = await provider()
-    const { result } = runConfined(sandbox, 'ls / > /dev/null && echo dev-ok', { mode: 'read-only', workspaceRoot: workdir })
+    const { result } = runConfined(sandbox, 'ls / > /dev/null && echo dev-ok', { mode: 'read-only', network: 'inherit', workspaceRoot: workdir })
     expect(result.status).toBe(0)
     expect(result.stdout).toBe('dev-ok\n')
   })
@@ -83,11 +83,11 @@ describe.skipIf(!bwrapUsable)('sandbox-local: real bwrap confinement', () => {
     const outside = await tempDir(homedir())
     const sandbox = await provider()
 
-    const inside = runConfined(sandbox, `printf bwrap-ok > ${workdir}/allowed.txt`, { mode: 'workspace-write', workspaceRoot: workdir })
+    const inside = runConfined(sandbox, `printf bwrap-ok > ${workdir}/allowed.txt`, { mode: 'workspace-write', network: 'inherit', workspaceRoot: workdir })
     expect(inside.result.status).toBe(0)
     expect(readFileSync(join(workdir, 'allowed.txt'), 'utf8')).toBe('bwrap-ok')
 
-    const denied = runConfined(sandbox, `echo hi > ${outside}/denied.txt`, { mode: 'workspace-write', workspaceRoot: workdir })
+    const denied = runConfined(sandbox, `echo hi > ${outside}/denied.txt`, { mode: 'workspace-write', network: 'inherit', workspaceRoot: workdir })
     expect(denied.result.status).not.toBe(0)
     expect(existsSync(join(outside, 'denied.txt'))).toBe(false)
   })
@@ -100,9 +100,21 @@ describe.skipIf(!bwrapUsable)('sandbox-local: real bwrap confinement', () => {
     const target = `/tmp/dsh-bwrap-e2e-ephemeral-${process.pid}.txt`
     tempFiles.push(target)
     const sandbox = await provider()
-    const { result } = runConfined(sandbox, `printf tmp-ok > ${target} && cat ${target}`, { mode: 'workspace-write', workspaceRoot: workdir })
+    const { result } = runConfined(sandbox, `printf tmp-ok > ${target} && cat ${target}`, { mode: 'workspace-write', network: 'inherit', workspaceRoot: workdir })
     expect(result.status).toBe(0)
     expect(result.stdout).toBe('tmp-ok')
     expect(existsSync(target)).toBe(false)
+  })
+
+  it('network deny isolates the IP namespace but reports incomplete all-network denial', async () => {
+    const workdir = await tempDir(homedir())
+    const sandbox = await provider()
+    const { result, confined } = runConfined(
+      sandbox,
+      'test "$(find /sys/class/net -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 && test -e /sys/class/net/lo',
+      { mode: 'read-only', network: 'deny', workspaceRoot: workdir },
+    )
+    expect(result.status).toBe(0)
+    expect(confined.enforcement).toBe('partial')
   })
 })

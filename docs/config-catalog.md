@@ -1470,14 +1470,24 @@ Source: [`packages/guard/repeat-tool-reminder/src/index.ts:28`](../packages/guar
 export interface Config {
   /**
    * Override the runner argv; bwrap-compatible profile arguments are appended. A
-   * non-empty override asserts full enforcement and skips built-in selection and
-   * probing. A runner that starts but refuses its profile must be identifiable by
+   * non-empty override asserts full file enforcement and skips built-in selection
+   * and probing; network-denial enforcement is configured separately. A runner
+   * that starts but refuses its profile must be identifiable by
    * {@link runnerFailureSignatures}. Consumers classify a spawn rejection only after
    * confirming the workdir is usable. `ENOENT` or `EACCES` identifies the runner when
    * `error.path` equals argv[0] and `error.syscall` is `spawn` or `spawn <runner>`, or
    * when `error.path` is absent and `error.syscall` is exactly `spawn <runner>`.
    */
   runnerCommand?: string[]
+  /**
+   * Enforcement the configured runner claims for `network: deny`. The appended
+   * bwrap-compatible `--unshare-net` profile isolates IP networking but does not
+   * block host Unix-domain sockets exposed through read-only mounts, so the
+   * default is `partial`. Set `full` only when the configured runner adds a
+   * stronger mechanism that denies every network operation beyond that profile.
+   * Rejected without {@link runnerCommand}.
+   */
+  runnerNetworkDenyEnforcement?: SandboxEnforcement
   /**
    * Case-insensitive stderr substrings emitted when a configured
    * {@link runnerCommand} refuses its profile before executing the wrapped
@@ -1490,6 +1500,8 @@ export interface Config {
   probeTimeoutMs?: number
 }
 ```
+
+Depends on: [`SandboxEnforcement`](../packages/sandbox/sandbox/src/index.ts)
 
 Source: [`packages/sandbox/sandbox-local/src/index.ts:44`](../packages/sandbox/sandbox-local/src/index.ts)
 
@@ -2399,7 +2411,7 @@ export interface QualityCommandConfig {
   id: string
   /** Command purpose text safe to include in a model prompt. */
   modelSafeDescription: string
-  /** Exact executable and argument vector; shell interpreters are forbidden. */
+  /** Exact executable and argument vector; no shell parsing or argument expansion is performed. */
   argv: string[]
   /** Workspace-relative working directory. */
   cwd: string
@@ -2420,7 +2432,7 @@ export interface QualityCommandConfig {
 
 Depends on: [`QualityPolicyStage`](../packages/conductor/conductor/src/index.ts)
 
-Source: [`packages/conductor/tool-conductor/src/index.ts:64`](../packages/conductor/tool-conductor/src/index.ts)
+Source: [`packages/conductor/tool-conductor/src/index.ts:67`](../packages/conductor/tool-conductor/src/index.ts)
 
 <a id="deepseek-aidsh-tool-fs"></a>
 

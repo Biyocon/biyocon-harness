@@ -53,4 +53,4 @@ next_handoff: <kort struktureret state>
 
 Stop på `complete`, `blocked`, `failed` eller `max_rounds`. Ved `complete` afleverer Headsman en almindelig implementation report til Conductor. Conductor sender derefter arbejdet til en uafhængig Auditor; Ralph må ikke selv passere Gate D eller E.
 
-Ralph må aldrig levere rå command text, argv eller ekstra argumenter. Hostens deployment-katalog ejer den eksakte kommando, cwd, sandbox-mode og grænser; execution afvises, hvis en fuldt håndhævende sandbox ikke er tilgængelig. Ralph kan producere Gate-D-evidens under Headsman, men ejer ingen gate og kan ikke levere Gate-E-evidens.
+Ralph må aldrig levere rå command text, argv eller ekstra argumenter. Hostens deployment-katalog ejer den eksakte kommando, cwd, effect profile og grænser; den aktive host-autorisation skal matche execution-baseline-hashen. Quality execution kræver netværksforbud og fuld sandbox-håndhævelse og afvises før spawn, hvis hosten ikke kan levere begge. Ralph kan producere Gate-D-evidens under Headsman, men ejer ingen gate og kan ikke levere Gate-E-evidens.

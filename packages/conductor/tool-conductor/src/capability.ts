@@ -11,7 +11,12 @@
  */
 
 import { relative, sep } from 'node:path'
-import type { ConductorAction, ConductorStage, ExecutionBaseline } from '@deepseek-ai/dsh-conductor'
+import { executionBaselineHash } from '@deepseek-ai/dsh-conductor'
+import type {
+  ConductorStage,
+  ExecutionAuthorization,
+  ExecutionBaseline,
+} from '@deepseek-ai/dsh-conductor'
 import type { ToolExecution, ToolGuard, ToolRestriction } from '@deepseek-ai/dsh-tools'
 import { canonicalAbsolute, containsPath } from './path-policy.ts'
 
@@ -30,15 +35,15 @@ export const IMPLEMENTATION_TOOLS = [...READ_TOOLS, ...WRITE_TOOLS] as const
  * Detective, Strategist, Devil's Advocate, Auditor, and Arbiter are read-only;
  * the Integrator may write but not run a shell.
  * @param stage - the stage being dispatched.
- * @param permittedActions - mandate-owner actions for the run.
+ * @param authorization - host-owned authorization for the active baseline.
  * @returns the restriction to apply as the child's `toolFilter`.
  */
 export function toolRestrictionForStage(
   stage: ConductorStage,
-  permittedActions: readonly ConductorAction[],
+  authorization: ExecutionAuthorization | null,
 ): ToolRestriction {
-  const read = permittedActions.includes('read') ? [...READ_TOOLS] : []
-  const write = permittedActions.includes('write') ? [...WRITE_TOOLS] : []
+  const read = [...READ_TOOLS]
+  const write = authorization?.effectProfile.filesystem === 'workspace-write' ? [...WRITE_TOOLS] : []
   switch (stage) {
     case 'detective':
     case 'strategist':
@@ -63,19 +68,21 @@ export function toolRestrictionForStage(
  * Integrator is further limited to `docs` or `.agents/notes` descendants.
  * @param stage - dispatched specialist stage.
  * @param baseline - Gate-C execution baseline, required by write-capable stages.
- * @param permittedActions - mandate-owner actions for the run.
+ * @param authorization - host-owned authorization for the active baseline.
  * @returns a monotonic child-scoped tool guard.
  */
 export function toolGuardForStage(
   stage: ConductorStage,
   baseline: ExecutionBaseline | null,
-  permittedActions: readonly ConductorAction[],
+  authorization: ExecutionAuthorization | null,
 ): ToolGuard {
   if (stage === 'headsman' || stage === 'integrator') {
     if (baseline === null) throw new Error(`${stage} requires an approved execution baseline`)
-    if (!permittedActions.includes('write')) {
+    if (authorization === null
+      || authorization.executionBaselineHash !== executionBaselineHash(baseline)
+      || authorization.effectProfile.filesystem !== 'workspace-write') {
       return exec => (WRITE_TOOLS as readonly string[]).includes(exec.name)
-        ? `Conductor ${stage} write denied: mandate does not permit write`
+        ? `Conductor ${stage} write denied: active baseline lacks matching host authorization`
         : undefined
     }
     return exec => writePolicyDenial(exec, stage, baseline)

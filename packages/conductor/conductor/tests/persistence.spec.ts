@@ -17,6 +17,7 @@ import type { ConductorRun, GateRecord, QualityCommandBinding } from '../src/ind
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
+    recordFormatVersion: 1,
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -24,11 +25,13 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     allowedPaths: [],
     excludedPaths: [],
     sourceBaseline: null,
-    authority: { owner: 'user', permittedActions: ['read'], executionPermissions: [] },
+    authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: [],
     budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
+    baselineHistory: [],
     baseline: null,
+    executionAuthorization: null,
     currentStage: 'detective',
     history: [],
     specialistReports: [],
@@ -43,14 +46,33 @@ function gateRecord(partial: Pick<GateRecord, 'gate' | 'stage' | 'decision'> & P
 }
 
 function makeClosedRun(): ConductorRun {
+  const baseline = {
+    scopeVersion: 'scope-v1', planVersion: 'plan-v1', acceptanceVersion: 'accept-v1',
+    allowedPaths: [], excludedPaths: [], rollbackReference: 'HEAD', qualityCommands: [],
+  }
+  const baselineHash = executionBaselineHash(baseline)
   return makeRun({
     acceptanceCriteria: ['feature works'],
-    authority: { owner: 'user', permittedActions: ['read', 'deploy'], executionPermissions: [] },
+    authority: { owner: 'user' },
+    baselineHistory: [baseline],
+    baseline,
+    executionAuthorization: {
+      executionBaselineHash: baselineHash,
+      effectProfile: { filesystem: 'read-only', quality: 'none', external: 'none' },
+    },
     currentStage: 'closeout',
-    history: [gateRecord({
-      gate: 'G', stage: 'arbiter', decision: 'pass', nextStage: 'closeout',
-      basis: ['verified'], evidenceReviewed: ['report'], stateUpdate: 'move to closeout',
-    })],
+    history: [
+      gateRecord({
+        gate: 'C', stage: 'devils-advocate', decision: 'pass', nextStage: 'headsman',
+        basis: ['baseline approved'], evidenceReviewed: ['plan'], stateUpdate: 'authorize execution',
+        executionBaselineHash: baselineHash,
+      }),
+      gateRecord({
+        gate: 'G', stage: 'arbiter', decision: 'pass', nextStage: 'closeout',
+        basis: ['verified'], evidenceReviewed: ['report'], stateUpdate: 'move to closeout',
+        executionBaselineHash: baselineHash,
+      }),
+    ],
     status: 'closed',
     decision: {
       run_id: 'CON-2026-0001', decision: 'go', basis: ['verified'], evidence_reviewed: ['report'],
@@ -87,12 +109,24 @@ function makeQualityRun(): ConductorRun {
   return makeRun({
     acceptanceCriteria: ['feature works'],
     sourceBaseline: 'HEAD',
-    authority: { owner: 'user', permittedActions: ['read'], executionPermissions: ['quality-execute'] },
+    authority: { owner: 'user' },
+    baselineHistory: [baseline],
     baseline,
+    executionAuthorization: {
+      executionBaselineHash: executionBaselineHash(baseline),
+      effectProfile: { filesystem: 'read-only', quality: 'catalog', external: 'none' },
+    },
     currentStage: 'auditor',
-    history: [gateRecord({
-      gate: 'D', stage: 'headsman', decision: 'pass', nextStage: 'auditor', evidenceReviewed: [evidenceId],
-    })],
+    history: [
+      gateRecord({
+        gate: 'C', stage: 'devils-advocate', decision: 'pass', nextStage: 'headsman',
+        evidenceReviewed: ['approved plan'], executionBaselineHash: executionBaselineHash(baseline),
+      }),
+      gateRecord({
+        gate: 'D', stage: 'headsman', decision: 'pass', nextStage: 'auditor', evidenceReviewed: [evidenceId],
+        executionBaselineHash: executionBaselineHash(baseline),
+      }),
+    ],
     specialistReports: [{
       run_id: 'CON-2026-0001',
       stage: 'headsman',
@@ -136,8 +170,8 @@ function makeQualityRun(): ConductorRun {
 describe('dsh-conductor persistence', () => {
   it('round-trips a run through the JSON wire format unchanged', () => {
     const run = makeRun({
-      currentStage: 'auditor',
-      history: [gateRecord({ gate: 'E', stage: 'auditor', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' })],
+      currentStage: 'strategist',
+      history: [gateRecord({ gate: 'B', stage: 'strategist', decision: 'rework', defectClass: 'plan', nextStage: 'strategist' })],
       status: 'rework',
     })
     expect(parseRun(serializeRun(run))).toEqual(run)
@@ -163,7 +197,7 @@ describe('dsh-conductor persistence', () => {
     expect(() => parseRun(JSON.stringify({
       ...makeRun(),
       authority: { owner: 'user', permittedActions: ['delete'], executionPermissions: [] },
-    }))).toThrow(/invalid action/)
+    }))).toThrow(/attribution-only/)
     expect(() => parseRun(JSON.stringify({
       ...makeRun(),
       baseline: {
@@ -216,13 +250,13 @@ describe('dsh-conductor persistence', () => {
     }))).toThrow(/acceptanceCriteria must not contain duplicates/)
   })
 
-  it('rejects tampered quality authority, bindings, evidence, and private fields', () => {
+  it('rejects tampered authorization, bindings, evidence, and private fields', () => {
     const valid = makeQualityRun()
     expect(parseRun(serializeRun(valid))).toEqual(valid)
-    expect(() => parseRun(serializeRun({
+    expect(() => parseRun(JSON.stringify({
       ...valid,
-      authority: { ...valid.authority, executionPermissions: ['invalid' as 'quality-execute'] },
-    }))).toThrow(/invalid permission/)
+      authority: { ...valid.authority, executionPermissions: ['invalid'] },
+    }))).toThrow(/attribution-only/)
     expect(() => parseRun(serializeRun({
       ...valid,
       baseline: { ...valid.baseline!, qualityCommands: [...valid.baseline!.qualityCommands, valid.baseline!.qualityCommands[0]!] },
@@ -238,7 +272,7 @@ describe('dsh-conductor persistence', () => {
     expect(() => parseRun(serializeRun({
       ...valid,
       qualityExecutions: [{ ...valid.qualityExecutions[0]!, executionBaselineHash: 'd'.repeat(64) }],
-    }))).toThrow(/does not match baseline/)
+    }))).toThrow(/unknown baseline/)
   })
 
   it('rejects impossible quality executor ownership, timestamps, and citations', () => {
@@ -273,8 +307,53 @@ describe('dsh-conductor persistence', () => {
     }))).toThrow(/Gate D pass lacks a matching ready headsman report/)
     expect(() => parseRun(serializeRun({
       ...valid,
-      history: [{ ...valid.history[0]!, evidenceReviewed: [] }],
+      history: valid.history.map(record => record.gate === 'D' ? { ...record, evidenceReviewed: [] } : record),
     }))).toThrow(/Gate D pass lacks fresh evidence/)
+  })
+
+  it('preserves historical baselines and evidence when scope rework invalidates the active authorization', () => {
+    const reworked = recordGate(makeQualityRun(), {
+      decision: 'rework',
+      defectClass: 'scope',
+      nextStage: 'detective',
+      basis: ['scope changed'],
+      evidenceReviewed: ['scope review'],
+      stateUpdate: 'return to scope discovery',
+    })
+    expect(reworked.baseline).toBeNull()
+    expect(reworked.executionAuthorization).toBeNull()
+    expect(reworked.baselineHistory).toHaveLength(1)
+    expect(reworked.qualityExecutions).toHaveLength(1)
+    expect(parseRun(serializeRun(reworked))).toEqual(reworked)
+  })
+
+  it('does not let evidence from an old baseline satisfy a new baseline gate', () => {
+    const old = makeQualityRun()
+    const newBaseline = {
+      ...old.baseline!,
+      planVersion: 'plan-v2',
+    }
+    const newHash = executionBaselineHash(newBaseline)
+    const tampered = {
+      ...old,
+      baselineHistory: [...old.baselineHistory, newBaseline],
+      baseline: newBaseline,
+      executionAuthorization: {
+        executionBaselineHash: newHash,
+        effectProfile: { filesystem: 'read-only' as const, quality: 'catalog' as const, external: 'none' as const },
+      },
+      history: [...old.history,
+        gateRecord({
+          gate: 'C', stage: 'devils-advocate', decision: 'pass', nextStage: 'headsman',
+          evidenceReviewed: ['updated plan'], executionBaselineHash: newHash,
+        }),
+        {
+          ...old.history.find(record => record.gate === 'D')!,
+          executionBaselineHash: newHash,
+        },
+      ],
+    }
+    expect(() => parseRun(serializeRun(tampered))).toThrow(/Gate D pass lacks fresh evidence/)
   })
 
   it('rejects a Gate E pass that reuses the Gate D child identity', () => {
@@ -295,7 +374,10 @@ describe('dsh-conductor persistence', () => {
       currentStage: 'integrator',
       history: [
         ...valid.history,
-        gateRecord({ gate: 'E', stage: 'auditor', decision: 'pass', nextStage: 'integrator', evidenceReviewed: [evidenceId] }),
+        gateRecord({
+          gate: 'E', stage: 'auditor', decision: 'pass', nextStage: 'integrator',
+          evidenceReviewed: [evidenceId], executionBaselineHash: executionBaselineHash(valid.baseline!),
+        }),
       ],
       specialistReports: [
         ...valid.specialistReports,
@@ -379,12 +461,13 @@ describe('dsh-conductor persistence', () => {
       ...valid, closeout: { ...valid.closeout!, authorized_by: 'impostor' },
     }))).toThrow(/authorized_by must match authority.owner/)
     expect(() => parseRun(serializeRun({
-      ...valid,
-      authority: { owner: 'user', permittedActions: ['read'], executionPermissions: [] },
-    }))).toThrow(/authorized_action is outside the run authority/)
-    expect(() => parseRun(serializeRun({
       ...valid, closeout: { ...valid.closeout!, outcome_evidence: [] },
     }))).toThrow(/outcome_evidence must not be empty/)
+  })
+
+  it('rejects pre-versioned records without migration', () => {
+    const { recordFormatVersion: _omitted, ...legacy } = makeRun()
+    expect(() => parseRun(JSON.stringify(legacy))).toThrow(/format undefined is unsupported/)
   })
 
   it('stores, loads, and deletes runs keyed by run id without aliasing', async () => {

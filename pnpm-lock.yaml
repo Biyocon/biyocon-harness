@@ -3389,6 +3389,9 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools
+      '@deepseek-ai/dsh-user-approval':
+        specifier: workspace:^
+        version: link:../../interaction/user-approval
       '@deepseek-ai/dsh-workflow':
         specifier: workspace:^
         version: link:../../workflow/workflow

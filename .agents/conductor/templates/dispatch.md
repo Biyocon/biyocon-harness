@@ -13,8 +13,8 @@ source_baseline: <version, commit reference, or null>
 execution_baseline: <Gate-C record or null>
 allowed_paths: []
 excluded_paths: []
-allowed_actions: <stage allowlist intersected with authority, for example [read, write]>
-prohibited_actions: [commit, push, merge, release, publish, deploy, shell, <every action denied by stage or authority>]
+allowed_actions: <stage allowlist intersected with the host-approved execution effect profile>
+prohibited_actions: [commit, push, merge, release, publish, deploy, shell, <every action outside the approved effect profile>]
 acceptance_criteria: []
 constraints: []
 questions_to_resolve: []
@@ -23,4 +23,4 @@ quality_command_bindings: []
 return_format: specialist-envelope
 ```
 
-Load the matching role file as the child persona and the specialist skill as the envelope contract. Use fresh spawn for every specialist. A quality binding exposes only its opaque id and model-safe description; the private tool resolves exact argv and accepts no raw command or extra arguments. Never let one specialist send work directly to another; every result returns to the Conductor.
+Load the matching role file as the child persona and the specialist skill as the envelope contract. Use fresh spawn for every specialist. A write-capable child or quality subprocess requires an active host authorization matching the baseline hash. A quality binding exposes only its opaque id and model-safe description; the private tool resolves exact argv, requests network denial, and accepts no raw command or extra arguments. Never let one specialist send work directly to another; every result returns to the Conductor.

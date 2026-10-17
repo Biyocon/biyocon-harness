@@ -6,44 +6,50 @@ English | [中文](2026-10-10-conductor-quality-command-executor.zh.md)
 
 ## Problem
 
-The Conductor runtime deliberately removes general shell access from every specialist, but its Headsman and Ralph instructions require implementation checks and Gate E requires independent Auditor verification. Specialists can currently inspect existing results but cannot reproduce configured tests, compilers, schema validators, or generators through Conductor. Adding an ordinary shell tool would let model output select an executable, arguments, and effects beyond the approved execution baseline.
+The Conductor runtime removes general shell access from every specialist, but Headsman and Ralph require implementation checks and Gate E requires independent Auditor verification. Specialists must reproduce configured tests, compilers, schema validators, or generators without letting model output choose executable arguments, write authority, network access, or release actions.
+
+The model-facing Conductor call is not an authority channel. An owner label, proposed path list, quality-command selection, or closeout record produced by the model cannot grant writes, subprocess execution, commit, push, merge, release, publish, or deploy authority.
 
 ## Decision
 
-`dsh-tool-conductor` owns an empty-by-default deployment catalog of quality commands. Each definition has an opaque id, a model-safe description, exact argv, permitted Headsman or Auditor stages, a canonical workspace-relative cwd, an optional write root, sandbox mode, timeout, output limit, and termination grace period. Shell interpreters and invalid path relationships fail at plugin load. Gate C selects only ids; the host resolves them to immutable definition hashes and records the catalog hash in the execution baseline. Selecting a command requires the separate `quality-execute` execution permission.
+`dsh-tool-conductor` owns an empty-by-default deployment catalog of quality commands. Each definition has an opaque id, a model-safe description, exact argv, permitted Headsman or Auditor stages, a canonical workspace-relative cwd, an optional write root, an explicit filesystem effect, fixed `network: deny` and `external: none` effects, timeout, output limit, and termination grace period. Invalid path and effect relationships fail at plugin load. Gate C selects only ids; the host resolves the selected definitions and records their hashes in the execution baseline. Changes to unselected catalog entries do not invalidate a run.
 
-The spawn-in-process provider gains a trusted child-only tool-contribution capability. Workflow and Ralph carry the callback as host policy without serializing it to the worker program. The contribution is installed after ordinary child composition in the unpublished child scope, so it is neither a global tool-registry row nor subject to a name allowlist designed for inherited tools. Fork, ACP, and other out-of-process providers advertise no support and fail before starting a child.
+After Gate C produces a structurally valid baseline, the existing approval service owns the effectful authorization. The approval identifies the exact baseline hash, canonical allowed and excluded paths, selected command ids and definition hashes, and derived filesystem, quality, and external effects. Rejected, cancelled, or unavailable approval starts no write-capable child and no quality subprocess. `authority.owner` remains attribution only, and the model-facing tool accepts neither execution permissions nor closeout authorization. The core `closeRun` API remains available to a host-owned channel after Arbiter GO; the model-facing tool leaves the run at `awaiting_authorization`.
 
-The contributed `conductor_quality_check` accepts exactly `{ command_id }`. It resolves the Gate-C binding, invokes exact argv without a shell, requires a sandbox backend reporting full enforcement, and collects bounded output without a spill file. The durable `QualityExecutionRecord` contains identity, stage, gate, cycle, baseline and definition hashes, timing, exit facts, outcome, and stdout/stderr digests, but no command text or output body. Bounded diagnostics may be returned to the current specialist without entering the record.
+The spawn-in-process provider contributes the private `conductor_quality_check` only to a fresh child. Workflow and Ralph carry the callback as host policy without serializing it to the worker program. Fork, ACP, and other out-of-process providers advertise no support and fail before starting a child.
 
-Gate D requires fresh passing records for every Gate-D binding in the current cycle. Ralph rounds share the Headsman record sink and may produce that evidence, but Ralph owns no gate. Gate E starts a fresh Auditor and requires the Auditor's own fresh passing records for every Gate-E binding; Headsman or Ralph evidence cannot satisfy it. Resume rejects catalog or binding drift.
+The private tool accepts exactly `{ command_id }`. It resolves the Gate-C binding, invokes exact argv without a model-supplied shell string, requests filesystem confinement plus network denial, requires the sandbox backend to report full enforcement for that concrete policy, and collects bounded output without a spill file. The durable `QualityExecutionRecord` contains identity, stage, gate, cycle, baseline and definition hashes, timing, exit facts, outcome, and stdout/stderr digests, but no command text or output body. Bounded diagnostics may return to the current specialist without entering the record.
 
-The sandbox policy covers filesystem effects only. This design makes no network-isolation claim and never grants commit, push, merge, release, publish, or deploy authority.
+The Conductor record has an explicit pre-release format version, an append-only baseline history, one active baseline, and one matching execution authorization. Every Gate C pass and later gate attempt records its execution-baseline hash. Scope or plan rework clears the active baseline and authorization while retaining historical baselines, gate records, specialist reports, and quality executions for audit. Historical evidence remains parseable but cannot satisfy a new baseline or gate cycle.
+
+Quality evidence ids are validated before a specialist report is persisted. Each id must be unique and belong to a host-produced record from that exact dispatch. Unknown, historical, foreign, or duplicate ids escalate without persisting the invalid model report; host-produced execution records from the dispatch remain durable. Gate D requires fresh passing records for every Gate-D binding in the current cycle. Ralph may produce Headsman evidence but owns no gate. Gate E requires the fresh Auditor dispatch's own passing records; Headsman or Ralph evidence cannot satisfy it.
 
 ## Alternatives considered
 
-- Granting Headsman or Auditor the general shell tool was rejected because model output would choose unreviewed commands and arguments.
+- Granting Headsman or Auditor a general shell tool was rejected because model output would choose unreviewed commands and arguments.
 - Accepting raw command text in the private tool was rejected because it would bypass deployment review and immutable Gate-C bindings.
-- Treating prior external results as sufficient was rejected because Gate D and Gate E require current-baseline evidence, and Gate E must be independent.
-- Letting Ralph or Auditor decide a gate was rejected because Conductor is the sole owner of workflow state and gate decisions.
-- Allowing partial sandbox enforcement was rejected because a declared file policy that the host cannot fully enforce must fail closed.
+- Treating a model-provided owner label, path list, execution permission, or closeout object as authority was rejected because the model cannot authenticate mandate ownership.
+- Rejecting executables by name was rejected because wrappers and general-purpose runtimes bypass a denylist; exact deployment argv, host approval, filesystem confinement, and network denial own enforcement.
+- Hashing the entire catalog was rejected because an unrelated unselected definition would invalidate an otherwise unchanged baseline; selected definition hashes bind every executable command.
+- Discarding quality history on rework was rejected because a durable run must preserve the evidence and decisions that led to rework.
+- Allowing partial sandbox enforcement was rejected because a backend that cannot enforce the requested filesystem and network policy must fail closed before spawn.
 
 ## Verification
 
-- The catalog validates and freezes exact command definitions, rejects shell interpreters, duplicate ids, invalid paths, Auditor writes, and missing write roots.
-- The private tool rejects unknown ids, extra input fields, stale bindings, unauthorized stages, missing execution permission, and partial or unavailable sandbox enforcement before command execution.
-- Execution uses exact argv without a shell, applies configured cwd and filesystem policy, bounds time and collected output, leaves no spill path, and classifies timeout, signal, runner, denial, and ordinary exit failures.
-- Durable records contain only approved execution facts and digests; persistence rejects unknown fields, cross-run references, hash drift, invalid timing, and unknown cited evidence.
-- Gate D accepts Ralph-produced Headsman evidence when it is fresh and passing; Gate E requires a distinct fresh Auditor run and cannot reuse Gate-D evidence.
-- Workflow, Ralph, and subagent providers preflight the trusted child-tool capability without exposing the callback to model or worker-script input.
-- The Conductor package builds its root and invariant companion as self-contained published entries without undeclared runtime chunks.
-- `pnpm exec vitest run examples/headless-agent/tests/headless.snapshot.ts -t "replays Conductor quality commands" --config vitest.snapshot.config.ts` passes the keyless assembled application through Detective to Arbiter, executes the binding independently under Headsman and Auditor, persists all eight run checkpoints, and ends at `awaiting_authorization`.
-- `pnpm run test -t conductor` passes 82 focused tests across 10 files, including catalog validation, model-boundary escalation, Ralph command handoff, stage independence, persistence, and gate evidence rules.
-- `pnpm run typecheck`, `pnpm run lint`, `pnpm run doc-sync`, `pnpm run verify-cordis-config`, and `pnpm run verify-built-package-invariants` pass; doc-sync reports 28 gates, config validation reports 124 files, and built-package validation reports 222 companions.
+- Catalog validation freezes exact command definitions, includes the effect profile in each definition hash, rejects duplicate ids, invalid paths, Auditor writes, and missing write roots, and permits shell executables only as deployment-owned exact argv.
+- Gate C asks through the approval service only after the baseline is structurally valid. Denied, cancelled, or unavailable approval produces a durable blocker and starts no write-capable specialist or quality subprocess.
+- The model-facing schema omits write, quality-execute, and closeout authority. Capability filters and guards derive from the persisted baseline authorization.
+- Seatbelt enforces complete network denial. Bubblewrap isolates IP networking with `--unshare-net` but leaves mounted host Unix-domain sockets reachable; Bubblewrap, Landlock, and Windows ACL therefore report partial enforcement for that policy, so the quality executor fails before spawn. Ordinary Bash, PowerShell, and terminal consumers request explicit network inheritance.
+- Execution uses exact argv, applies configured cwd and filesystem policy, bounds time and output, leaves no spill path, and classifies timeout, cancellation, signal, runner, denial, unavailable-sandbox, and ordinary exit failures.
+- Persistence rejects unknown fields, obsolete record versions, cross-run references, baseline-history drift, invalid timing, and invalid evidence relations. Scope and plan rework round-trip through serialize, parse, and resume while preserving historical evidence.
+- Unknown, historical, foreign, and duplicate quality evidence ids are rejected before specialist-report persistence. Host records produced during the failed dispatch remain available for audit.
+- Gate D accepts fresh Ralph-produced Headsman evidence; Gate E requires a distinct fresh Auditor dispatch and cannot reuse Gate-D or prior-baseline evidence.
+- The assembled keyless scenario exercises host approval, selected binding hashes, independent Gate-D and Gate-E execution, durable baseline lineage, and the final `awaiting_authorization` state.
 
 ## Consequences
 
-- Hosts without a fully enforcing sandbox backend cannot run quality commands; this is an intentional fail-closed availability cost, especially on Windows configurations with partial enforcement.
-- A deployment catalog is executable host policy. Incorrect definitions can still run an unintended reviewed argv, so deployment review remains required.
+- Quality commands are unavailable on hosts that cannot fully enforce both their filesystem policy and network denial. Built-in Linux Bubblewrap/Landlock and Windows ACL compositions therefore fail closed for quality execution; Seatbelt or an explicitly asserted stronger custom runner can satisfy the policy. Ordinary shell and terminal calls retain explicit network inheritance.
+- A deployment catalog remains executable host policy. Deployment review owns the exact argv and effect declaration, while runtime approval binds the selected definitions to one run and baseline.
 - A workspace-write backend may need backend-owned temporary files outside the configured product write root to launch the confined process; those files are not product-write authority.
-- Filesystem confinement does not prevent network access. Commands needing network isolation require a different execution environment or capability provider.
+- Existing pre-release Conductor records without the current record-format version are rejected rather than migrated.
+- Arbiter GO never closes the run through model input. A host-owned caller records any authorized external action and its outcome through the core closeout API.

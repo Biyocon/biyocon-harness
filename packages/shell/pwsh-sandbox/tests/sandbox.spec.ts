@@ -173,7 +173,7 @@ describe.skipIf(!pwshAvailable())('SandboxPwshExecutor', () => {
     expect(result.exitCode).toBe(0)
     expect(calls).toHaveLength(1)
     const call = calls[0]
-    expect(call?.policy).toEqual(RO)
+    expect(call?.policy).toEqual({ ...RO, network: 'inherit' })
     // The confined argv is the pwsh invocation, ready for a runner prefix.
     expect(call?.argv[0]).toMatch(/pwsh(\.exe)?$/u)
     expect(call?.argv).toContain('-NonInteractive')

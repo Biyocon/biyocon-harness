@@ -7,11 +7,13 @@ import {
   recordGate,
   reworkCycles,
   stageOfGate,
+  executionBaselineHash,
 } from '../src/index.ts'
 import type { ConductorRun, ConductorStage, GateId, GateRecord, GateVerdict } from '../src/index.ts'
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
+    recordFormatVersion: 1,
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -19,11 +21,13 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     allowedPaths: [],
     excludedPaths: [],
     sourceBaseline: null,
-    authority: { owner: 'user', permittedActions: ['read'], executionPermissions: [] },
+    authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: [],
     budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
+    baselineHistory: [],
     baseline: null,
+    executionAuthorization: null,
     currentStage: 'detective',
     history: [],
     specialistReports: [],
@@ -87,6 +91,30 @@ describe('dsh-conductor gate engine', () => {
     expect(next.history[0]).toMatchObject({ gate: 'A', stage: 'detective', decision: 'pass', nextStage: 'strategist' })
     expect(next.currentStage).toBe('strategist')
     expect(next.status).toBe('running')
+  })
+
+  it('requires host authorization bound to the exact Gate C baseline', () => {
+    const baseline = {
+      scopeVersion: 'scope-v1', planVersion: 'plan-v1', acceptanceVersion: 'accept-v1',
+      allowedPaths: [], excludedPaths: [], rollbackReference: 'HEAD', qualityCommands: [],
+    }
+    const hash = executionBaselineHash(baseline)
+    const run = makeRun({
+      currentStage: 'devils-advocate',
+      baselineHistory: [baseline],
+      baseline,
+      executionAuthorization: {
+        executionBaselineHash: hash,
+        effectProfile: { filesystem: 'read-only', quality: 'none', external: 'none' },
+      },
+    })
+    expect(() => recordGate({ ...run, executionAuthorization: null }, {
+      ...PASS, executionBaselineHash: hash,
+    })).toThrow(/host-authorized/)
+    expect(() => recordGate(run, { ...PASS, executionBaselineHash: 'f'.repeat(64) })).toThrow(/baseline hash/)
+    expect(recordGate(run, { ...PASS, executionBaselineHash: hash }).history[0]).toMatchObject({
+      gate: 'C', decision: 'pass', executionBaselineHash: hash,
+    })
   })
 
   it('records an Arbiter pass by moving the run to closeout', () => {
@@ -188,7 +216,7 @@ describe('dsh-conductor gate engine', () => {
 
   it('requires explicit owner authority and records a traceable closeout without executing it', () => {
     const run = makeRun({
-      authority: { owner: 'user', permittedActions: ['read', 'deploy'], executionPermissions: [] },
+      authority: { owner: 'user' },
       currentStage: 'closeout',
       status: 'awaiting_authorization',
       decision: {
@@ -214,7 +242,7 @@ describe('dsh-conductor gate engine', () => {
     expect(run.status).toBe('awaiting_authorization')
   })
 
-  it('rejects closeout from the wrong owner or for an unauthorized action', () => {
+  it('rejects closeout from the wrong owner', () => {
     const run = makeRun({
       currentStage: 'closeout', status: 'awaiting_authorization',
       decision: {
@@ -228,6 +256,6 @@ describe('dsh-conductor gate engine', () => {
       traceability: { mandate: [], baseline: [], changes: [], verification: [], decision: [] },
     }
     expect(() => closeRun(run, authorization)).toThrow(/mandate owner/)
-    expect(() => closeRun(run, { ...authorization, authorizedBy: 'user' })).toThrow(/outside the run authority/)
+    expect(closeRun(run, { ...authorization, authorizedBy: 'user' }).closeout?.authorized_action).toBe('merge')
   })
 })

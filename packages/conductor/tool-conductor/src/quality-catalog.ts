@@ -12,7 +12,7 @@ export interface QualityCommandConfig {
   id: string
   /** Command purpose text safe to include in a model prompt. */
   modelSafeDescription: string
-  /** Exact executable and argument vector; shell interpreters are forbidden. */
+  /** Exact executable and argument vector; no shell parsing or argument expansion is performed. */
   argv: string[]
   /** Workspace-relative working directory. */
   cwd: string
@@ -30,15 +30,24 @@ export interface QualityCommandConfig {
   graceMs: number
 }
 
+/** Immutable effects one catalog command requires from its host authorization and sandbox. */
+export interface QualityCommandEffectProfile {
+  /** Filesystem confinement required for this exact command. */
+  filesystem: 'read-only' | 'workspace-write'
+  /** Quality commands never inherit host network access. */
+  network: 'deny'
+  /** Quality commands cannot request Git, release, or other external authority. */
+  external: 'none'
+}
+
 /** Validated immutable command definition with its stable digest. */
-export interface QualityCommandDefinition extends Omit<QualityCommandConfig, 'id' | 'argv' | 'allowedStages'> {
+export interface QualityCommandDefinition extends Omit<QualityCommandConfig, 'id' | 'argv' | 'allowedStages' | 'sandboxMode'> {
   id: ReturnType<typeof QualityCommandId>
   argv: readonly [string, ...string[]]
   allowedStages: readonly QualityPolicyStage[]
+  effectProfile: Readonly<QualityCommandEffectProfile>
   definitionHash: string
 }
-
-const SHELL_PROGRAMS = new Set(['bash', 'sh', 'zsh', 'fish', 'cmd', 'cmd.exe', 'powershell', 'powershell.exe', 'pwsh', 'pwsh.exe'])
 
 function normalizedText(value: string, field: string): string {
   if (value.length === 0 || value !== value.trim()) throw new TypeError(`${field} must be a non-empty normalized string`)
@@ -83,10 +92,6 @@ export function resolveQualityCatalog(configs: readonly QualityCommandConfig[]):
       throw new TypeError(`qualityCommands.${id}.argv must contain exact non-empty arguments`)
     }
     const argv = rawArgv as string[]
-    const [executable] = argv
-    if (executable === undefined) throw new TypeError(`qualityCommands.${id}.argv must not be empty`)
-    const program = executable.replace(/^.*[\\/]/, '').toLowerCase()
-    if (SHELL_PROGRAMS.has(program)) throw new TypeError(`qualityCommands.${id}.argv must not invoke a shell interpreter`)
     const rawAllowedStages: unknown = config.allowedStages
     if (!Array.isArray(rawAllowedStages) || rawAllowedStages.length === 0
       || rawAllowedStages.some(stage => stage !== 'headsman' && stage !== 'auditor')
@@ -112,6 +117,11 @@ export function resolveQualityCatalog(configs: readonly QualityCommandConfig[]):
     if (allowedStages.includes('auditor') && sandboxMode !== 'read-only') {
       throw new TypeError(`qualityCommands.${id} Auditor command must be read-only`)
     }
+    const effectProfile = Object.freeze({
+      filesystem: sandboxMode,
+      network: 'deny' as const,
+      external: 'none' as const,
+    })
     const normalized = {
       id,
       modelSafeDescription: description,
@@ -119,7 +129,7 @@ export function resolveQualityCatalog(configs: readonly QualityCommandConfig[]):
       cwd,
       ...writeRoot === undefined ? {} : { writeRoot },
       allowedStages: Object.freeze([...allowedStages]),
-      sandboxMode,
+      effectProfile,
       timeoutMs: timerDelay(config.timeoutMs, `qualityCommands.${id}.timeoutMs`),
       maxOutputBytes: positiveInteger(config.maxOutputBytes, `qualityCommands.${id}.maxOutputBytes`),
       graceMs: timerDelay(config.graceMs, `qualityCommands.${id}.graceMs`),

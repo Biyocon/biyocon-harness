@@ -21,8 +21,10 @@ import {
 import type { Config } from '@deepseek-ai/dsh-sandbox-local'
 import { bwrapProfileArgs, landlockProfileArgs, seatbeltProfileArgs } from '../src/profiles.ts'
 
-const RO: SandboxPolicy = { mode: 'read-only', workspaceRoot: '/ws' }
-const WW: SandboxPolicy = { mode: 'workspace-write', workspaceRoot: '/ws' }
+const RO: SandboxPolicy = { mode: 'read-only', network: 'inherit', workspaceRoot: '/ws' }
+const WW: SandboxPolicy = { mode: 'workspace-write', network: 'inherit', workspaceRoot: '/ws' }
+const RO_NO_NETWORK: SandboxPolicy = { mode: 'read-only', network: 'deny', workspaceRoot: '/ws' }
+const WW_NO_NETWORK: SandboxPolicy = { mode: 'workspace-write', network: 'deny', workspaceRoot: '/ws' }
 
 async function setup(config: Config = {}, internals: LocalSandboxProvider['internals'] = {}) {
   const ctx = new Context()
@@ -73,6 +75,12 @@ describe('profile dialects', () => {
     ])
   })
 
+  it('bwrap network deny creates a new network namespace', () => {
+    expect(bwrapProfileArgs(RO_NO_NETWORK)).toEqual([
+      '--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc', '--die-with-parent', '--unshare-net',
+    ])
+  })
+
   it('landlock read-only: readable tree plus a writable /dev/null, nothing else', () => {
     // /dev/null specifically, NOT /dev: a whole-/dev grant would let confined
     // commands write real host paths beneath it (/dev/shm) under read-only.
@@ -81,6 +89,10 @@ describe('profile dialects', () => {
 
   it('landlock workspace-write: adds the host /tmp and the workspace root', () => {
     expect(landlockProfileArgs(WW)).toEqual(['--ro', '/', '--rw', '/dev/null', '--rw', '/tmp', '--rw', '/ws'])
+  })
+
+  it('landlock cannot express network deny in its launcher arguments', () => {
+    expect(landlockProfileArgs(RO_NO_NETWORK)).toEqual(landlockProfileArgs(RO))
   })
 
   it('seatbelt read-only: allow-default with every file write denied except the /dev/null literal', () => {
@@ -98,8 +110,12 @@ describe('profile dialects', () => {
     expect(seatbeltProfileArgs(WW)).toEqual(['-p', `${SEATBELT_RO_PROFILE} ${allow}`])
   })
 
+  it('seatbelt network deny adds the SBPL network rule', () => {
+    expect(seatbeltProfileArgs(RO_NO_NETWORK)).toEqual(['-p', `${SEATBELT_RO_PROFILE} (deny network*)`])
+  })
+
   it('seatbelt workspace-write dedups a workspace root that already IS the temp dir', () => {
-    const profile = seatbeltProfileArgs({ mode: 'workspace-write', workspaceRoot: tmpdir() })[1] as string
+    const profile = seatbeltProfileArgs({ mode: 'workspace-write', network: 'inherit', workspaceRoot: tmpdir() })[1] as string
     const grant = `(subpath "${realpathSync(tmpdir())}")`
     expect(profile).toContain(grant)
     expect(profile.split(grant)).toHaveLength(2)
@@ -129,6 +145,25 @@ describe('runnerCommand config', () => {
     expect(probeSeatbelt).not.toHaveBeenCalled()
   })
 
+  it('a configured bwrap-compatible runner reports network deny as partial by default', async () => {
+    const { sandbox } = await setup({
+      runnerCommand: ['fake-runner'],
+      runnerFailureSignatures: ['fake-runner: profile rejected'],
+    })
+    const confined = sandbox.confine(['true'], RO_NO_NETWORK)
+    expect(confined.argv).toEqual(['fake-runner', ...bwrapProfileArgs(RO_NO_NETWORK), '--', 'true'])
+    expect(confined.enforcement).toBe('partial')
+  })
+
+  it('accepts an explicit operator assertion for a configured runner with stronger network denial', async () => {
+    const { sandbox } = await setup({
+      runnerCommand: ['stronger-runner'],
+      runnerNetworkDenyEnforcement: 'full',
+      runnerFailureSignatures: ['stronger-runner: profile rejected'],
+    })
+    expect(sandbox.confine(['true'], RO_NO_NETWORK).enforcement).toBe('full')
+  })
+
   it('an EMPTY runnerCommand means unconfigured: the platform chain still gates the wrap', async () => {
     const probeBwrap = vi.fn(() => false)
     const { sandbox } = await setup({ runnerCommand: [] }, { platform: 'linux', probeBwrap, probeLandlock: () => 'unusable' })
@@ -145,6 +180,12 @@ describe('runnerCommand config', () => {
   it('rejects runner failure signatures when no custom runner consumes them', async () => {
     await expect(setup({ runnerFailureSignatures: ['profile rejected'] })).rejects.toThrow(
       'runnerFailureSignatures requires runnerCommand',
+    )
+  })
+
+  it('rejects a full network-denial assertion without a configured runner', async () => {
+    await expect(setup({ runnerNetworkDenyEnforcement: 'full' })).rejects.toThrow(
+      'runnerNetworkDenyEnforcement full requires runnerCommand',
     )
   })
 
@@ -173,6 +214,11 @@ describe('the platform chains', () => {
     expect(probeLandlock).not.toHaveBeenCalled()
   })
 
+  it('reports bwrap network isolation as partial because host Unix sockets remain mounted', async () => {
+    const { sandbox } = await setup({}, { platform: 'linux', probeBwrap: () => true })
+    expect(sandbox.confine(['true'], RO_NO_NETWORK).enforcement).toBe('partial')
+  })
+
   it('linux falls back to the launcher when the bwrap probe fails, speaking the landlock dialect', async () => {
     const probeBwrap = vi.fn(() => false)
     const probeLandlock = vi.fn(() => 'full' as const)
@@ -192,6 +238,16 @@ describe('the platform chains', () => {
     expect(probeLandlock).toHaveBeenCalledWith(launcher)
   })
 
+  it('reports Landlock as partial when the concrete policy also requires network denial', async () => {
+    const { sandbox } = await setup({}, {
+      platform: 'linux',
+      probeBwrap: () => false,
+      probeLandlock: () => 'full',
+      landlockLauncher: fakeLauncher(),
+    })
+    expect(sandbox.confine(['true'], RO_NO_NETWORK).enforcement).toBe('partial')
+  })
+
   it('darwin selects its sole candidate WITHOUT probing: nothing to arbitrate', async () => {
     // The safety property moves to execution time: an unusable sandbox-exec
     // refuses to run the command, and the wrap's runnerFailureRules let
@@ -206,6 +262,13 @@ describe('the platform chains', () => {
       runnerFailureRules: [{ fatalSignatures: ['sandbox-exec: '] }],
     })
     expect(probeSeatbelt).not.toHaveBeenCalled()
+  })
+
+  it('reports Seatbelt network denial as full enforcement', async () => {
+    const { sandbox } = await setup({}, { platform: 'darwin' })
+    const confined = sandbox.confine(['true'], WW_NO_NETWORK)
+    expect(confined.argv).toEqual(['sandbox-exec', ...seatbeltProfileArgs(WW_NO_NETWORK), '--', 'true'])
+    expect(confined.enforcement).toBe('full')
   })
 
   it('a platform with no chain fails closed without a single probe: the command never runs', async () => {
@@ -394,6 +457,14 @@ describe('the windows-acl probe (runner invocation contract)', () => {
     expect(confined.enforcement).toBe('partial')
     expect(confined.denialSignatures).toEqual(['access is denied', 'access to the path', 'permission denied'])
     expect(confined.runnerFailureRules).toEqual([{ allowedExitCodes: [127], fatalSignatures: ['windows-acl-run: '] }])
+  })
+
+  it('reports windows-acl as partial when network denial is requested', async () => {
+    const { sandbox } = await setup({}, {
+      chain: ['windows-acl'],
+      windowsAclRunnerArgs: ['node', 'windows-acl-runner.js'],
+    })
+    expect(sandbox.confine(['true'], RO_NO_NETWORK).enforcement).toBe('partial')
   })
 
   it('reads a failing probe as unusable and walks to the next rung', async () => {

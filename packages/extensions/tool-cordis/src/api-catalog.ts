@@ -977,8 +977,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       {
         signature: 'abstract confine(argv: readonly string[], policy: SandboxPolicy): ConfinedArgv',
         description: 'Wrap `argv` so it executes confined under `policy` on this host; the caller spawns the returned argv in place of its own.',
-        parameters: [{ name: 'argv', description: 'the exact argv the caller is about to spawn (program plus arguments), NOT a shell string — a shell-shaped consumer passes `[\'bash\', \'-c\', command]`.' }, { name: 'policy', description: 'the file-effect policy this execution runs under, carried per call (see {@link SandboxPolicy}).' }],
-        returns: 'the argv to spawn instead, plus the enforcement completeness the selected backend achieves for it.',
+        parameters: [{ name: 'argv', description: 'the exact argv the caller is about to spawn (program plus arguments), NOT a shell string — a shell-shaped consumer passes `[\'bash\', \'-c\', command]`.' }, { name: 'policy', description: 'the complete file and network policy this execution runs under, carried per call (see {@link SandboxPolicy}).' }],
+        returns: 'the argv to spawn instead, plus the enforcement completeness the selected backend achieves for that concrete policy.',
       },
     ],
   },
@@ -3676,8 +3676,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SandboxMode = \'read-only\' | \'workspace-write\' | \'danger-full-access\';',
   },
   {
+    name: 'SandboxNetwork',
+    declaration: 'export type SandboxNetwork = \'inherit\' | \'deny\';',
+  },
+  {
     name: 'SandboxPolicy',
-    declaration: 'export interface SandboxPolicy extends SandboxExecutionPolicy {\n    mode: ConfinedSandboxMode;\n}',
+    declaration: 'export interface SandboxPolicy extends SandboxExecutionPolicy {\n    mode: ConfinedSandboxMode;\n    network: SandboxNetwork;\n}',
   },
   {
     name: 'SandboxPolicyRequest',

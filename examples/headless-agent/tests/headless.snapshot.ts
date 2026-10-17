@@ -160,7 +160,15 @@ function normalizeHeadlessStream(rawStdout: string, cwd: string): string {
 }
 
 function normalizeConductorStream(rawStdout: string, cwd: string): string {
-  return normalizeHeadlessStream(rawStdout, cwd)
+  let normalized = normalizeHeadlessStream(rawStdout, cwd)
+  for (const encodedCwd of [
+    cwd.replaceAll('\\', '\\\\\\\\'),
+    cwd.replaceAll('\\', '\\\\'),
+    cwd,
+  ]) {
+    normalized = normalized.replaceAll(encodedCwd, '{{cwd}}')
+  }
+  return normalized
     .replace(/CON-\d{4}-\d{4}/g, '{{runId}}')
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, '{{evidenceId}}')
     .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g, '{{isoTime}}')
@@ -792,12 +800,12 @@ describe('headless stream-json snapshots', () => {
     expect(normalized).toBe(await readFile(streamExpected, 'utf8'))
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
-  it('rejects Conductor closeout authorization without an existing run', async () => {
+  it('rejects model-controlled Conductor closeout authority', async () => {
     const prompt = await scenarioPrompt(conductorScenarioDir, 'conductor-closeout-authorization')
     const streamExpected = join(conductorScenarioDir, 'stream-json.expected.jsonl')
     let runCwd = ''
     const result = await runLoaderSmoke({
-      label: 'Conductor closeout authorization headless stream-json snapshot',
+      label: 'Conductor model-controlled closeout headless stream-json snapshot',
       tempDirPrefix: 'headless-snapshot-conductor-closeout-',
       binScript,
       libBinScript: binScript,
@@ -808,6 +816,8 @@ describe('headless stream-json snapshots', () => {
         DSH_SNAPSHOT: 'replay',
         DSH_SNAPSHOT_FILE: join(conductorScenarioDir, 'session.jsonl'),
         DSH_SNAPSHOT_OVERRIDE: join(conductorScenarioDir, 'replay.override.json'),
+        DSH_AGENTS_HOME: conductorAgentsHome,
+        DSH_CONDUCTOR_ROLE_DIR: conductorRoleDir,
         NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
       },
       prepare: (cwd) => { runCwd = cwd },
@@ -818,7 +828,9 @@ describe('headless stream-json snapshots', () => {
         const call = records.find(record => record.type === 'tool/call')
         expect((call?.data as JsonObject | undefined)?.name).toBe('conductor')
         const toolResult = records.find(record => record.type === 'tool/result')
-        expect(JSON.stringify(toolResult)).toContain('closeoutAuthorization requires an existing runId')
+        const resultText = JSON.stringify(toolResult)
+        expect(resultText).toContain('Conductor closeout authorization is host-only')
+        expect(resultText).toContain('not accepted by the model-facing tool')
         expect(records.some(record => record.type === 'conductor/checkpoint')).toBe(false)
       },
     })

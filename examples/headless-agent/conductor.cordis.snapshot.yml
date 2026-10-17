@@ -27,6 +27,12 @@
               sampleOverCapGlobResults: false
           - id: conductor-attachments
             name: '@deepseek-ai/dsh-attachment-local'
+          - id: conductor-approval
+            name: '@deepseek-ai/dsh-user-approval'
+            config:
+              policy: ask
+          - id: conductor-snapshot-approval
+            name: ./tests/fixtures/conductor-snapshot-approval.ts
           # Test-only full-enforcement wrapper: the snapshot exercises the
           # shipped executor without depending on one CI host's sandbox runner.
           - id: conductor-snapshot-sandbox

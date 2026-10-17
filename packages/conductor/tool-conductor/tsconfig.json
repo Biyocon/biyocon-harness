@@ -15,6 +15,7 @@
     { "path": "../../core/tools" },
     { "path": "../../workflow/workflow" },
     { "path": "../../workflow/tool-ralph" },
+    { "path": "../../interaction/user-approval" },
     { "path": "../../llm/llm" },
     { "path": "../../skill/skill" },
     { "path": "../../subagent/subagent" },

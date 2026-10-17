@@ -2,9 +2,11 @@
 
 [English](README.md) | 中文
 
-Conductor runtime 拥有 run 状态、A–G gate、按缺陷类别的 rework 路由、source/execution baseline 以及显式 closeout record。`SessionConductorRunStore` 在每次转换后向父 Session 日志追加完整的键控 checkpoint 并执行 flush；恢复只接受最后一个已记录 gate 的状态，并拒绝 terminal 或 escalated run。
+Conductor runtime 拥有 run 状态、A–G gate、按缺陷类别的 rework 路由、source/execution baseline 以及显式 closeout record。`SessionConductorRunStore` 在每次转换后向父 Session 日志追加完整的键控 checkpoint 并执行 flush；恢复只接受最后一个已记录 gate 的状态，并拒绝 terminal 或 escalated run。预发布 record 携带显式格式版本，不支持的 record 会在不迁移的情况下被拒绝。
 
-专家把 `SpecialistEnvelope` 返回给 Conductor，绝不自行选择下一个专家。Gate C 安装不可变 execution baseline，其中包括由部署解析的 quality-command binding 和 catalog hash。Headsman 与 Auditor 引用持久化的 `QualityExecutionRecord` id，而不是命令文本；Gate D 与 Gate E 都要求对应 gate 绑定的每个命令具有全新的通过证据，且 Gate E 只接受其独立 Auditor cycle 产生的证据。Gate G 记录 Arbiter 决策；GO 会保持 `awaiting_authorization`，直到 mandate owner 提供 outcome evidence 与 traceability。Runtime 只记录 closeout，不执行 commit、push、merge 或 deploy。
+专家把 `SpecialistEnvelope` 返回给 Conductor，绝不自行选择下一个专家。Gate C 提议不可变 execution baseline，其中包含由部署解析的 quality-command binding 及其 definition hash。在 Gate C 通过之前，host 必须授权精确的 baseline hash 及其 effect profile：实施所需的 workspace write、存在绑定命令时的 catalog quality execution，以及无 external effect。拒绝授权或 approval provider 不可用都会在 Headsman 启动前阻塞 run。已授权 baseline 保留在 append-only history 中；scope 或 plan rework 只清除 active baseline 和 authorization，保留旧证据，但旧证据不能满足后续 baseline。
+
+Headsman 与 Auditor 必须精确引用当前 dispatch 产生的持久化 `QualityExecutionRecord` id，而不能引用命令文本或旧证据。Gate D 与 Gate E 都要求对应 gate 绑定的每个命令具有全新的通过证据，且 Gate E 只接受其独立 Auditor cycle 产生的证据。Gate G 记录 Arbiter 决策；GO 会保持 `awaiting_authorization`，直到 mandate owner 通过 host-owned closeout API 提供 outcome evidence 与 traceability。Runtime 只记录 closeout，不执行 commit、push、merge 或 deploy。`ConductorAuthority` 仅标识 mandate owner，不授予 execution 或 external-action capability。
 
 ## 已知限制与延期工作
 

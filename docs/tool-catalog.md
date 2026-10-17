@@ -1273,23 +1273,11 @@ Run a multi-role, gated Conductor workflow toward one objective. The tool drives
     },
     "authority": {
       "type": "object",
-      "description": "The mandate owner, permitted external actions, and optional quality-execute permission.",
+      "description": "Mandate-owner attribution only. Execution effects require a separate host-owned Gate C approval.",
       "additionalProperties": false,
       "properties": {
         "owner": {
           "type": "string"
-        },
-        "permittedActions": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "executionPermissions": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
         }
       },
       "required": [
@@ -1299,126 +1287,6 @@ Run a multi-role, gated Conductor workflow toward one objective. The tool drives
     "runId": {
       "type": "string",
       "description": "Optional run id to resume an existing unfinished run."
-    },
-    "closeoutAuthorization": {
-      "type": "object",
-      "description": "Explicit owner authorization used only to close a prior Arbiter GO; Conductor records but never performs the action.",
-      "additionalProperties": false,
-      "properties": {
-        "authorizedBy": {
-          "type": "string"
-        },
-        "action": {
-          "type": "string",
-          "enum": [
-            "record-only",
-            "read",
-            "write",
-            "commit",
-            "push",
-            "merge",
-            "release",
-            "publish",
-            "deploy"
-          ]
-        },
-        "outcomeEvidence": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "actionsTaken": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "unverifiedItems": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "openRisks": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "followUp": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "owner": {
-                "type": "string"
-              },
-              "dueCondition": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "owner",
-              "dueCondition"
-            ]
-          }
-        },
-        "traceability": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "mandate": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "baseline": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "changes": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "verification": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "decision": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          },
-          "required": [
-            "mandate",
-            "baseline",
-            "changes",
-            "verification",
-            "decision"
-          ]
-        }
-      },
-      "required": [
-        "authorizedBy",
-        "action",
-        "outcomeEvidence",
-        "actionsTaken",
-        "unverifiedItems",
-        "openRisks",
-        "followUp",
-        "traceability"
-      ]
     }
   },
   "required": [

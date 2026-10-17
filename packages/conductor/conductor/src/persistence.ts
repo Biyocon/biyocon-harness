@@ -13,7 +13,6 @@
 import type {
   ArbiterDecision,
   ConductorAction,
-  ConductorExecutionPermission,
   ConductorCloseoutAction,
   ConductorRun,
   ConductorRunId,
@@ -22,6 +21,7 @@ import type {
   DefectClass,
   GateDecision,
   GateId,
+  ExecutionBaseline,
   QualityExecutionRecord,
   QualityExecutionFailure,
   QualityExecutorStage,
@@ -29,7 +29,8 @@ import type {
 } from './types.ts'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { isValidRunId } from './run-id.ts'
-import { executionBaselineHash } from './quality.ts'
+import { executionBaselineHash, executionEffectProfile } from './quality.ts'
+import { CONDUCTOR_RECORD_FORMAT_VERSION } from './state.ts'
 
 /** One whole-run checkpoint in the parent Session log. A null record is a tombstone. */
 export interface ConductorCheckpointData {
@@ -55,7 +56,6 @@ const GATE_IDS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'] as const satisfies readonly
 const GATE_DECISIONS = ['pass', 'rework', 'escalate', 'abort'] as const satisfies readonly GateDecision[]
 const DEFECT_CLASSES = ['scope', 'plan', 'implementation', 'delivery'] as const satisfies readonly DefectClass[]
 const ACTIONS = ['read', 'write', 'commit', 'push', 'merge', 'release', 'publish', 'deploy'] as const satisfies readonly ConductorAction[]
-const EXECUTION_PERMISSIONS = ['quality-execute'] as const satisfies readonly ConductorExecutionPermission[]
 const CLOSEOUT_ACTIONS = ['record-only', ...ACTIONS] as const satisfies readonly ConductorCloseoutAction[]
 const ARBITER_DECISIONS = ['go', 'no-go'] as const satisfies readonly ArbiterDecision[]
 const SPECIALIST_STATUSES = ['ready', 'rework', 'blocked', 'failed'] as const
@@ -142,45 +142,47 @@ function requireNormalizedStringArray(value: unknown, field: string, distinct = 
   }
 }
 
-function validateBaseline(value: unknown): void {
+function validateBaseline(value: unknown, field = 'baseline'): void {
   if (value === null) return
-  const baseline = asObject(value, 'baseline')
-  requireString(baseline.scopeVersion, 'baseline.scopeVersion')
-  requireString(baseline.planVersion, 'baseline.planVersion')
-  requireString(baseline.acceptanceVersion, 'baseline.acceptanceVersion')
-  requireNormalizedStringArray(baseline.allowedPaths, 'baseline.allowedPaths', true)
-  requireNormalizedStringArray(baseline.excludedPaths, 'baseline.excludedPaths', true)
-  requireNormalizedString(baseline.rollbackReference, 'baseline.rollbackReference')
+  const baseline = asObject(value, field)
+  requireString(baseline.scopeVersion, `${field}.scopeVersion`)
+  requireString(baseline.planVersion, `${field}.planVersion`)
+  requireString(baseline.acceptanceVersion, `${field}.acceptanceVersion`)
+  requireNormalizedStringArray(baseline.allowedPaths, `${field}.allowedPaths`, true)
+  requireNormalizedStringArray(baseline.excludedPaths, `${field}.excludedPaths`, true)
+  requireNormalizedString(baseline.rollbackReference, `${field}.rollbackReference`)
   if (!Array.isArray(baseline.qualityCommands)) {
-    throw new Error('Conductor run record baseline.qualityCommands must be an array')
+    throw new Error(`Conductor run record ${field}.qualityCommands must be an array`)
   }
   const ids = new Set<string>()
   for (const [index, value] of baseline.qualityCommands.entries()) {
-    const binding = asObject(value, `baseline.qualityCommands[${index}]`)
+    const binding = asObject(value, `${field}.qualityCommands[${index}]`)
     const exactKeys = new Set(['id', 'definitionHash', 'requiredGates'])
     for (const key of Object.keys(binding)) {
       if (!exactKeys.has(key)) {
-        throw new Error(`Conductor run record baseline.qualityCommands[${index}] contains unsupported field ${key}`)
+        throw new Error(`Conductor run record ${field}.qualityCommands[${index}] contains unsupported field ${key}`)
       }
     }
-    const id = requireNormalizedString(binding.id, `baseline.qualityCommands[${index}].id`)
-    if (!/^[a-f0-9]{64}$/.test(requireString(binding.definitionHash, `baseline.qualityCommands[${index}].definitionHash`))) {
-      throw new Error(`Conductor run record baseline.qualityCommands[${index}].definitionHash must be SHA-256`)
+    const id = requireNormalizedString(binding.id, `${field}.qualityCommands[${index}].id`)
+    if (!/^[a-f0-9]{64}$/.test(requireString(binding.definitionHash, `${field}.qualityCommands[${index}].definitionHash`))) {
+      throw new Error(`Conductor run record ${field}.qualityCommands[${index}].definitionHash must be SHA-256`)
     }
     if (!Array.isArray(binding.requiredGates) || binding.requiredGates.length === 0
       || binding.requiredGates.some(gate => gate !== 'D' && gate !== 'E')
       || new Set(binding.requiredGates).size !== binding.requiredGates.length) {
-      throw new Error(`Conductor run record baseline.qualityCommands[${index}].requiredGates must contain distinct D/E gates`)
+      throw new Error(`Conductor run record ${field}.qualityCommands[${index}].requiredGates must contain distinct D/E gates`)
     }
     if (ids.has(id)) throw new Error('Conductor run record baseline quality command ids must not contain duplicates')
     ids.add(id)
   }
 }
 
+function baselineByHash(run: ConductorRun, hash: string): ConductorRun['baseline'] {
+  return run.baselineHistory.find(candidate => executionBaselineHash(candidate) === hash) ?? null
+}
+
 function validatePassedQualityGates(run: ConductorRun): void {
-  if (run.baseline === null || run.baseline.qualityCommands.length === 0) return
-  const baselineHash = executionBaselineHash(run.baseline)
-  const gateCycles: Record<'D' | 'E', number> = { D: 0, E: 0 }
+  const gateCycles = new Map<string, number>()
   const gateDChildIds = new Set(run.qualityExecutions
     .filter(record => record.gate === 'D')
     .map(record => record.childSessionId))
@@ -188,10 +190,16 @@ function validatePassedQualityGates(run: ConductorRun): void {
   for (const gateRecord of run.history) {
     if (gateRecord.gate !== 'D' && gateRecord.gate !== 'E') continue
     const gate = gateRecord.gate
-    gateCycles[gate] += 1
+    const baselineHash = gateRecord.executionBaselineHash
+    if (baselineHash === undefined) throw new Error(`Conductor run record Gate ${gate} lacks executionBaselineHash`)
+    const cycleKey = `${baselineHash}:${gate}`
+    const cycle = (gateCycles.get(cycleKey) ?? 0) + 1
+    gateCycles.set(cycleKey, cycle)
     if (gateRecord.decision !== 'pass') continue
+    const baseline = baselineByHash(run, baselineHash)
+    if (baseline === null) throw new Error(`Conductor run record Gate ${gate} references an unknown baseline`)
     const stage = gate === 'D' ? 'headsman' : 'auditor'
-    const required = run.baseline.qualityCommands.filter(binding => binding.requiredGates.includes(gate))
+    const required = baseline.qualityCommands.filter(binding => binding.requiredGates.includes(gate))
     if (required.length === 0) continue
     const reviewed = new Set(gateRecord.evidenceReviewed)
     const matched: QualityExecutionRecord[] = []
@@ -201,7 +209,7 @@ function validatePassedQualityGates(run: ConductorRun): void {
         && record.definitionHash === binding.definitionHash
         && record.runId === run.runId
         && record.gate === gate
-        && record.cycle === gateCycles[gate]
+        && record.cycle === cycle
         && record.executionBaselineHash === baselineHash
         && record.policyStage === stage
         && record.outcome === 'passed')
@@ -434,6 +442,12 @@ export function parseRun(json: string): ConductorRun {
   }
   const record = raw as Record<string, unknown>
 
+  if (record.recordFormatVersion !== CONDUCTOR_RECORD_FORMAT_VERSION) {
+    throw new Error(
+      `Conductor run record format ${String(record.recordFormatVersion)} is unsupported; expected ${CONDUCTOR_RECORD_FORMAT_VERSION}`,
+    )
+  }
+
   if (typeof record.runId !== 'string' || !isValidRunId(record.runId)) {
     throw new Error(`Conductor run record has invalid runId: ${String(record.runId)}`)
   }
@@ -446,21 +460,10 @@ export function parseRun(json: string): ConductorRun {
     requireNormalizedString(record.sourceBaseline, 'sourceBaseline')
   }
   const authority = asObject(record.authority, 'authority')
+  if (Object.keys(authority).some(key => key !== 'owner')) {
+    throw new Error('Conductor run record authority is attribution-only')
+  }
   requireNormalizedString(authority.owner, 'authority.owner')
-  if (!Array.isArray(authority.permittedActions)
-    || authority.permittedActions.some(action => !isOneOf(action, ACTIONS))) {
-    throw new Error('Conductor run record authority.permittedActions contains an invalid action')
-  }
-  if (new Set(authority.permittedActions).size !== authority.permittedActions.length) {
-    throw new Error('Conductor run record authority.permittedActions must not contain duplicates')
-  }
-  if (!Array.isArray(authority.executionPermissions)
-    || authority.executionPermissions.some(permission => !isOneOf(permission, EXECUTION_PERMISSIONS))) {
-    throw new Error('Conductor run record authority.executionPermissions contains an invalid permission')
-  }
-  if (new Set(authority.executionPermissions).size !== authority.executionPermissions.length) {
-    throw new Error('Conductor run record authority.executionPermissions must not contain duplicates')
-  }
   requireNormalizedStringArray(record.constraints, 'constraints', true)
   requireNormalizedStringArray(record.acceptanceCriteria, 'acceptanceCriteria', true)
   const budget = asObject(record.budget, 'budget')
@@ -470,6 +473,15 @@ export function parseRun(json: string): ConductorRun {
   if (!Number.isSafeInteger(budget.maxRalphRounds) || Number(budget.maxRalphRounds) < 0) {
     throw new Error('Conductor run record budget.maxRalphRounds must be a non-negative safe integer')
   }
+  if (!Array.isArray(record.baselineHistory)) {
+    throw new Error('Conductor run record baselineHistory must be an array')
+  }
+  const baselineHashes: string[] = []
+  for (const [index, value] of record.baselineHistory.entries()) {
+    validateBaseline(value, `baselineHistory[${index}]`)
+    const hash = executionBaselineHash(value as ConductorRun['baseline'] & {})
+    baselineHashes.push(hash)
+  }
   validateBaseline(record.baseline)
   if (record.baseline !== null) {
     const baseline = record.baseline as Record<string, unknown>
@@ -477,9 +489,32 @@ export function parseRun(json: string): ConductorRun {
       || JSON.stringify(baseline.excludedPaths) !== JSON.stringify(record.excludedPaths)) {
       throw new Error('Conductor run record baseline paths must match the owner-authorized run paths')
     }
-    if ((baseline.qualityCommands as unknown[]).length > 0
-      && !(authority.executionPermissions as string[]).includes('quality-execute')) {
-      throw new Error('Conductor run record quality commands require quality-execute authority')
+    const activeHash = executionBaselineHash(record.baseline as ConductorRun['baseline'] & {})
+    if (!baselineHashes.includes(activeHash) || activeHash !== baselineHashes.at(-1)) {
+      throw new Error('Conductor run record active baseline must be the latest baselineHistory entry')
+    }
+  }
+  if (record.executionAuthorization === null) {
+    if (record.baseline !== null) throw new Error('Conductor run record active baseline requires executionAuthorization')
+  } else {
+    if (record.baseline === null) throw new Error('Conductor run record executionAuthorization requires an active baseline')
+    const authorization = asObject(record.executionAuthorization, 'executionAuthorization')
+    const exactKeys = new Set(['executionBaselineHash', 'effectProfile'])
+    for (const key of Object.keys(authorization)) {
+      if (!exactKeys.has(key)) throw new Error(`Conductor run record executionAuthorization contains unsupported field ${key}`)
+    }
+    const activeBaseline = record.baseline as ConductorRun['baseline'] & {}
+    const activeHash = executionBaselineHash(activeBaseline)
+    if (authorization.executionBaselineHash !== activeHash) {
+      throw new Error('Conductor run record executionAuthorization does not match active baseline')
+    }
+    const effectProfile = asObject(authorization.effectProfile, 'executionAuthorization.effectProfile')
+    const requiredProfile = executionEffectProfile(activeBaseline)
+    if (Object.keys(effectProfile).length !== 3
+      || effectProfile.filesystem !== requiredProfile.filesystem
+      || effectProfile.quality !== requiredProfile.quality
+      || effectProfile.external !== requiredProfile.external) {
+      throw new Error('Conductor run record executionAuthorization has an invalid effect profile')
     }
   }
   if (!isOneOf(record.status, RUN_STATUSES)) {
@@ -528,6 +563,45 @@ export function parseRun(json: string): ConductorRun {
     if (gate.decision === 'abort' && (gate.nextStage !== undefined || gate.defectClass !== undefined)) {
       throw new Error(`Conductor gate ${gate.gate} abort cannot carry rework routing`)
     }
+    const requiresBaselineHash = (gate.gate === 'C' && gate.decision === 'pass')
+      || gate.gate === 'D' || gate.gate === 'E' || gate.gate === 'F' || gate.gate === 'G'
+    if (requiresBaselineHash) {
+      const hash = requireString(gate.executionBaselineHash, `history Gate ${gate.gate} executionBaselineHash`)
+      if (!/^[a-f0-9]{64}$/.test(hash) || !baselineHashes.includes(hash)) {
+        throw new Error(`Conductor gate ${gate.gate} references an unknown execution baseline`)
+      }
+    } else if (gate.executionBaselineHash !== undefined) {
+      throw new Error(`Conductor gate ${gate.gate} cannot carry executionBaselineHash`)
+    }
+  }
+  const gateCBaselineHashes = record.history
+    .filter(entry => (entry as Record<string, unknown>).gate === 'C'
+      && (entry as Record<string, unknown>).decision === 'pass')
+    .map(entry => (entry as Record<string, unknown>).executionBaselineHash)
+  if (JSON.stringify(gateCBaselineHashes) !== JSON.stringify(baselineHashes)) {
+    throw new Error('Conductor run record baselineHistory must exactly follow Gate C pass history')
+  }
+  let documentedBaselineHash: string | undefined
+  for (const entry of record.history) {
+    const gate = entry as Record<string, unknown>
+    if (gate.gate === 'C' && gate.decision === 'pass') {
+      documentedBaselineHash = gate.executionBaselineHash as string
+      continue
+    }
+    if (gate.gate === 'D' || gate.gate === 'E' || gate.gate === 'F' || gate.gate === 'G') {
+      if (gate.executionBaselineHash !== documentedBaselineHash) {
+        throw new Error(`Conductor gate ${gate.gate} does not use the latest Gate C baseline`)
+      }
+      if (gate.decision === 'rework' && (gate.defectClass === 'scope' || gate.defectClass === 'plan')) {
+        documentedBaselineHash = undefined
+      }
+    }
+  }
+  const activeBaselineHash = record.baseline === null
+    ? undefined
+    : executionBaselineHash(record.baseline as ExecutionBaseline)
+  if (activeBaselineHash !== documentedBaselineHash) {
+    throw new Error('Conductor run record active baseline does not match documented gate lineage')
   }
 
   if (!Array.isArray(record.specialistReports)) {
@@ -541,7 +615,7 @@ export function parseRun(json: string): ConductorRun {
     throw new Error('Conductor run record qualityExecutions must be an array')
   }
   const qualityIds = new Set<string>()
-  const baseline = record.baseline as ConductorRun['baseline']
+  const baselineHistory = record.baselineHistory as ConductorRun['baselineHistory']
   for (const [index, value] of record.qualityExecutions.entries()) {
     const prefix = `qualityExecutions[${index}]`
     const item = asObject(value, prefix)
@@ -561,15 +635,17 @@ export function parseRun(json: string): ConductorRun {
     const commandId = requireNormalizedString(item.commandId, `${prefix}.commandId`)
     const definitionHash = requireString(item.definitionHash, `${prefix}.definitionHash`)
     if (!/^[a-f0-9]{64}$/.test(definitionHash)) throw new Error(`Conductor run record ${prefix}.definitionHash must be SHA-256`)
-    if (baseline === null) throw new Error(`Conductor run record ${prefix} requires a baseline`)
-    const binding = baseline.qualityCommands.find(candidate => candidate.id === commandId)
+    const evidenceBaselineHash = requireString(item.executionBaselineHash, `${prefix}.executionBaselineHash`)
+    const evidenceBaseline = baselineHistory.find(candidate => executionBaselineHash(candidate) === evidenceBaselineHash)
+    if (evidenceBaseline === undefined) throw new Error(`Conductor run record ${prefix} references an unknown baseline`)
+    const binding = evidenceBaseline.qualityCommands.find(candidate => candidate.id === commandId)
     if (binding?.definitionHash !== definitionHash) throw new Error(`Conductor run record ${prefix} does not match a baseline binding`)
-    if (item.executionBaselineHash !== executionBaselineHash(baseline)) {
-      throw new Error(`Conductor run record ${prefix}.executionBaselineHash does not match baseline`)
-    }
     if (item.gate !== 'D' && item.gate !== 'E') throw new Error(`Conductor run record ${prefix}.gate is invalid`)
     if (!Number.isSafeInteger(item.cycle) || Number(item.cycle) < 1) throw new Error(`Conductor run record ${prefix}.cycle is invalid`)
-    const completedCycles = record.history.filter(entry => (entry as Record<string, unknown>).gate === item.gate).length
+    const completedCycles = record.history.filter((entry) => {
+      const gate = entry as Record<string, unknown>
+      return gate.gate === item.gate && gate.executionBaselineHash === evidenceBaselineHash
+    }).length
     if (Number(item.cycle) > completedCycles) throw new Error(`Conductor run record ${prefix}.cycle has no documented gate attempt`)
     if (!isOneOf(item.policyStage, QUALITY_POLICY_STAGES)) throw new Error(`Conductor run record ${prefix}.policyStage is invalid`)
     if (!isOneOf(item.executorStage, QUALITY_EXECUTOR_STAGES)) throw new Error(`Conductor run record ${prefix}.executorStage is invalid`)
@@ -625,10 +701,6 @@ export function parseRun(json: string): ConductorRun {
   }
   if (closeout !== undefined && closeout.authorized_by !== authority.owner) {
     throw new Error('Conductor run record closeout.authorized_by must match authority.owner')
-  }
-  if (closeout !== undefined && closeout.authorized_action !== 'record-only'
-    && !authority.permittedActions.includes(closeout.authorized_action)) {
-    throw new Error('Conductor run record closeout.authorized_action is outside the run authority')
   }
   if (record.status === 'awaiting_authorization'
     && (record.currentStage !== 'closeout' || decision?.decision !== 'go')) {

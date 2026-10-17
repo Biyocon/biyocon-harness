@@ -27,12 +27,28 @@ describe('Conductor quality catalog', () => {
     expect(Object.isFrozen(first.get('unit-check'))).toBe(true)
     expect(Object.isFrozen(first.get('unit-check')?.argv)).toBe(true)
     expect(Object.isFrozen(first.get('unit-check')?.allowedStages)).toBe(true)
+    expect(first.get('unit-check')?.effectProfile).toEqual({
+      filesystem: 'read-only', network: 'deny', external: 'none',
+    })
+    expect(Object.isFrozen(first.get('unit-check')?.effectProfile)).toBe(true)
   })
 
-  it('rejects raw shell interpreters, duplicate ids, and workspace escapes', () => {
-    expect(() => resolveQualityCatalog([command({ argv: ['pwsh', '-Command', 'echo unsafe'] })])).toThrow(/shell interpreter/)
+  it('hashes exact shell argv while rejecting duplicate ids and workspace escapes', () => {
+    expect(resolveQualityCatalog([command({ argv: ['pwsh', '-Command', 'echo exact'] })]).get('unit-check')?.argv)
+      .toEqual(['pwsh', '-Command', 'echo exact'])
     expect(() => resolveQualityCatalog([command(), command()])).toThrow(/duplicate id/)
     expect(() => resolveQualityCatalog([command({ cwd: '../outside' })])).toThrow(/inside the workspace/)
+  })
+
+  it('binds filesystem, network, and external effects into the definition hash', () => {
+    const readOnly = resolveQualityCatalog([command()]).get('unit-check')
+    const workspaceWrite = resolveQualityCatalog([command({
+      sandboxMode: 'workspace-write', writeRoot: 'packages/conductor',
+    })]).get('unit-check')
+    expect(readOnly?.definitionHash).not.toBe(workspaceWrite?.definitionHash)
+    expect(workspaceWrite?.effectProfile).toEqual({
+      filesystem: 'workspace-write', network: 'deny', external: 'none',
+    })
   })
 
   it('keeps Auditor commands read-only and requires a writeRoot for workspace writes', () => {
