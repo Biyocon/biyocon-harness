@@ -19,7 +19,7 @@ import { isAppendSurfaceEvent, isJsonValue } from '@deepseek-ai/dsh-session'
 import type { JsonValue, Session, SessionEvent, SessionEventMap, SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import { SessionQueryError, type SessionSearchCursor } from '@deepseek-ai/dsh-session-query'
-import { SubagentError } from '@deepseek-ai/dsh-subagent'
+import { foldSubagentDescriptor, SubagentError } from '@deepseek-ai/dsh-subagent'
 import type { SubagentListEntry as CatalogSubagentListEntry } from '@deepseek-ai/dsh-subagent'
 import { isUserInvocable } from '@deepseek-ai/dsh-skill'
 import type { Workspace, WorkspaceRecord } from '@deepseek-ai/dsh-workspace'
@@ -179,8 +179,16 @@ function imageBlockIn(content: unknown, match: (ref: ImageAttachmentRef) => bool
   return undefined
 }
 
-/** Search every durable event carrier that can own model-visible content. */
+/** Search every durable event carrier that can authorize one image read. */
 function imageInEvent(event: SessionEvent, match: (ref: ImageAttachmentRef) => boolean): ImageAttachmentRef | undefined {
+  if (event.type === 'subagent/descriptor') {
+    try {
+      const avatar = foldSubagentDescriptor([event])?.presentation?.avatar
+      if (avatar !== undefined && match(avatar)) return avatar
+    } catch {
+      // A malformed current-version descriptor authorizes no attachment.
+    }
+  }
   const data = event.data as {
     content?: unknown
     message?: { content?: unknown }

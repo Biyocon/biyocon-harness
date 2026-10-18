@@ -55,6 +55,8 @@ export type SubagentListEntry =
     readonly activity: 'running' | 'inactive'
     /** Whether a direct descendant has durable `origin: 'subagent'`. */
     readonly hasChildren: boolean
+    /** Optional host-owned presentation from the durable child descriptor. */
+    readonly presentation?: NonNullable<SubagentIdentityProjection['presentation']>
   } & (
     | {
       /** A terminal one-shot child. */
@@ -421,6 +423,7 @@ function childRow(
       id,
       mode: 'one-shot',
       ...identity.label !== undefined ? { label: identity.label } : {},
+      ...identity.presentation !== undefined ? { presentation: identity.presentation } : {},
       activity,
       hasChildren,
     }
@@ -429,6 +432,7 @@ function childRow(
       id,
       mode: 'continuable',
       label: identity.label,
+      ...identity.presentation !== undefined ? { presentation: identity.presentation } : {},
       activity,
       hasChildren,
     }

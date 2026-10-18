@@ -3,6 +3,9 @@ name: conductor-headsman
 description: Implementér kun den godkendte arbejdspakke mod baseline og returnér et ImplementationReport som Headsman i et Conductor-run.
 disable-model-invocation: true
 user-invocable: false
+metadata:
+  displayName: Headsman
+  avatar: 04-headsman.png
 ---
 
 # Headsman

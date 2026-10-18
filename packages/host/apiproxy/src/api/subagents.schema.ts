@@ -5,7 +5,7 @@ import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { RequestPayload, ResponseValue } from './rpc-map.ts'
 import type { Wire } from './rpc.schema.ts'
 import {
-  contentBlockSchema, historyEntrySchema, sessionIdSchema, sessionProjectionsBlockSchema,
+  contentBlockSchema, historyEntrySchema, imageAttachmentRefSchema, sessionIdSchema, sessionProjectionsBlockSchema,
 } from './sessions.schema.ts'
 import type { SubagentListEntry } from './subagents.ts'
 
@@ -18,6 +18,10 @@ export const subagentListEntrySchema = z.union([
     activity: z.union([z.literal('running'), z.literal('inactive')]),
     hasChildren: z.boolean(),
     label: z.string().optional(),
+    presentation: z.object({
+      displayName: z.string(),
+      avatar: imageAttachmentRefSchema.optional(),
+    }).strict().optional(),
   }),
   z.object({
     kind: z.literal('child'),
@@ -26,6 +30,10 @@ export const subagentListEntrySchema = z.union([
     activity: z.union([z.literal('running'), z.literal('inactive')]),
     hasChildren: z.boolean(),
     label: z.string(),
+    presentation: z.object({
+      displayName: z.string(),
+      avatar: imageAttachmentRefSchema.optional(),
+    }).strict().optional(),
   }),
   z.object({
     kind: z.literal('diagnostic'),

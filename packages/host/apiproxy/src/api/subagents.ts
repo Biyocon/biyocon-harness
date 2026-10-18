@@ -5,6 +5,7 @@
  */
 
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RpcRequest, RpcResponse } from './rpc.ts'
@@ -19,6 +20,8 @@ export type SubagentListEntry =
     activity: 'running' | 'inactive'
     /** Whether a direct descendant has durable `origin: 'subagent'`. */
     hasChildren: boolean
+    /** Optional model-hidden role presentation. */
+    presentation?: { displayName: string; avatar?: ImageAttachmentRef }
   } & (
     | {
       mode: 'one-shot'

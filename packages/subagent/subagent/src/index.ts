@@ -77,6 +77,7 @@ export type {
   ResolvedSubagentStartRequest,
   SubagentCapabilities,
   SubagentProvider,
+  SubagentPresentation,
   SubagentResult,
   SubagentRun,
   SubagentStartRequest,
@@ -420,6 +421,7 @@ export class SubagentRuntime extends Service {
       mode: 'one-shot',
       provider: name,
       ...request.label !== undefined ? { label: request.label } : {},
+      ...request.presentation !== undefined ? { presentation: request.presentation } : {},
     })
     const resolved: ResolvedSubagentStartRequest = { ...request, descriptor }
     return observeRun(this.emitLifecycle, name, request.parent, await provider.start(resolved))

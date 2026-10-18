@@ -7,6 +7,7 @@
  */
 
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { ToolGuard, ToolRestriction } from '@deepseek-ai/dsh-tools'
 import type {
   WorkflowMeta, WorkflowResult, WorkflowRunId,
@@ -34,6 +35,11 @@ export interface WorkflowStartRequest {
   childToolGuard?: ToolGuard
   /** Trusted host-owned persona applied to every child in this run. */
   childPersona?: string
+  /** Trusted host-owned presentation applied to every child in this run. */
+  childPresentation?: {
+    readonly displayName: string
+    readonly avatar?: ImageAttachmentRef
+  }
   /** The agent on whose behalf the run executes (parent of every child). */
   parent: Agent
   /** Cancels the run when aborted. */

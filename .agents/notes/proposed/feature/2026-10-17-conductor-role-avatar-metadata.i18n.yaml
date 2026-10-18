@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-10-17-conductor-role-avatar-metadata.md
+2026-10-17-conductor-role-avatar-metadata.md: c7ca7c0328fa27024347299bc999457d49f48502
+2026-10-17-conductor-role-avatar-metadata.zh.md: 4ff50c84167552ee83ddfa6bd5b5b1a7501a535c

@@ -15,12 +15,13 @@
  * survives frozen (read-only view) until the stage moves on.
  */
 import type { Context, Fiber } from '@deepseek-ai/cordis'
+import type { AttachmentIdType, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type {
   IApiClient, RpcError, RpcResult, SessionId, SubagentAddress, JobView, WorkspaceId,
 } from '@deepseek-ai/dsh-api-remotes/client'
 // Value import from the inline-safe wire layer (not the connection plugin):
 // plugin-to-plugin value imports are a bundle purity error.
-import { SESSION_SEARCH_RESULT_LIMIT } from '@deepseek-ai/dsh-host-apiproxy/api'
+import { SESSION_SEARCH_RESULT_LIMIT, transportError } from '@deepseek-ai/dsh-host-apiproxy/api'
 import type {
   HostObservable, SessionMaybeProvideInfo, SessionProvideInfo,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -277,7 +278,7 @@ export class SessionRuntime implements ISessions {
    */
   constructor(
     private readonly rootCtx: Context,
-    api: IApiClient,
+    private readonly api: IApiClient,
     remote: SessionRemotes,
     conversationRuntime?: ConversationRuntime,
   ) {
@@ -406,6 +407,27 @@ export class SessionRuntime implements ISessions {
    */
   refreshSubagents(parentSessionId: SessionId): Promise<void> {
     return this.manager.refreshSubagents(parentSessionId)
+  }
+
+  /** Read an attachment for a catalog child without selecting or instantiating it. */
+  async readAttachment(
+    sessionId: SessionId,
+    attachmentId: AttachmentIdType,
+  ): Promise<RpcResult<{ attachment: ImageAttachmentRef; data: Uint8Array }>> {
+    try {
+      const result = (await this.api.sessions.attachment({ sessionId, attachmentId })).result
+      if (!result.ok) return result
+      const binary = atob(result.value.data)
+      return {
+        ok: true,
+        value: {
+          attachment: result.value.attachment,
+          data: Uint8Array.from(binary, char => char.charCodeAt(0)),
+        },
+      }
+    } catch (error) {
+      return transportError(error)
+    }
   }
 
   noteAgentPreset(sessionId: SessionId, agentPreset: string): void {

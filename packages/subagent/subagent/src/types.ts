@@ -10,6 +10,7 @@
  */
 
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
@@ -91,6 +92,14 @@ export interface SubagentCapabilities {
   readonly persona: boolean
 }
 
+/** Host-owned, model-hidden presentation for one session-backed child. */
+export interface SubagentPresentation {
+  /** Stable human-facing role name. */
+  readonly displayName: string
+  /** Optional durable image reference resolved before child publication. */
+  readonly avatar?: ImageAttachmentRef
+}
+
 /**
  * What a caller asks for when starting a ONE-SHOT subagent. The tool layer
  * builds this from the model's `{ description, prompt }` plus its own config;
@@ -101,6 +110,8 @@ export interface SubagentCapabilities {
 export interface SubagentStartRequest {
   /** Optional short display label persisted with a session-backed child. */
   readonly label?: string
+  /** Optional host-owned presentation persisted outside model-visible history. */
+  readonly presentation?: SubagentPresentation
   /** Content delivered as the child's user message. */
   readonly prompt: ContentBlock[]
   /**

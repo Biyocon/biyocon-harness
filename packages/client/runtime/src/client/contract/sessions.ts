@@ -8,6 +8,7 @@
  * explicit act of widening what features may do to the sessions domain.
  */
 import type { Context } from '@deepseek-ai/cordis'
+import type { AttachmentIdType, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type {
   RpcResult, SessionId, SubagentAddress,
 } from '@deepseek-ai/dsh-api-remotes/client'
@@ -62,6 +63,16 @@ export interface ISessions {
    * @returns completion of the current or newly started refresh.
    */
   refreshSubagents(parentSessionId: SessionId): Promise<void>
+  /**
+   * Read one image referenced by an arbitrary known session without opening it.
+   * @param sessionId - session whose durable log authorizes the reference.
+   * @param attachmentId - opaque attachment identity.
+   * @returns authenticated metadata and decoded bytes.
+   */
+  readAttachment(
+    sessionId: SessionId,
+    attachmentId: AttachmentIdType,
+  ): Promise<RpcResult<{ attachment: ImageAttachmentRef; data: Uint8Array }>>
 
   /**
    * Record the composition one session now runs. The agent-preset seat calls

@@ -9,7 +9,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
-import type { SubagentProvider } from '@deepseek-ai/dsh-subagent'
+import type { SubagentPresentation, SubagentProvider } from '@deepseek-ai/dsh-subagent'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolCallView, ToolGuard, ToolRestriction, ToolResultView } from '@deepseek-ai/dsh-tools'
 import type { WorkflowResult, WorkflowRun } from '@deepseek-ai/dsh-workflow'
@@ -105,6 +105,8 @@ export interface RalphWorkflowRequest {
   readonly childToolGuard?: ToolGuard
   /** Optional persona applied to every round. */
   readonly childPersona?: string
+  /** Optional host-owned presentation applied to every round. */
+  readonly childPresentation?: SubagentPresentation
 }
 
 /** Settled, validated Ralph result returned to a trusted runtime consumer. */
@@ -475,6 +477,7 @@ export async function runRalphWorkflow(ctx: Context, request: RalphWorkflowReque
     ...request.childToolFilter !== undefined ? { childToolFilter: request.childToolFilter } : {},
     ...request.childToolGuard !== undefined ? { childToolGuard: request.childToolGuard } : {},
     ...request.childPersona !== undefined ? { childPersona: request.childPersona } : {},
+    ...request.childPresentation !== undefined ? { childPresentation: request.childPresentation } : {},
   })
   const onAbort = (): void => { run.cancel('parent step aborted') }
   request.signal.addEventListener('abort', onAbort, { once: true })

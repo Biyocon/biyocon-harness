@@ -140,8 +140,19 @@ function collectImageRefs(content: unknown, refs: Map<string, ImageAttachmentRef
  * @param refs - the dedupe map being filled (keyed by attachment id).
  */
 function collectEventImageRefs(event: unknown, refs: Map<string, ImageAttachmentRef>): void {
-  const data = (event as { data?: unknown }).data
+  const record = event as { type?: unknown; data?: unknown }
+  const data = record.data
   if (typeof data !== 'object' || data === null) return
+  if (record.type === 'subagent/descriptor') {
+    const presentation = (data as { presentation?: unknown }).presentation
+    if (typeof presentation === 'object' && presentation !== null) {
+      const avatar = (presentation as { avatar?: unknown }).avatar
+      if (typeof avatar === 'object' && avatar !== null) {
+        const ref = avatar as ImageAttachmentRef
+        refs.set(String(ref.attachmentId), ref)
+      }
+    }
+  }
   const carrier = data as {
     content?: unknown
     message?: { content?: unknown }

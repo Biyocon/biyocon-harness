@@ -3,6 +3,9 @@ name: conductor-arbiter
 description: Afgiv GO/NO-GO på konkret evidensgrundlag og returnér et DecisionRecord som The Arbiter i et Conductor-run.
 disable-model-invocation: true
 user-invocable: false
+metadata:
+  displayName: The Arbiter
+  avatar: 07-the-arbiter.png
 ---
 
 # The Arbiter

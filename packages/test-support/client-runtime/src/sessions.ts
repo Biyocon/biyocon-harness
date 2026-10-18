@@ -185,7 +185,7 @@ export class TestSessions implements ISessions {
   /** Calls observed on the service-level face, newest last. */
   readonly calls: {
     method: 'open' | 'openSubagent' | 'setSubagentCatalogOpen' | 'refreshSubagents'
-      | 'clear' | 'search' | 'fork'
+      | 'readAttachment' | 'clear' | 'search' | 'fork'
     args: unknown[]
   }[] = []
 
@@ -438,6 +438,15 @@ export class TestSessions implements ISessions {
   refreshSubagents(parentSessionId: SessionId): Promise<void> {
     this.calls.push({ method: 'refreshSubagents', args: [parentSessionId] })
     return Promise.resolve()
+  }
+
+  /** Read an attachment through the addressed fixture session. */
+  readAttachment(
+    sessionId: SessionId,
+    attachmentId: AttachmentIdType,
+  ): ReturnType<ISessions['readAttachment']> {
+    this.calls.push({ method: 'readAttachment', args: [sessionId, attachmentId] })
+    return this.require(sessionId).session.readAttachment(attachmentId)
   }
 
   /** Apply a confirmed preset switch into the fixture list, as production does. */

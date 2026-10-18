@@ -99,11 +99,27 @@ const identitySchema = z.discriminatedUnion('mode', [
   z.object({
     mode: z.literal('one-shot'),
     label: z.string().optional(),
+    presentation: z.object({
+      displayName: z.string(),
+      avatar: z.object({
+        attachmentId: z.string(), mediaType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']),
+        bytes: z.number().int().positive(), width: z.number().int().positive(), height: z.number().int().positive(),
+        name: z.string().optional(),
+      }).strict().optional(),
+    }).strict().optional(),
     seq: z.number().int().nonnegative(),
   }).strict(),
   z.object({
     mode: z.literal('continuable'),
     label: z.string(),
+    presentation: z.object({
+      displayName: z.string(),
+      avatar: z.object({
+        attachmentId: z.string(), mediaType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']),
+        bytes: z.number().int().positive(), width: z.number().int().positive(), height: z.number().int().positive(),
+        name: z.string().optional(),
+      }).strict().optional(),
+    }).strict().optional(),
     seq: z.number().int().nonnegative(),
   }).strict(),
 ]).nullable() as unknown as z.ZodType<SubagentIdentityProjection | null>
@@ -123,9 +139,14 @@ function descriptorIdentity(event: SessionEvent): SubagentIdentityProjection | u
     ? {
       mode: 'one-shot',
       ...descriptor.label !== undefined ? { label: descriptor.label } : {},
+      ...descriptor.presentation !== undefined ? { presentation: descriptor.presentation } : {},
       seq: event.seq,
     }
-    : { mode: 'continuable', label: descriptor.label, seq: event.seq }
+    : {
+      mode: 'continuable', label: descriptor.label,
+      ...descriptor.presentation !== undefined ? { presentation: descriptor.presentation } : {},
+      seq: event.seq,
+    }
 }
 
 /**
@@ -152,5 +173,5 @@ ProjectionDefinition<'subagent', IdentityState> = {
   view: state => state.identity ?? null,
   // Bumped when the identity gained its `seq` field: an older checkpoint row
   // would replay into a value the schema rejects, so it must refold instead.
-  stateVersion: 2,
+  stateVersion: 3,
 }

@@ -181,6 +181,7 @@ class WorkerThreadWorkflowEngine extends WorkflowEngine {
         ...request.childToolFilter !== undefined ? { toolFilter: request.childToolFilter } : {},
         ...request.childToolGuard !== undefined ? { toolGuard: request.childToolGuard } : {},
         ...request.childPersona !== undefined ? { persona: request.childPersona } : {},
+        ...request.childPresentation !== undefined ? { presentation: request.childPresentation } : {},
       },
       this.config.disposeGraceMs,
       {

@@ -23,7 +23,10 @@
 
 import { snapshotJsonValue } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { AttachmentId } from '@deepseek-ai/dsh-attachment'
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { ToolRestriction } from '@deepseek-ai/dsh-tools'
+import type { SubagentPresentation } from './types.ts'
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
@@ -44,7 +47,7 @@ declare module '@deepseek-ai/dsh-session/types' {
  * Supporting another composition input is a deliberate version change, never
  * an implicit extra field.
  */
-export const SUBAGENT_DESCRIPTOR_VERSION = 2
+export const SUBAGENT_DESCRIPTOR_VERSION = 3
 
 /** Fields shared by every supported `subagent/descriptor` payload. */
 interface SubagentDescriptorBase {
@@ -54,6 +57,8 @@ interface SubagentDescriptorBase {
   readonly mode: 'one-shot' | 'continuable'
   /** The `ctx.subagents` provider name that established the child. */
   readonly provider: string
+  /** Optional host-owned presentation, never model-visible. */
+  readonly presentation?: SubagentPresentation
 }
 
 /** A session-backed subagent that cannot be cold-resumed after its run. */
@@ -93,6 +98,8 @@ interface SubagentDescriptorInputBase {
   readonly mode: 'one-shot' | 'continuable'
   /** The `ctx.subagents` provider name that will establish the child. */
   readonly provider: string
+  /** Optional host-owned presentation already resolved to durable data. */
+  readonly presentation?: SubagentPresentation
 }
 
 /** Input for a one-shot child's durable identity. */
@@ -127,6 +134,7 @@ const DESCRIPTOR_BASE_KEYS = [
   'mode',
   'provider',
   'label',
+  'presentation',
 ] as const
 const ONE_SHOT_DESCRIPTOR_KEYS = new Set(DESCRIPTOR_BASE_KEYS)
 const CONTINUABLE_DESCRIPTOR_KEYS = new Set([
@@ -137,6 +145,9 @@ const CONTINUABLE_DESCRIPTOR_KEYS = new Set([
   'toolFilter',
 ])
 const TOOL_FILTER_KEYS = new Set(['allow', 'deny'])
+const PRESENTATION_KEYS = new Set(['displayName', 'avatar'])
+const AVATAR_KEYS = new Set(['attachmentId', 'mediaType', 'bytes', 'width', 'height', 'name'])
+const IMAGE_MEDIA_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
 /** Whether a persisted JSON value is an object record. */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -159,6 +170,49 @@ function optionalString(value: Record<string, unknown>, key: string): string | u
     throw new Error(`persisted subagent descriptor ${key} must be a string`)
   }
   return field
+}
+
+/** Validate one persisted image attachment reference. */
+function parseAvatar(value: unknown): ImageAttachmentRef {
+  if (!isRecord(value)) throw new Error('persisted subagent descriptor presentation.avatar must be an object')
+  assertKnownKeys(value, AVATAR_KEYS, 'presentation.avatar')
+  const attachmentId = value['attachmentId']
+  const mediaType = value['mediaType']
+  const bytes = value['bytes']
+  const width = value['width']
+  const height = value['height']
+  const name = optionalString(value, 'name')
+  if (typeof attachmentId !== 'string' || attachmentId.length === 0) {
+    throw new Error('persisted subagent descriptor presentation.avatar.attachmentId must be a non-empty string')
+  }
+  if (typeof mediaType !== 'string' || !IMAGE_MEDIA_TYPES.has(mediaType)) {
+    throw new Error('persisted subagent descriptor presentation.avatar.mediaType is unsupported')
+  }
+  for (const [key, field] of [['bytes', bytes], ['width', width], ['height', height]] as const) {
+    if (!Number.isSafeInteger(field) || (field as number) <= 0) {
+      throw new Error(`persisted subagent descriptor presentation.avatar.${key} must be a positive safe integer`)
+    }
+  }
+  return {
+    attachmentId: AttachmentId(attachmentId),
+    mediaType: mediaType as ImageAttachmentRef['mediaType'],
+    bytes: bytes as number,
+    width: width as number,
+    height: height as number,
+    ...name === undefined ? {} : { name },
+  }
+}
+
+/** Validate one persisted presentation record. */
+function parsePresentation(value: unknown): SubagentPresentation {
+  if (!isRecord(value)) throw new Error('persisted subagent descriptor presentation must be an object')
+  assertKnownKeys(value, PRESENTATION_KEYS, 'presentation')
+  const displayName = value['displayName']
+  if (typeof displayName !== 'string' || displayName.length === 0) {
+    throw new Error('persisted subagent descriptor presentation.displayName must be a non-empty string')
+  }
+  const avatar = Object.hasOwn(value, 'avatar') ? parseAvatar(value['avatar']) : undefined
+  return { displayName, ...avatar === undefined ? {} : { avatar } }
 }
 
 /** Read one optional string-array field from a persisted tool restriction. */
@@ -216,6 +270,9 @@ function parseSubagentDescriptor(value: unknown): SubagentDescriptorData | undef
   if (typeof provider !== 'string') {
     throw new Error('persisted subagent descriptor provider must be a string')
   }
+  const presentation = Object.hasOwn(value, 'presentation')
+    ? parsePresentation(value['presentation'])
+    : undefined
   if (mode === 'one-shot') {
     const label = optionalString(value, 'label')
     return {
@@ -223,6 +280,7 @@ function parseSubagentDescriptor(value: unknown): SubagentDescriptorData | undef
       mode,
       provider,
       ...label !== undefined ? { label } : {},
+      ...presentation !== undefined ? { presentation } : {},
     }
   }
   const label = value['label']
@@ -240,6 +298,7 @@ function parseSubagentDescriptor(value: unknown): SubagentDescriptorData | undef
     mode,
     provider,
     label,
+    ...presentation !== undefined ? { presentation } : {},
     ...agentProvider !== undefined ? { agentProvider } : {},
     ...agentModel !== undefined ? { agentModel } : {},
     ...persona !== undefined ? { persona } : {},
@@ -275,12 +334,14 @@ export function snapshotSubagentDescriptor(input: SubagentDescriptorInput): Suba
       mode: input.mode,
       provider: input.provider,
       ...input.label !== undefined ? { label: input.label } : {},
+      ...input.presentation !== undefined ? { presentation: input.presentation } : {},
     }
     : {
       version: SUBAGENT_DESCRIPTOR_VERSION,
       mode: input.mode,
       provider: input.provider,
       label: input.label,
+      ...input.presentation !== undefined ? { presentation: input.presentation } : {},
       ...input.agentProvider !== undefined ? { agentProvider: input.agentProvider } : {},
       ...input.agentModel !== undefined ? { agentModel: input.agentModel } : {},
       ...input.persona !== undefined ? { persona: input.persona } : {},

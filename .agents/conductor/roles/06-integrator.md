@@ -3,6 +3,9 @@ name: conductor-integrator
 description: Saml levering, dokumentation og sporbarhed og returnér et DeliveryPackage som Integrator i et Conductor-run.
 disable-model-invocation: true
 user-invocable: false
+metadata:
+  displayName: Integrator
+  avatar: 06-integrator.png
 ---
 
 # Integrator

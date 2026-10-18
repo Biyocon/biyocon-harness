@@ -4,6 +4,8 @@
  * @module @deepseek-ai/dsh-subagent/projection-types
  */
 
+import type { SubagentPresentation } from './types.ts'
+
 /** Durable active-turn timing for one descriptor-backed child session. */
 export interface SubagentTimingProjection {
   /** Milliseconds accumulated across completed turns after the child's own descriptor. */
@@ -29,6 +31,8 @@ export type SubagentIdentityProjection =
     mode: 'one-shot'
     /** Optional durable creation label from the child's descriptor. */
     label?: string
+    /** Optional host-owned presentation persisted with the descriptor. */
+    presentation?: SubagentPresentation
     /**
      * Seq of the `subagent/descriptor` event this identity was folded from.
      * `seq >= header.seedLength` proves the identity comes from the child's
@@ -42,6 +46,8 @@ export type SubagentIdentityProjection =
     mode: 'continuable'
     /** Durable creation label from the child's descriptor. */
     label: string
+    /** Optional host-owned presentation persisted with the descriptor. */
+    presentation?: SubagentPresentation
     /** Seq of the folded descriptor event; see the one-shot arm for the own-suffix proof. */
     seq: number
   }

@@ -15,7 +15,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { assertNever } from '@deepseek-ai/dsh-llm'
 import { snapshotJsonValue } from '@deepseek-ai/dsh-session'
 import type SubagentRuntime from '@deepseek-ai/dsh-subagent'
-import type { SubagentRun } from '@deepseek-ai/dsh-subagent'
+import type { SubagentPresentation, SubagentRun } from '@deepseek-ai/dsh-subagent'
 import type { ToolGuard, ToolRestriction } from '@deepseek-ai/dsh-tools'
 import type { WorkflowAgentEndInfo, WorkflowAgentInfo, WorkflowMeta, WorkflowResult, WorkflowRun, WorkflowRunId } from '@deepseek-ai/dsh-workflow'
 import { renderThrown } from './realm.ts'
@@ -35,6 +35,7 @@ interface WorkflowChildComposition {
   readonly toolFilter?: ToolRestriction
   readonly toolGuard?: ToolGuard
   readonly persona?: string
+  readonly presentation?: SubagentPresentation
 }
 
 /**
@@ -370,6 +371,9 @@ export class WorkerRun implements WorkflowRun {
           : {},
         ...this.childComposition.persona !== undefined
           ? { persona: this.childComposition.persona }
+          : {},
+        ...this.childComposition.presentation !== undefined
+          ? { presentation: this.childComposition.presentation }
           : {},
         ...request.schema !== undefined ? { outputSchema: request.schema } : {},
         ...request.provider !== undefined || request.model !== undefined

@@ -76,4 +76,10 @@ Rollefilerne beskriver adfærd, men giver ingen teknisk adgang. Headsman må kun
 - [Integrator](roles/06-integrator.md) — `DeliveryPackage`
 - [The Arbiter](roles/07-the-arbiter.md) — `DecisionRecord`
 
+## Profilbilleder
+
+[Profilmanifestet](roles/profiles.yml) binder The Conductor og de syv specialistroller til lokale PNG-filer. Hver specialistfil gentager sin egen `metadata.displayName` og relative `metadata.avatar`, som filesystem-skill-provideren bevarer sammen med skillens `resourceBase`; kompatible værter kan derfor opløse billedstien uden en absolut maskinsti. `07-the-arbiter.png` er den aktive Arbiter-avatar. Det alternative, ikke-kvadratiske billede er bevaret som `07-the-arbiter-alternate.png`, men er ikke bundet til en aktiv profil.
+
+Avatarbindingen er metadata, ikke en klientkommando. ChatGPT Desktop-subagentprotokollen eksponerer ikke et avatarfelt og viser derfor fortsat klientens egne ikoner. DeepSeek Harness kan bevare en host-ejet, modelskjult præsentation med en durable attachment-reference i subagentdescriptoren, men Conductor mangler endnu at opløse de relative rolleassets ved dispatch, og klient-UI'en mangler at gengive dem. Rollefilerne kan derfor ikke i sig selv tilsidesætte nogen klients ikon.
+
 Arkitekturens sporede design og runtimebeslutninger findes i [Conductor Agent Note](../notes/implemented/feature/2026-09-11-conductor-runtime-layer.md). Projektets stående regler findes i [AGENTS.md](../../AGENTS.md).

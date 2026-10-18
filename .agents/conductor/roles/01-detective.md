@@ -3,6 +3,9 @@ name: conductor-detective
 description: Afklar scope, uklarheder, afhængigheder og antagelser og returnér en ClarificationReport som Detective i et Conductor-run.
 disable-model-invocation: true
 user-invocable: false
+metadata:
+  displayName: Detective
+  avatar: 01-detective.png
 ---
 
 # Detective

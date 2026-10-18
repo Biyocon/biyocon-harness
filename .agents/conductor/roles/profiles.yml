@@ -1,0 +1,36 @@
+version: 1
+profiles:
+  conductor:
+    displayName: The Conductor
+    avatar: 00-conductor.png
+  detective:
+    skill: conductor-detective
+    displayName: Detective
+    avatar: 01-detective.png
+  strategist:
+    skill: conductor-strategist
+    displayName: Strategist
+    avatar: 02-strategist.png
+  devils-advocate:
+    skill: conductor-devils-advocate
+    displayName: Devil's Advocate
+    avatar: 03-devils-advocate.png
+  headsman:
+    skill: conductor-headsman
+    displayName: Headsman
+    avatar: 04-headsman.png
+  auditor:
+    skill: conductor-auditor
+    displayName: Auditor
+    avatar: 05-auditor.png
+  integrator:
+    skill: conductor-integrator
+    displayName: Integrator
+    avatar: 06-integrator.png
+  arbiter:
+    skill: conductor-arbiter
+    displayName: The Arbiter
+    avatar: 07-the-arbiter.png
+unassignedAssets:
+  - file: 07-the-arbiter-alternate.png
+    reason: The non-square image is retained from the supplied source set but is not an active profile avatar.

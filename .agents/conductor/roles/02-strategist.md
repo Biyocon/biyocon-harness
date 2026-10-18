@@ -3,6 +3,9 @@ name: conductor-strategist
 description: Udarbejd løsningsplan, risici og målbare acceptkriterier og returnér et PlanPackage som Strategist i et Conductor-run.
 disable-model-invocation: true
 user-invocable: false
+metadata:
+  displayName: Strategist
+  avatar: 02-strategist.png
 ---
 
 # Strategist
