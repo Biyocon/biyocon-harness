@@ -16,6 +16,8 @@ Status: implemented
 
 即使存在故障切换变量，托管缓存恢复与 Playwright 依赖安装仍沿公共 fork 分支执行。自托管热备演练和组织运行器基准作业要求 `github.event.repository.fork == false`，防止公共 fork 派发持久化主机作业或使用不可用的企业标签。
 
+Linux 配置从不可变的 Launchpad Librarian 对象下载 Bubblewrap `0.9.0-1ubuntu0.3`，并在解包前验证 SHA-256 `2461f1beee9cb04c8942739fe1a2b37e7b7c2a3d518f0779dc75f9245baa3094`。下载或校验和失败会在修改可执行文件路径、AppArmor 设置或运行 Bubblewrap 探测之前终止准备。
+
 ## 曾考虑的替代方案
 
 **在公共 fork 中注册永久自托管运行器。** 否决，因为贡献者控制的拉取请求可能在持久化机器上执行。允许 fork 和外部贡献后，仓库成员身份不再是充分的信任控制。
@@ -30,4 +32,4 @@ Status: implemented
 
 ## 验证
 
-`scripts/ci-workflow.spec.ts` 解析组装后的工作流，并验证每个公共 fork 运行器选择都先于故障切换变量、保守的工作进程限制存在、托管 Playwright 设置保持启用，以及持久化主机和企业基准作业都要求非 fork 仓库。仓库验证还会运行类型检查、代码检查、文档同步、变更范围和空白检查。
+`scripts/ci-workflow.spec.ts` 解析组装后的工作流，并验证每个公共 fork 运行器选择都先于故障切换变量、保守的工作进程限制存在、托管 Playwright 设置保持启用，以及持久化主机和企业基准作业都要求非 fork 仓库。`scripts/prepare-ci-bubblewrap.spec.ts` 使用隔离的命令夹具调用真实准备脚本，并在不访问网络的情况下验证固定制品、下载和校验和失败时的封闭行为以及操作顺序。仓库验证还会运行类型检查、代码检查、文档同步、变更范围和空白检查。
