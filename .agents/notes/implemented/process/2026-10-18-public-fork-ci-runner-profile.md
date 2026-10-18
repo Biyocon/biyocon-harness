@@ -16,6 +16,8 @@ The public-fork profile limits Linux static gates to two concurrent gates, cover
 
 Hosted cache restoration and Playwright dependency installation follow the public-fork branch even when a failover variable is present. Self-hosted standby drills and organization-runner benchmarks require `github.event.repository.fork == false`, preventing a public fork from dispatching either persistent-host or unavailable enterprise-label work.
 
+The Linux profile downloads Bubblewrap `0.9.0-1ubuntu0.3` from its immutable Launchpad Librarian object and verifies SHA-256 `2461f1beee9cb04c8942739fe1a2b37e7b7c2a3d518f0779dc75f9245baa3094` before extraction. Download or checksum failure stops preparation before the executable path, AppArmor setting, or Bubblewrap probe can change.
+
 ## Alternatives considered
 
 **Register permanent self-hosted runners in the public fork.** Rejected because contributor-controlled pull requests could execute on persistent machines. Repository membership is no longer a sufficient trust control once forking and external contributions are available.
@@ -30,4 +32,4 @@ Public forks can run the complete pull-request workflow on ephemeral GitHub-host
 
 ## Verification
 
-`scripts/ci-workflow.spec.ts` parses the assembled workflow and verifies that each public-fork runner selection precedes the failover variable, that conservative worker limits are present, that hosted Playwright setup remains active, and that persistent-host and enterprise benchmark jobs require a non-fork repository. Repository validation also runs typecheck, lint, documentation synchronization, change-scope, and whitespace checks.
+`scripts/ci-workflow.spec.ts` parses the assembled workflow and verifies that each public-fork runner selection precedes the failover variable, that conservative worker limits are present, that hosted Playwright setup remains active, and that persistent-host and enterprise benchmark jobs require a non-fork repository. `scripts/prepare-ci-bubblewrap.spec.ts` invokes the real preparation script with isolated command fixtures and verifies the pinned artifact, fail-closed download and checksum handling, and operation order without network access. Repository validation also runs typecheck, lint, documentation synchronization, change-scope, and whitespace checks.
