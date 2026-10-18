@@ -5,6 +5,9 @@ import { describe, expect, it } from 'vitest'
 
 const root = resolve(import.meta.dirname, '..')
 const runnerPrivatePnpmDestination = '${{ runner.temp }}/setup-pnpm'
+const publicForkLinuxRunnerSelector = "${{ github.event.repository.fork && 'ubuntu-24.04' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON('[\"self-hosted\", \"linux\", \"x64\", \"vm-backup\"]') || 'dsh-ubuntu-24-04-16core' }}"
+const publicForkAggregateRunnerSelector = "${{ github.event.repository.fork && 'ubuntu-24.04' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON('[\"self-hosted\", \"linux\", \"x64\", \"vm-backup\"]') || 'ubuntu-latest' }}"
+const publicForkWindowsRunnerSelector = "${{ github.event.repository.fork && 'windows-2025' || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON('[\"self-hosted\", \"dsh-win-ci\", \"windows\"]') || 'dsh-windows-2025-16core' }}"
 
 describe('CI workflow', () => {
   it('isolates every pnpm action setup destination per runner', () => {
@@ -70,10 +73,14 @@ describe('CI workflow', () => {
     expect(windowsNative['runs-on']).toContain('self-hosted')
     expect(windowsNative['runs-on']).toContain('dsh-win-ci')
     expect(windowsNative['runs-on']).toContain('dsh-windows-2025-16core')
+    expectRunnerSelector(windowsNative, publicForkWindowsRunnerSelector)
     expect(windowsNative.name).toBe('windows node 24 / native complete')
     expect(windowsNative.if).toBe("github.event_name == 'pull_request'")
     expect(windowsNative.env).toMatchObject({
+      DSH_COVERAGE_MAX_WORKERS: "${{ github.event.repository.fork && '1' || '2' }}",
       DSH_COVERAGE_TEST_TIMEOUT_MS: '30000',
+      DSH_GATE_CONCURRENCY: "${{ github.event.repository.fork && '1' || '2' }}",
+      DSH_PUBLINT_CONCURRENCY: "${{ github.event.repository.fork && '2' || '8' }}",
     })
     const nativeCommandSteps = (windowsNative.steps as unknown[]).filter((step): step is Record<string, unknown> & { run: string } => (
       isRecord(step) && typeof step.run === 'string'
@@ -85,7 +92,7 @@ describe('CI workflow', () => {
     expect(wineAptCache['runs-on']).toBe('ubuntu-latest')
 
     // serial-windows: master-only standby, self-hosted, non-blocking.
-    expect(serialWindows.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
+    expect(serialWindows.if).toBe("github.event.repository.fork == false && github.event_name == 'push' && github.ref == 'refs/heads/master'")
     expect(serialWindows['runs-on']).toEqual(['self-hosted', 'dsh-win-ci', 'windows'])
     expect(serialWindows.name).toBe('serial / windows (self-hosted standby)')
 
@@ -102,10 +109,30 @@ describe('CI workflow', () => {
       expect(job['runs-on'], `${jobName} runs-on must use the Linux failover switch`).toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on'], `${jobName} runs-on must not use the Windows failover switch`).not.toContain('DSH_CI_FAILOVER_WINDOWS')
       expect(job['runs-on']).toContain('vm-backup')
+      expectRunnerSelector(job, publicForkLinuxRunnerSelector)
     }
+    expect(node24.env).toMatchObject({
+      DSH_GATE_CONCURRENCY: "${{ github.event.repository.fork && '2' || '8' }}",
+    })
+    expect(node24Coverage.env).toMatchObject({
+      DSH_COVERAGE_MAX_WORKERS: "${{ github.event.repository.fork && '2' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '8' || '6' }}",
+      DSH_GATE_CONCURRENCY: "${{ github.event.repository.fork && '1' || '3' }}",
+    })
+    expect(node24Consumers.env).toMatchObject({
+      DSH_GATE_CONCURRENCY: "${{ github.event.repository.fork && '2' || '8' }}",
+      DSH_OXLINT_THREADS: "${{ github.event.repository.fork && '2' || '8' }}",
+      DSH_PUBLINT_CONCURRENCY: "${{ github.event.repository.fork && '2' || '8' }}",
+      DSH_SNAPSHOT_MAX_CONCURRENCY: "${{ github.event.repository.fork && '4' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '12' || '32' }}",
+    })
+    const consumerSteps = Array.isArray(node24Consumers.steps) ? node24Consumers.steps.filter(isRecord) : []
+    const hostedPlaywright = consumerSteps.find(step => step.name === 'Install Playwright Chromium and hosted dependencies')
+    const selfHostedPlaywright = consumerSteps.find(step => step.name === 'Install Playwright Chromium on the failover VM')
+    expect(hostedPlaywright?.if).toContain('github.event.repository.fork ||')
+    expect(selfHostedPlaywright?.if).toContain('github.event.repository.fork == false')
     expect(aggregate['runs-on']).toContain('DSH_CI_FAILOVER_LINUX')
     expect(aggregate['runs-on']).not.toContain('DSH_CI_FAILOVER_WINDOWS')
     expect(aggregate['runs-on']).toContain('vm-backup')
+    expectRunnerSelector(aggregate, publicForkAggregateRunnerSelector)
   })
 
   it('exempts push from cancellation, so one master merge does not cancel the running drill', () => {
@@ -132,7 +159,7 @@ describe('CI workflow', () => {
       if (!isRecord(job)) throw new TypeError(`${name} must be defined`)
       expect(job.concurrency).toBeUndefined()
       // Both stay master-push-only; that is what makes the push carve-out safe.
-      expect(job.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
+      expect(job.if).toBe("github.event.repository.fork == false && github.event_name == 'push' && github.ref == 'refs/heads/master'")
     }
 
     // What bounds the cost of exempting push: a master push may only carry the
@@ -146,8 +173,8 @@ describe('CI workflow', () => {
     const NOT_PUSH_REACHABLE = new Set([
       "github.event_name == 'pull_request'",
       "always() && github.event_name == 'pull_request'",
-      "github.event_name == 'workflow_dispatch' && inputs.suite == 'larger-runner-benchmark'",
-      "github.event_name == 'workflow_dispatch' && inputs.suite == 'consolidated-runner-benchmark'",
+      "github.event.repository.fork == false && github.event_name == 'workflow_dispatch' && inputs.suite == 'larger-runner-benchmark'",
+      "github.event.repository.fork == false && github.event_name == 'workflow_dispatch' && inputs.suite == 'consolidated-runner-benchmark'",
     ])
     const pushReachable = Object.entries(workflow.jobs)
       .filter(([, job]) => {
@@ -172,6 +199,7 @@ describe('CI workflow', () => {
       }
       expect(job.strategy['max-parallel']).toBe(12)
       expect(job['timeout-minutes']).toBe(15)
+      expect(job.if).toContain('github.event.repository.fork == false')
     }
   })
 
@@ -434,4 +462,10 @@ function workflowJob(workflow: Record<string, unknown>, job: string): Record<str
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function expectRunnerSelector(job: Record<string, unknown>, expected: string): void {
+  const runsOn = job['runs-on']
+  if (typeof runsOn !== 'string') throw new TypeError('runner selector must be a string')
+  expect(runsOn.replace(/\s+/g, ' ').trim()).toBe(expected)
 }
