@@ -8,7 +8,13 @@
           baseURL: !!js process.env.DSH_SNAPSHOT_BASE_URL
           thinking: enabled
           reasoningEffort: low
-          streamIdleTimeoutMs: 150
+          # The fixture's final payload arrives after this deadline; only its
+          # SSE comments keep the stream alive. A missed comment fails this
+          # scenario directly instead of becoming a duplicate retry request.
+          streamIdleTimeoutMs: 2000
+          retryPolicy:
+            mode: normal
+            maxRetries: 0
       - id: agent-spine
         config:
           agents:
