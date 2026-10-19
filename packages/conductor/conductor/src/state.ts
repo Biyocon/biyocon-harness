@@ -225,8 +225,10 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
     case 'abort':
       nextStage = undefined
       break
+    /* v8 ignore start -- GateDecision is a closed typed union; a future variant must fail loud here. */
     default:
       assertNever(verdict.decision)
+    /* v8 ignore stop */
   }
 
   let status: ConductorRunStatus
@@ -243,8 +245,10 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
     case 'abort':
       status = 'aborted'
       break
+    /* v8 ignore start -- GateDecision is a closed typed union; a future variant must fail loud here. */
     default:
       assertNever(decision)
+    /* v8 ignore stop */
   }
 
   const record: GateRecord = {
@@ -343,6 +347,8 @@ export function closeRun(run: ConductorRun, authorization: CloseoutAuthorization
   return { ...run, status: 'closed', closeout }
 }
 
+/* v8 ignore start -- closed typed switches call this only if their declared unions gain an unhandled member. */
 function assertNever(value: never): never {
   throw new Error(`Unreachable gate decision: ${String(value)}`)
 }
+/* v8 ignore stop */

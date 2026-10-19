@@ -229,18 +229,22 @@ Conductor now adds a higher-level policy layer without changing the generic work
 
 Every gate checkpoint enlarges the parent Session log with one whole-run snapshot. Resume is deterministic and does not need process memory, at the cost of repeated serialized history and a linear fold over that session's Conductor checkpoints.
 
+The published `@deepseek-ai/dsh-conductor` package includes the hashed `lib/persistence-*.js` runtime chunk produced by the bundle. The workspace constraint records that exact package-specific file exception, so a renamed or broadened package closure fails the repository check.
+
 Write-capable specialists lose shell access and use canonical path guards on filesystem write/edit tools. This makes the in-process executor enforce the Conductor policy, while deployments that later add another mutation tool must add that tool and its argument extraction to the policy before exposing it to Headsman or Integrator.
 
 Arbiter GO and closeout are deliberately separate calls. The additional authorization round trip prevents a gate decision from becoming a commit, push, merge, or deployment action and leaves the external actor responsible for the action whose evidence Conductor records.
 
 ## Verification
 
-- `pnpm run test -t conductor` — 71 tests pass across the state machine/gate engine, session-log persistence/resume, routing/rework, run-id, drive, capability policies, Ralph integration, preset wiring, and the real-composition/closeout test.
+- Focused V8 coverage for `drive.ts`, `invariant.ts`, `persistence.ts`, `routing.ts`, `state.ts`, `tool-conductor/src/capability.ts`, `tool-conductor/src/index.ts`, and `tool-ralph/src/index.ts` passes 104 tests with 100% statements, branches, functions, and lines.
 - `pnpm run typecheck` — passes (host + client aggregates).
+- `pnpm run build` and `pnpm run verify-built-package-invariants` — the artifact plane builds and all 222 compiled companions pass the plain-Node Loader checks.
+- `npm pack --dry-run --json` in `packages/conductor/conductor` includes the generated `lib/persistence-*.js` chunk.
 - `pnpm run test:snapshot -t Conductor` — the keyless Conductor closeout-authorization snapshot passes through the assembled one-shot application.
 - The real-composition test boots the real spawn/workflow stack, drives Detective → Strategist → Devil's Advocate → Headsman → Auditor → Integrator → Arbiter as fresh structured-output children, persists the GO checkpoint, and records an explicitly authorized record-only closeout.
-- `pnpm run doc-sync` passes 26 of 28 gates and is clean for the Conductor surface. The remaining failures are broken links and a missing pairing record in the unrelated untracked connections note plus missing bilingual pairs inside the unrelated untracked `temp/` trees.
-- `pnpm run lint` completes the repository build and then fails only on missing `bun-types` in the unrelated untracked `temp/oh-my-openagent-dev` tree; the repository lint runner passes all 36 changed TypeScript files.
+- `pnpm run doc-sync` — all 28 documentation checks pass.
+- `pnpm run lint` — the repository lint check passes.
 
 ## Risks
 
