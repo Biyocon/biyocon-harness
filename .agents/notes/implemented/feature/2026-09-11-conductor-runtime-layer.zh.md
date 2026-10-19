@@ -241,7 +241,9 @@ Arbiter GO 与 closeout 被刻意分成两次调用。额外授权往返可防�
 - `pnpm run typecheck` — 通过（host + client 聚合）。
 - `pnpm run build` 和 `pnpm run verify-built-package-invariants` — artifact plane 构建通过，全部 222 个 compiled companion 通过 plain-Node Loader 检查。
 - 在 `packages/conductor/conductor` 中运行 `npm pack --dry-run --json`，生成的 `lib/persistence-*.js` chunk 包含在 package 中。
-- `pnpm run test:snapshot -t Conductor` — keyless Conductor closeout-authorization snapshot 通过 assembled one-shot application。
+- `pnpm run test:snapshot -t Conductor` — keyless Conductor closeout-authorization snapshot 在场景本地项目根目录下通过 assembled one-shot application，因此用户级指令不会进入 golden。
+- Web preset snapshot 要求 Conductor 同时出现在选择器和设置 roster 中；选择测试在 Minimal 与 Standard 之间切换时等待实际的 `compact` 和 `plan` catalog 转换。
+- ACP PowerShell header snapshot 固定当前文件 sandbox 拒绝指引和规范的后台 job 术语。
 - 真实组合测试启动真实 spawn/workflow 栈，驱动 Detective → Strategist → Devil's Advocate → Headsman → Auditor → Integrator → Arbiter 作为全新的结构化输出子 agent，持久化 GO checkpoint，并记录显式授权的 record-only closeout。
 - `pnpm run doc-sync` — 全部 28 个文档检查通过。
 - `pnpm run lint` — repository lint 检查通过。

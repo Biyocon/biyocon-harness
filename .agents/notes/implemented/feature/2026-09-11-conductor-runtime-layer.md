@@ -241,7 +241,9 @@ Arbiter GO and closeout are deliberately separate calls. The additional authoriz
 - `pnpm run typecheck` — passes (host + client aggregates).
 - `pnpm run build` and `pnpm run verify-built-package-invariants` — the artifact plane builds and all 222 compiled companions pass the plain-Node Loader checks.
 - `npm pack --dry-run --json` in `packages/conductor/conductor` includes the generated `lib/persistence-*.js` chunk.
-- `pnpm run test:snapshot -t Conductor` — the keyless Conductor closeout-authorization snapshot passes through the assembled one-shot application.
+- `pnpm run test:snapshot -t Conductor` — the keyless Conductor closeout-authorization snapshot passes through the assembled one-shot application under a scenario-local project root, so user-level instructions cannot enter the golden.
+- The web preset snapshots require Conductor in both the selector and settings roster; the selection test waits for the actual `compact` and `plan` catalog transition when switching between Minimal and Standard.
+- The ACP PowerShell header snapshot pins the current file-sandbox denial guidance and canonical background-job terminology.
 - The real-composition test boots the real spawn/workflow stack, drives Detective → Strategist → Devil's Advocate → Headsman → Auditor → Integrator → Arbiter as fresh structured-output children, persists the GO checkpoint, and records an explicitly authorized record-only closeout.
 - `pnpm run doc-sync` — all 28 documentation checks pass.
 - `pnpm run lint` — the repository lint check passes.

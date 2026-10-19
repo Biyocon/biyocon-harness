@@ -800,7 +800,10 @@ describe('headless stream-json snapshots', () => {
         DSH_SNAPSHOT_OVERRIDE: join(conductorScenarioDir, 'replay.override.json'),
         NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
       },
-      prepare: (cwd) => { runCwd = cwd },
+      prepare: async (cwd) => {
+        runCwd = cwd
+        await mkdir(join(cwd, '.git'))
+      },
       inspect: async (cwd) => {
         const logs = await persistedLogs(cwd)
         expect(logs).toHaveLength(1)
