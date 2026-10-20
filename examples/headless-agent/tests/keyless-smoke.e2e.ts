@@ -14,7 +14,7 @@ const decompress = promisify(zstdDecompress)
 
 describe('headless-agent keyless smoke', () => {
   it('boots the real Loader tree, runs a real bash tool round trip, and persists the turn', async () => {
-    let persistedHeader: Record<string, unknown> | undefined
+    let persistedRecords: Record<string, unknown>[] | undefined
     const { stdout, stderr } = await runLoaderSmoke({
       label: 'headless-agent',
       tempDirPrefix: 'headless-agent-smoke-',
@@ -29,7 +29,10 @@ describe('headless-agent keyless smoke', () => {
         if (relativePath === undefined) return
         const compressed = await readFile(join(cwd, relativePath))
         expect(compressed.subarray(0, 4).toString('hex')).toBe('28b52ffd')
-        persistedHeader = JSON.parse((await decompress(compressed)).toString()) as Record<string, unknown>
+        persistedRecords = (await decompress(compressed)).toString()
+          .split('\n')
+          .filter(line => line.trim().length > 0)
+          .map(line => JSON.parse(line) as Record<string, unknown>)
       },
     })
     const lines = stdout.trimEnd().split('\n').map(line => JSON.parse(line) as Record<string, unknown>)
@@ -44,6 +47,7 @@ describe('headless-agent keyless smoke', () => {
       usage: { inputTokens: 18, outputTokens: 8, cacheReadTokens: 2, reasoningTokens: 1 },
     })
     expect(String(result?.['output'])).toContain('CLI_TOOL_ROUND_TRIP')
-    expect(persistedHeader).toMatchObject({ type: 'session' })
+    expect(persistedRecords).not.toHaveLength(0)
+    expect(persistedRecords?.[0]).toMatchObject({ type: 'session' })
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 })
