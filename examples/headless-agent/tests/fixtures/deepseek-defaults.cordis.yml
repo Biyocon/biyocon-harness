@@ -9,12 +9,9 @@
           thinking: enabled
           reasoningEffort: low
           # The fixture's final payload arrives after this deadline; only its
-          # SSE comments keep the stream alive. A missed comment fails this
-          # scenario directly instead of becoming a duplicate retry request.
+          # SSE comments keep the stream alive. The default retry policy stays
+          # active, so a missed comment creates a second request and fails.
           streamIdleTimeoutMs: 2000
-          retryPolicy:
-            mode: normal
-            maxRetries: 0
       - id: agent-spine
         config:
           agents:

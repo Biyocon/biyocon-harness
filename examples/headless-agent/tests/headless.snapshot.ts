@@ -542,6 +542,7 @@ describe('headless stream-json snapshots', () => {
       })
 
       expect(result.stderr).toBe('')
+      expect(result.stdout).toContain('DEFAULTS_OK')
       expect(server.requests).toHaveLength(1)
       expect(server.requests[0]?.max_tokens).toBe(256_000)
       expect(server.requests[0]?.reasoning_effort).toBe('low')
