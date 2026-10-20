@@ -62,15 +62,18 @@ export function createRun(runId: ConductorRunId, input: CreateRunInput): Conduct
   return {
     runId,
     objective: input.objective,
-    scope: input.scope ?? [],
-    inputArtifacts: input.inputArtifacts ?? [],
-    allowedPaths: input.allowedPaths ?? [],
-    excludedPaths: input.excludedPaths ?? [],
+    scope: [...(input.scope ?? [])],
+    inputArtifacts: [...(input.inputArtifacts ?? [])],
+    allowedPaths: [...(input.allowedPaths ?? [])],
+    excludedPaths: [...(input.excludedPaths ?? [])],
     sourceBaseline: input.sourceBaseline ?? null,
-    authority: input.authority,
-    constraints: input.constraints ?? [],
-    acceptanceCriteria: input.acceptanceCriteria ?? [],
-    budget: input.budget ?? { maxReworkCycles: 3, maxRalphRounds: 0 },
+    authority: { ...input.authority, permittedActions: [...input.authority.permittedActions] },
+    constraints: [...(input.constraints ?? [])],
+    acceptanceCriteria: [...(input.acceptanceCriteria ?? [])],
+    budget:
+      input.budget === undefined
+        ? { maxReworkCycles: 3, maxRalphRounds: 0 }
+        : { ...input.budget },
     baseline: null,
     currentStage: 'detective',
     history: [],

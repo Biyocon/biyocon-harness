@@ -259,7 +259,10 @@ describe('dsh-tool-conductor unit boundary', () => {
     expect(result.isError, JSON.stringify(result)).toBe(false)
     expect(engine.requests).toHaveLength(8)
     const headsman = engine.requests.find(request => (request.args as { label?: string }).label === 'conductor-headsman')
-    expect((headsman?.args as { prompt: string }).prompt).toContain('Headsman-internal Ralph result')
+    const headsmanPrompt = (headsman?.args as { prompt: string }).prompt
+    expect(headsmanPrompt).toContain('Headsman-internal Ralph result')
+    expect(headsmanPrompt).toContain('Ralph complete')
+    expect(headsmanPrompt).toContain('focused test')
   })
 
   it('validates caller authority and normalized path and string lists before dispatch', async () => {
