@@ -46,13 +46,11 @@ describe('web e2e: agent-preset authoring is a host-side copy', () => {
 
   /** Tokenize the lane-owned preset root after general aria normalization. */
   function withPresetRoot(snapshot: string): string {
-    const rootSuffix = `/${userRoot.split('/').pop()!}`
-    return snapshot.split('\n').map((line) => {
-      const rootStart = line.indexOf(rootSuffix)
-      if (rootStart === -1) return line
-      const pathStart = line.lastIndexOf(' ', rootStart) + 1
-      return `${line.slice(0, pathStart)}{{presetRoot}}${line.slice(rootStart + rootSuffix.length)}`
-    }).join('\n')
+    return snapshot
+      .replaceAll(`${userRoot}\\`, '{{presetRoot}}/')
+      .replaceAll(`${userRoot}/`, '{{presetRoot}}/')
+      .replaceAll(userRoot, '{{presetRoot}}')
+      .replaceAll(userRoot.replaceAll('\\', '/'), '{{presetRoot}}')
   }
 
   beforeAll(async () => {
@@ -99,6 +97,10 @@ describe('web e2e: agent-preset authoring is a host-side copy', () => {
     expect(snapshot).not.toContain('新建预设')
     expect(snapshot).toContain('查看: 标准模式')
     expect(snapshot).not.toContain('删除: 标准模式')
+    expect(snapshot).toContain('Conductor 模式')
+    expect(snapshot).toContain('查看: Conductor 模式')
+    expect(snapshot).toContain('复制: Conductor 模式')
+    expect(snapshot).not.toContain('删除: Conductor 模式')
     expect(snapshot).not.toContain('打开目录')
   }, 60_000)
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ConductorRunId,
   closeRun,
+  createRun,
   gateOfStage,
   nextStageAfterPass,
   recordGate,
@@ -44,6 +45,74 @@ const PASS: GateVerdict = {
 }
 
 describe('dsh-conductor gate engine', () => {
+  it('creates runs without aliasing caller-owned input or shared defaults', () => {
+    const scope = ['packages/conductor']
+    const inputArtifacts = ['report.json']
+    const allowedPaths = ['packages/conductor']
+    const excludedPaths = ['packages/conductor/private']
+    const authority: ConductorRun['authority'] = { owner: 'user', permittedActions: ['read', 'write'] }
+    const constraints = ['no release']
+    const acceptanceCriteria = ['coverage passes']
+    const budget = { maxReworkCycles: 2, maxRalphRounds: 1 }
+    const run = createRun(ConductorRunId('CON-2026-0002'), {
+      objective: 'cover the explicit input path',
+      scope,
+      inputArtifacts,
+      allowedPaths,
+      excludedPaths,
+      sourceBaseline: 'HEAD',
+      authority,
+      constraints,
+      acceptanceCriteria,
+      budget,
+    })
+
+    scope.push('outside')
+    inputArtifacts.push('outside.json')
+    allowedPaths.push('outside')
+    excludedPaths.push('outside/private')
+    authority.owner = 'other'
+    authority.permittedActions.pop()
+    constraints.push('outside constraint')
+    acceptanceCriteria.push('outside criterion')
+    budget.maxReworkCycles = 99
+
+    expect(run).toMatchObject({
+      scope: ['packages/conductor'],
+      inputArtifacts: ['report.json'],
+      allowedPaths: ['packages/conductor'],
+      excludedPaths: ['packages/conductor/private'],
+      sourceBaseline: 'HEAD',
+      authority: { owner: 'user', permittedActions: ['read', 'write'] },
+      constraints: ['no release'],
+      acceptanceCriteria: ['coverage passes'],
+      budget: { maxReworkCycles: 2, maxRalphRounds: 1 },
+    })
+
+    const defaulted = createRun(ConductorRunId('CON-2026-0003'), {
+      objective: 'cover the default input path',
+      authority: { owner: 'user', permittedActions: ['read'] },
+    })
+    expect(defaulted).toMatchObject({
+      scope: [],
+      inputArtifacts: [],
+      allowedPaths: [],
+      excludedPaths: [],
+      sourceBaseline: null,
+      constraints: [],
+      acceptanceCriteria: [],
+      budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
+    })
+    defaulted.scope.push('outside')
+    defaulted.budget.maxReworkCycles = 99
+    const secondDefaulted = createRun(ConductorRunId('CON-2026-0004'), {
+      objective: 'prove defaults are per-run',
+      authority: { owner: 'user', permittedActions: ['read'] },
+    })
+    expect(secondDefaulted.scope).toEqual([])
+    expect(secondDefaulted.budget).toEqual({ maxReworkCycles: 3, maxRalphRounds: 0 })
+  })
+
   it('maps each gated stage to its gate letter and back', () => {
     const pairs: Array<[ConductorStage, GateId]> = [
       ['detective', 'A'],
@@ -108,6 +177,26 @@ describe('dsh-conductor gate engine', () => {
     expect(next.history[0]).toMatchObject({ gate: 'E', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' })
     expect(next.currentStage).toBe('headsman')
     expect(next.status).toBe('rework')
+
+    const replanned = recordGate(makeRun({
+      currentStage: 'auditor',
+      baseline: {
+        scopeVersion: 'scope-1',
+        planVersion: 'plan-1',
+        acceptanceVersion: 'acceptance-1',
+        allowedPaths: ['packages/conductor'],
+        excludedPaths: [],
+        rollbackReference: 'HEAD',
+      },
+    }), {
+      decision: 'rework',
+      defectClass: 'scope',
+      nextStage: 'detective',
+      basis: ['scope changed'],
+      evidenceReviewed: ['owner direction'],
+      stateUpdate: 'replace the baseline',
+    })
+    expect(replanned.baseline).toBeNull()
   })
 
   it('escalates a rework once the rework budget is exhausted', () => {
@@ -228,5 +317,34 @@ describe('dsh-conductor gate engine', () => {
     }
     expect(() => closeRun(run, authorization)).toThrow(/mandate owner/)
     expect(() => closeRun(run, { ...authorization, authorizedBy: 'user' })).toThrow(/outside the run authority/)
+  })
+
+  it('rejects closeout without the required GO state and normalized evidence', () => {
+    const baseAuthorization = {
+      authorizedBy: 'user', action: 'record-only' as const, actionsTaken: [], outcomeEvidence: ['evidence'],
+      unverifiedItems: [], openRisks: [], followUp: [],
+      traceability: { mandate: [], baseline: [], changes: [], verification: [], decision: [] },
+    }
+    expect(() => closeRun(makeRun(), baseAuthorization)).toThrow(/not awaiting closeout/)
+    const awaiting = makeRun({ currentStage: 'closeout', status: 'awaiting_authorization' })
+    expect(() => closeRun(awaiting, baseAuthorization)).toThrow(/no recorded Arbiter GO/)
+    const go = makeRun({
+      currentStage: 'closeout', status: 'awaiting_authorization',
+      decision: {
+        run_id: 'CON-2026-0001', decision: 'go', basis: ['verified'], evidence_reviewed: ['report'],
+        conditions: [], open_risks: [], required_follow_up: [],
+      },
+    })
+    expect(() => closeRun(go, { ...baseAuthorization, outcomeEvidence: [] })).toThrow(/outcome evidence/)
+    expect(() => closeRun(go, { ...baseAuthorization, outcomeEvidence: [' '] })).toThrow(/outcome evidence/)
+    expect(() => closeRun(go, { ...baseAuthorization, actionsTaken: [' '] })).toThrow(/lists/)
+    expect(() => closeRun(go, {
+      ...baseAuthorization,
+      followUp: [{ owner: '', dueCondition: 'later' }],
+    })).toThrow(/follow-up/)
+    expect(() => closeRun(go, {
+      ...baseAuthorization,
+      followUp: [{ owner: 'owner', dueCondition: ' later ' }],
+    })).toThrow(/follow-up/)
   })
 })

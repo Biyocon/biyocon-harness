@@ -24,6 +24,7 @@ function validateCheckpoint(event: SessionEvent, fail: InvariantFailure): void {
       fail(`conductor checkpoint key ${event.data.runId} does not match record ${run.runId}`)
     }
   } catch (error) {
+    /* v8 ignore next -- parseRun and the run-id comparison throw Error instances; String handles foreign throws defensively. */
     fail(`invalid conductor checkpoint: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
