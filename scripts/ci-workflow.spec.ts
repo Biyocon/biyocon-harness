@@ -5,11 +5,95 @@ import { describe, expect, it } from 'vitest'
 
 const root = resolve(import.meta.dirname, '..')
 const runnerPrivatePnpmDestination = '${{ runner.temp }}/setup-pnpm'
-const publicForkLinuxRunnerSelector = "${{ github.event.repository.fork && 'ubuntu-24.04' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON('[\"self-hosted\", \"linux\", \"x64\", \"vm-backup\"]') || 'dsh-ubuntu-24-04-16core' }}"
-const publicForkAggregateRunnerSelector = "${{ github.event.repository.fork && 'ubuntu-24.04' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON('[\"self-hosted\", \"linux\", \"x64\", \"vm-backup\"]') || 'ubuntu-latest' }}"
-const publicForkWindowsRunnerSelector = "${{ github.event.repository.fork && 'windows-2025' || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON('[\"self-hosted\", \"dsh-win-ci\", \"windows\"]') || 'dsh-windows-2025-16core' }}"
+const trustedPullRequestHead = 'github.event.pull_request.head.repo && toJSON(github.event.pull_request.head.repo.id) == github.repository_id && toJSON(github.event.pull_request.head.repo.owner.id) == github.repository_owner_id && toJSON(github.event.pull_request.head.repo.fork) == \'false\''
+const publicForkLinuxRunnerSelector = actionExpression(`${trustedPullRequestHead} && (vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]') || 'dsh-ubuntu-24-04-16core') || 'ubuntu-24.04'`)
+const publicForkAggregateRunnerSelector = actionExpression(`${trustedPullRequestHead} && (vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]') || 'ubuntu-latest') || 'ubuntu-24.04'`)
+const publicForkWindowsRunnerSelector = actionExpression(`${trustedPullRequestHead} && (vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON('["self-hosted", "dsh-win-ci", "windows"]') || 'dsh-windows-2025-16core') || 'windows-2025'`)
+const trustedGateConcurrency = actionExpression(`${trustedPullRequestHead} && '8' || '2'`)
+const hostedLinuxSetup = actionExpression(`!(${trustedPullRequestHead}) || vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'`)
+const selfHostedLinuxSetup = actionExpression(`${trustedPullRequestHead} && vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]'`)
 
 describe('CI workflow', () => {
+  it('routes only an explicitly trusted pull request head beyond hosted runners', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml')
+    const workflowText = readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8')
+    const node24 = workflowJob(workflow, 'node-24')
+    const consumers = workflowJob(workflow, 'node-24-consumers')
+    const windowsNative = workflowJob(workflow, 'windows-native')
+    const aggregate = workflowJob(workflow, 'all-checks-passed')
+    if (!isRecord(node24.env) || !Array.isArray(consumers.steps)) {
+      throw new TypeError('CI workflow must define node-24 env and node-24-consumers steps')
+    }
+    const consumerSteps: unknown[] = consumers.steps
+    const hostedPlaywright: unknown = consumerSteps.find(step => isRecord(step) && step.name === 'Install Playwright Chromium and hosted dependencies')
+    const selfHostedPlaywright: unknown = consumerSteps.find(step => isRecord(step) && step.name === 'Install Playwright Chromium on the failover VM')
+    if (!isRecord(hostedPlaywright) || !isRecord(selfHostedPlaywright)) {
+      throw new TypeError('consumer job must define both Playwright setup steps')
+    }
+
+    const trustedRepository = { id: 101, owner: { id: 202 }, fork: false }
+    const cases: Array<{ name: string; repo?: unknown; trusted: boolean }> = [
+      { name: 'trusted same-repository non-fork', repo: trustedRepository, trusted: true },
+      { name: 'external fork', repo: { id: 303, owner: { id: 404 }, fork: true }, trusted: false },
+      { name: 'same-repository public fork', repo: { ...trustedRepository, fork: true }, trusted: false },
+      { name: 'missing head repository', trusted: false },
+      { name: 'null head repository', repo: null, trusted: false },
+      { name: 'empty head repository', repo: {}, trusted: false },
+      { name: 'string head repository', repo: 'repository', trusted: false },
+      { name: 'missing fork flag', repo: { id: 101, owner: { id: 202 } }, trusted: false },
+      { name: 'null fork flag', repo: { id: 101, owner: { id: 202 }, fork: null }, trusted: false },
+      { name: 'empty fork flag', repo: { id: 101, owner: { id: 202 }, fork: '' }, trusted: false },
+      { name: 'string false fork flag', repo: { id: 101, owner: { id: 202 }, fork: 'false' }, trusted: false },
+      { name: 'numeric zero fork flag', repo: { id: 101, owner: { id: 202 }, fork: 0 }, trusted: false },
+      { name: 'string repository id', repo: { id: '101', owner: { id: 202 }, fork: false }, trusted: false },
+      { name: 'wrong repository id', repo: { id: 303, owner: { id: 202 }, fork: false }, trusted: false },
+      { name: 'wrong owner id', repo: { id: 101, owner: { id: 404 }, fork: false }, trusted: false },
+      { name: 'missing owner', repo: { id: 101, fork: false }, trusted: false },
+    ]
+
+    for (const testCase of cases) {
+      const context: PullRequestRouteContext = {
+        event: { pull_request: { head: testCase.repo === undefined ? {} : { repo: testCase.repo }, user: { login: 'contributor' } } },
+        repositoryId: '101',
+        repositoryOwnerId: '202',
+        linuxFailover: 'selfhosted',
+        windowsFailover: 'selfhosted',
+      }
+      expect(() => evaluateTrustedHead(context), testCase.name).not.toThrow()
+      expect(evaluateTrustedHead(context), testCase.name).toBe(testCase.trusted)
+      expect(evaluateRunnerSelector(node24['runs-on'], publicForkLinuxRunnerSelector, context), testCase.name)
+        .toEqual(testCase.trusted ? ['self-hosted', 'linux', 'x64', 'vm-backup'] : 'ubuntu-24.04')
+      expect(evaluateRunnerSelector(windowsNative['runs-on'], publicForkWindowsRunnerSelector, context), testCase.name)
+        .toEqual(testCase.trusted ? ['self-hosted', 'dsh-win-ci', 'windows'] : 'windows-2025')
+      expect(evaluateRunnerSelector(aggregate['runs-on'], publicForkAggregateRunnerSelector, context), testCase.name)
+        .toEqual(testCase.trusted ? ['self-hosted', 'linux', 'x64', 'vm-backup'] : 'ubuntu-24.04')
+      expect(evaluateTrustedValue(node24.env.DSH_GATE_CONCURRENCY, trustedGateConcurrency, context, '8', '2'), testCase.name)
+        .toBe(testCase.trusted ? '8' : '2')
+      expect(evaluateHostedSetup(hostedPlaywright.if, hostedLinuxSetup, context), testCase.name).toBe(!testCase.trusted)
+      expect(evaluateSelfHostedSetup(selfHostedPlaywright.if, selfHostedLinuxSetup, context), testCase.name).toBe(testCase.trusted)
+    }
+
+    const trustedEnterpriseContext: PullRequestRouteContext = {
+      event: { pull_request: { head: { repo: trustedRepository }, user: { login: 'contributor' } } },
+      repositoryId: '101',
+      repositoryOwnerId: '202',
+      linuxFailover: '',
+      windowsFailover: '',
+    }
+    expect(evaluateRunnerSelector(node24['runs-on'], publicForkLinuxRunnerSelector, trustedEnterpriseContext))
+      .toBe('dsh-ubuntu-24-04-16core')
+    expect(evaluateRunnerSelector(windowsNative['runs-on'], publicForkWindowsRunnerSelector, trustedEnterpriseContext))
+      .toBe('dsh-windows-2025-16core')
+
+    const pullRequestExpressions = collectStrings(workflow)
+      .filter(value => value.includes('github.event.pull_request.head.repo'))
+    expect(pullRequestExpressions).toHaveLength(21)
+    for (const expression of pullRequestExpressions) {
+      expect(expression.replace(/\s+/g, ' ')).toContain(trustedPullRequestHead)
+    }
+    expect(workflowText.match(/github\.event\.repository\.fork/g)).toHaveLength(4)
+  })
+
   it('isolates every pnpm action setup destination per runner', () => {
     const workflow: unknown = yaml.load(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'))
     if (!isRecord(workflow) || !isRecord(workflow.jobs)) throw new TypeError('CI workflow must define jobs')
@@ -77,10 +161,10 @@ describe('CI workflow', () => {
     expect(windowsNative.name).toBe('windows node 24 / native complete')
     expect(windowsNative.if).toBe("github.event_name == 'pull_request'")
     expect(windowsNative.env).toMatchObject({
-      DSH_COVERAGE_MAX_WORKERS: "${{ github.event.repository.fork && '1' || '2' }}",
+      DSH_COVERAGE_MAX_WORKERS: actionExpression(`${trustedPullRequestHead} && '2' || '1'`),
       DSH_COVERAGE_TEST_TIMEOUT_MS: '30000',
-      DSH_GATE_CONCURRENCY: "${{ github.event.repository.fork && '1' || '2' }}",
-      DSH_PUBLINT_CONCURRENCY: "${{ github.event.repository.fork && '2' || '8' }}",
+      DSH_GATE_CONCURRENCY: actionExpression(`${trustedPullRequestHead} && '2' || '1'`),
+      DSH_PUBLINT_CONCURRENCY: trustedGateConcurrency,
     })
     const nativeCommandSteps = (windowsNative.steps as unknown[]).filter((step): step is Record<string, unknown> & { run: string } => (
       isRecord(step) && typeof step.run === 'string'
@@ -112,23 +196,23 @@ describe('CI workflow', () => {
       expectRunnerSelector(job, publicForkLinuxRunnerSelector)
     }
     expect(node24.env).toMatchObject({
-      DSH_GATE_CONCURRENCY: "${{ github.event.repository.fork && '2' || '8' }}",
+      DSH_GATE_CONCURRENCY: trustedGateConcurrency,
     })
     expect(node24Coverage.env).toMatchObject({
-      DSH_COVERAGE_MAX_WORKERS: "${{ github.event.repository.fork && '2' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '8' || '6' }}",
-      DSH_GATE_CONCURRENCY: "${{ github.event.repository.fork && '1' || '3' }}",
+      DSH_COVERAGE_MAX_WORKERS: actionExpression(`${trustedPullRequestHead} && (vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '8' || '6') || '2'`),
+      DSH_GATE_CONCURRENCY: actionExpression(`${trustedPullRequestHead} && '3' || '1'`),
     })
     expect(node24Consumers.env).toMatchObject({
-      DSH_GATE_CONCURRENCY: "${{ github.event.repository.fork && '2' || '8' }}",
-      DSH_OXLINT_THREADS: "${{ github.event.repository.fork && '2' || '8' }}",
-      DSH_PUBLINT_CONCURRENCY: "${{ github.event.repository.fork && '2' || '8' }}",
-      DSH_SNAPSHOT_MAX_CONCURRENCY: "${{ github.event.repository.fork && '4' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '12' || '32' }}",
+      DSH_GATE_CONCURRENCY: trustedGateConcurrency,
+      DSH_OXLINT_THREADS: trustedGateConcurrency,
+      DSH_PUBLINT_CONCURRENCY: trustedGateConcurrency,
+      DSH_SNAPSHOT_MAX_CONCURRENCY: actionExpression(`${trustedPullRequestHead} && (vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '12' || '32') || '4'`),
     })
     const consumerSteps = Array.isArray(node24Consumers.steps) ? node24Consumers.steps.filter(isRecord) : []
     const hostedPlaywright = consumerSteps.find(step => step.name === 'Install Playwright Chromium and hosted dependencies')
     const selfHostedPlaywright = consumerSteps.find(step => step.name === 'Install Playwright Chromium on the failover VM')
-    expect(hostedPlaywright?.if).toContain('github.event.repository.fork ||')
-    expect(selfHostedPlaywright?.if).toContain('github.event.repository.fork == false')
+    expect(hostedPlaywright?.if).toBe(hostedLinuxSetup)
+    expect(selfHostedPlaywright?.if).toBe(selfHostedLinuxSetup)
     expect(aggregate['runs-on']).toContain('DSH_CI_FAILOVER_LINUX')
     expect(aggregate['runs-on']).not.toContain('DSH_CI_FAILOVER_WINDOWS')
     expect(aggregate['runs-on']).toContain('vm-backup')
@@ -468,4 +552,117 @@ function expectRunnerSelector(job: Record<string, unknown>, expected: string): v
   const runsOn = job['runs-on']
   if (typeof runsOn !== 'string') throw new TypeError('runner selector must be a string')
   expect(runsOn.replace(/\s+/g, ' ').trim()).toBe(expected)
+}
+
+interface PullRequestRouteContext {
+  event: unknown
+  repositoryId: string
+  repositoryOwnerId: string
+  linuxFailover: string
+  windowsFailover: string
+}
+
+function actionExpression(body: string): string {
+  return `\${{ ${body} }}`
+}
+
+function collectStrings(value: unknown): string[] {
+  if (typeof value === 'string') return [value]
+  if (Array.isArray(value)) return value.flatMap(collectStrings)
+  if (!isRecord(value)) return []
+  return Object.values(value).flatMap(collectStrings)
+}
+
+function evaluateRunnerSelector(
+  expression: unknown,
+  expected: string,
+  context: PullRequestRouteContext,
+): string | string[] {
+  bindExpression(expression, expected)
+  if (!evaluateTrustedHead(context)) {
+    return expected === publicForkWindowsRunnerSelector ? 'windows-2025' : 'ubuntu-24.04'
+  }
+
+  const login = actionsProperty(context.event, ['pull_request', 'user', 'login'])
+  const dependabot = actionsEqual(login, 'dependabot[bot]')
+  if (expected === publicForkWindowsRunnerSelector) {
+    return context.windowsFailover === 'selfhosted' && !dependabot
+      ? ['self-hosted', 'dsh-win-ci', 'windows']
+      : 'dsh-windows-2025-16core'
+  }
+  if (context.linuxFailover === 'selfhosted' && !dependabot) {
+    return ['self-hosted', 'linux', 'x64', 'vm-backup']
+  }
+  return expected === publicForkAggregateRunnerSelector ? 'ubuntu-latest' : 'dsh-ubuntu-24-04-16core'
+}
+
+function evaluateTrustedValue<T>(
+  expression: unknown,
+  expected: string,
+  context: PullRequestRouteContext,
+  trusted: T,
+  hosted: T,
+): T {
+  bindExpression(expression, expected)
+  return evaluateTrustedHead(context) ? trusted : hosted
+}
+
+function evaluateHostedSetup(expression: unknown, expected: string, context: PullRequestRouteContext): boolean {
+  bindExpression(expression, expected)
+  const login = actionsProperty(context.event, ['pull_request', 'user', 'login'])
+  return !evaluateTrustedHead(context)
+    || context.linuxFailover !== 'selfhosted'
+    || actionsEqual(login, 'dependabot[bot]')
+}
+
+function evaluateSelfHostedSetup(expression: unknown, expected: string, context: PullRequestRouteContext): boolean {
+  bindExpression(expression, expected)
+  const login = actionsProperty(context.event, ['pull_request', 'user', 'login'])
+  return evaluateTrustedHead(context)
+    && context.linuxFailover === 'selfhosted'
+    && !actionsEqual(login, 'dependabot[bot]')
+}
+
+function evaluateTrustedHead(context: PullRequestRouteContext): boolean {
+  const repository = actionsProperty(context.event, ['pull_request', 'head', 'repo'])
+  return actionsTruthy(repository)
+    && actionsEqual(actionsToJson(actionsProperty(repository, ['id'])), context.repositoryId)
+    && actionsEqual(actionsToJson(actionsProperty(repository, ['owner', 'id'])), context.repositoryOwnerId)
+    && actionsEqual(actionsToJson(actionsProperty(repository, ['fork'])), 'false')
+}
+
+function actionsProperty(value: unknown, path: string[]): unknown {
+  let current = value
+  for (const key of path) {
+    if (!isRecord(current) || !(key in current)) return ''
+    current = current[key]
+  }
+  return current
+}
+
+function actionsToJson(value: unknown): string {
+  return JSON.stringify(value) ?? ''
+}
+
+function actionsTruthy(value: unknown): boolean {
+  return value !== false
+    && value !== null
+    && value !== ''
+    && value !== 0
+    && !(typeof value === 'number' && Number.isNaN(value))
+}
+
+function actionsEqual(left: unknown, right: unknown): boolean {
+  if (typeof left === typeof right) {
+    if (typeof left === 'string' && typeof right === 'string') return left.toLowerCase() === right.toLowerCase()
+    return left === right
+  }
+  const leftNumber = Number(left)
+  const rightNumber = Number(right)
+  return !Number.isNaN(leftNumber) && !Number.isNaN(rightNumber) && leftNumber === rightNumber
+}
+
+function bindExpression(actual: unknown, expected: string): void {
+  if (typeof actual !== 'string') throw new TypeError('workflow expression must be a string')
+  expect(actual.replace(/\s+/g, ' ').trim()).toBe(expected)
 }
