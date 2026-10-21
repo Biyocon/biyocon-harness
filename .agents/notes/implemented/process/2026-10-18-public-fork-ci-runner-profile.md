@@ -10,11 +10,11 @@ The primary CI workflow names organization-managed larger-runner labels and prov
 
 ## Decision
 
-When `github.event.repository.fork` is true, the three Linux Node 24 jobs and the `all checks passed` verdict run on `ubuntu-24.04`, and the native Windows job runs on `windows-2025`. The fork test is the first branch in each runner selector, before `DSH_CI_FAILOVER_LINUX` or `DSH_CI_FAILOVER_WINDOWS`, so repository variables cannot route public-fork work to a self-hosted runner. Non-fork repositories retain the existing enterprise labels, Dependabot exception, and variable-controlled failover behavior.
+The three Linux Node 24 jobs, the `all checks passed` verdict, and the native Windows job use configured, enterprise, or self-hosted routing only when the pull-request head repository exists, its repository and owner IDs match the current repository context, and its `fork` field is the boolean `false`. Every missing, null, empty, differently typed, or mismatched value is untrusted and selects `ubuntu-24.04` or `windows-2025` with the public concurrency profile. A same-repository pull request in a repository that is itself a fork is therefore hosted-safe. The positive trust test precedes `DSH_CI_FAILOVER_LINUX` and `DSH_CI_FAILOVER_WINDOWS`, so repository variables cannot route untrusted work to persistent runners; explicitly trusted heads retain the Dependabot exception and variable-controlled failover behavior.
 
 The public-fork profile limits Linux static gates to two concurrent gates, coverage to two test workers and one gate, consumer gates and linters to two workers, and snapshots to four workers. Native Windows uses one coverage worker, one gate worker, and two publint workers. These values fit the standard hosted runners' four CPUs without changing the larger-runner or self-hosted limits used by non-fork repositories.
 
-Hosted cache restoration and Playwright dependency installation follow the public-fork branch even when a failover variable is present. Self-hosted standby drills and organization-runner benchmarks require `github.event.repository.fork == false`, preventing a public fork from dispatching either persistent-host or unavailable enterprise-label work.
+Hosted cache restoration and Playwright dependency installation are the default for untrusted or unknown pull-request metadata even when a failover variable is present. Only the same positive repository, owner, and boolean non-fork test can select the self-hosted Playwright step. The non-PR self-hosted standby drills and organization-runner benchmarks retain their top-level `github.event.repository.fork == false` guards because those push and `workflow_dispatch` events have no pull-request head repository.
 
 The Linux profile downloads Bubblewrap `0.9.0-1ubuntu0.3` from its immutable Launchpad Librarian object and verifies SHA-256 `2461f1beee9cb04c8942739fe1a2b37e7b7c2a3d518f0779dc75f9245baa3094` before extraction. Download or checksum failure stops preparation before the executable path, AppArmor setting, or Bubblewrap probe can change.
 
@@ -28,7 +28,7 @@ The Linux profile downloads Bubblewrap `0.9.0-1ubuntu0.3` from its immutable Lau
 
 ## Consequences
 
-Public forks can run the complete pull-request workflow on ephemeral GitHub-hosted machines, but the four affected jobs have less CPU capacity and may take longer. Fork repositories do not run the self-hosted standby drills or organization-runner benchmarks. The workflow test pins runner-selection precedence, fork concurrency, hosted setup, and the non-fork guards so later failover edits cannot silently restore self-hosted routing for public forks.
+Untrusted pull-request heads can run the primary keyless CI on ephemeral GitHub-hosted machines, but the four affected jobs have less CPU capacity and may take longer. Secret-backed real-API E2E remains skipped for fork and Dependabot pull requests. Fork repositories do not run the self-hosted standby drills or organization-runner benchmarks. The workflow test pins the positive repository/owner/non-fork trust test, hosted-safe defaults, concurrency, setup, and the non-PR guards so later failover edits cannot silently restore persistent-runner routing for unknown or untrusted heads.
 
 ## Verification
 
