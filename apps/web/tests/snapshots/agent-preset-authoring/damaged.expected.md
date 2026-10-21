@@ -61,6 +61,16 @@
       - 'button "复制: 创造模式"':
         - img
         - text: 复制
+    - listitem:
+      - 'button "设为默认: Conductor 模式"':
+        - text: Conductor 模式 内置 通过持久 gate、受限的全新专家、独立审计和显式 closeout 授权执行多角色工作。
+        - code: conductor
+      - 'button "查看: Conductor 模式"':
+        - img
+        - text: 查看
+      - 'button "复制: Conductor 模式"':
+        - img
+        - text: 复制
   - heading "自定义" [level=3]
   - list:
     - listitem:

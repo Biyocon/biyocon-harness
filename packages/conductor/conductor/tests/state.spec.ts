@@ -1,0 +1,350 @@
+import { describe, expect, it } from 'vitest'
+import {
+  ConductorRunId,
+  closeRun,
+  createRun,
+  gateOfStage,
+  nextStageAfterPass,
+  recordGate,
+  reworkCycles,
+  stageOfGate,
+} from '../src/index.ts'
+import type { ConductorRun, ConductorStage, GateId, GateRecord, GateVerdict } from '../src/index.ts'
+
+function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
+  return {
+    runId: ConductorRunId('CON-2026-0001'),
+    objective: 'ship the feature',
+    scope: [],
+    inputArtifacts: [],
+    allowedPaths: [],
+    excludedPaths: [],
+    sourceBaseline: null,
+    authority: { owner: 'user', permittedActions: ['read'] },
+    constraints: [],
+    acceptanceCriteria: [],
+    budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
+    baseline: null,
+    currentStage: 'detective',
+    history: [],
+    specialistReports: [],
+    status: 'running',
+    ...overrides,
+  }
+}
+
+function gateRecord(partial: Pick<GateRecord, 'gate' | 'stage' | 'decision'> & Partial<GateRecord>): GateRecord {
+  return { basis: [], evidenceReviewed: [], stateUpdate: '', ...partial }
+}
+
+const PASS: GateVerdict = {
+  decision: 'pass',
+  basis: ['evidence'],
+  evidenceReviewed: ['artifact'],
+  stateUpdate: 'advance',
+}
+
+describe('dsh-conductor gate engine', () => {
+  it('creates runs without aliasing caller-owned input or shared defaults', () => {
+    const scope = ['packages/conductor']
+    const inputArtifacts = ['report.json']
+    const allowedPaths = ['packages/conductor']
+    const excludedPaths = ['packages/conductor/private']
+    const authority: ConductorRun['authority'] = { owner: 'user', permittedActions: ['read', 'write'] }
+    const constraints = ['no release']
+    const acceptanceCriteria = ['coverage passes']
+    const budget = { maxReworkCycles: 2, maxRalphRounds: 1 }
+    const run = createRun(ConductorRunId('CON-2026-0002'), {
+      objective: 'cover the explicit input path',
+      scope,
+      inputArtifacts,
+      allowedPaths,
+      excludedPaths,
+      sourceBaseline: 'HEAD',
+      authority,
+      constraints,
+      acceptanceCriteria,
+      budget,
+    })
+
+    scope.push('outside')
+    inputArtifacts.push('outside.json')
+    allowedPaths.push('outside')
+    excludedPaths.push('outside/private')
+    authority.owner = 'other'
+    authority.permittedActions.pop()
+    constraints.push('outside constraint')
+    acceptanceCriteria.push('outside criterion')
+    budget.maxReworkCycles = 99
+
+    expect(run).toMatchObject({
+      scope: ['packages/conductor'],
+      inputArtifacts: ['report.json'],
+      allowedPaths: ['packages/conductor'],
+      excludedPaths: ['packages/conductor/private'],
+      sourceBaseline: 'HEAD',
+      authority: { owner: 'user', permittedActions: ['read', 'write'] },
+      constraints: ['no release'],
+      acceptanceCriteria: ['coverage passes'],
+      budget: { maxReworkCycles: 2, maxRalphRounds: 1 },
+    })
+
+    const defaulted = createRun(ConductorRunId('CON-2026-0003'), {
+      objective: 'cover the default input path',
+      authority: { owner: 'user', permittedActions: ['read'] },
+    })
+    expect(defaulted).toMatchObject({
+      scope: [],
+      inputArtifacts: [],
+      allowedPaths: [],
+      excludedPaths: [],
+      sourceBaseline: null,
+      constraints: [],
+      acceptanceCriteria: [],
+      budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
+    })
+    defaulted.scope.push('outside')
+    defaulted.budget.maxReworkCycles = 99
+    const secondDefaulted = createRun(ConductorRunId('CON-2026-0004'), {
+      objective: 'prove defaults are per-run',
+      authority: { owner: 'user', permittedActions: ['read'] },
+    })
+    expect(secondDefaulted.scope).toEqual([])
+    expect(secondDefaulted.budget).toEqual({ maxReworkCycles: 3, maxRalphRounds: 0 })
+  })
+
+  it('maps each gated stage to its gate letter and back', () => {
+    const pairs: Array<[ConductorStage, GateId]> = [
+      ['detective', 'A'],
+      ['strategist', 'B'],
+      ['devils-advocate', 'C'],
+      ['headsman', 'D'],
+      ['auditor', 'E'],
+      ['integrator', 'F'],
+      ['arbiter', 'G'],
+    ]
+    for (const [stage, gate] of pairs) {
+      expect(gateOfStage(stage)).toBe(gate)
+      expect(stageOfGate(gate)).toBe(stage)
+    }
+    expect(gateOfStage('intake')).toBeUndefined()
+    expect(gateOfStage('ralph')).toBeUndefined()
+    expect(gateOfStage('closeout')).toBeUndefined()
+  })
+
+  it('advances pass decisions along the linear pass path', () => {
+    const path: Array<[ConductorStage, ConductorStage]> = [
+      ['detective', 'strategist'],
+      ['strategist', 'devils-advocate'],
+      ['devils-advocate', 'headsman'],
+      ['headsman', 'auditor'],
+      ['auditor', 'integrator'],
+      ['integrator', 'arbiter'],
+      ['arbiter', 'closeout'],
+    ]
+    for (const [from, to] of path) {
+      expect(nextStageAfterPass(from)).toBe(to)
+    }
+    expect(nextStageAfterPass('closeout')).toBeUndefined()
+    expect(nextStageAfterPass('intake')).toBeUndefined()
+  })
+
+  it('records a pass with the derived gate letter and advances the stage', () => {
+    const next = recordGate(makeRun({ currentStage: 'detective' }), PASS)
+    expect(next.history).toHaveLength(1)
+    expect(next.history[0]).toMatchObject({ gate: 'A', stage: 'detective', decision: 'pass', nextStage: 'strategist' })
+    expect(next.currentStage).toBe('strategist')
+    expect(next.status).toBe('running')
+  })
+
+  it('records an Arbiter pass by moving the run to closeout', () => {
+    const next = recordGate(makeRun({ currentStage: 'arbiter' }), PASS)
+    expect(next.currentStage).toBe('closeout')
+    expect(next.history[0]).toMatchObject({ gate: 'G', decision: 'pass', nextStage: 'closeout' })
+    expect(next.status).toBe('awaiting_authorization')
+  })
+
+  it('records a rework within budget, routing to the target and counting the cycle', () => {
+    const next = recordGate(makeRun({ currentStage: 'auditor' }), {
+      decision: 'rework',
+      defectClass: 'implementation',
+      nextStage: 'headsman',
+      basis: ['acceptance fails'],
+      evidenceReviewed: ['verification report'],
+      stateUpdate: 'fix implementation',
+    })
+    expect(reworkCycles(next)).toBe(1)
+    expect(next.history[0]).toMatchObject({ gate: 'E', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' })
+    expect(next.currentStage).toBe('headsman')
+    expect(next.status).toBe('rework')
+
+    const replanned = recordGate(makeRun({
+      currentStage: 'auditor',
+      baseline: {
+        scopeVersion: 'scope-1',
+        planVersion: 'plan-1',
+        acceptanceVersion: 'acceptance-1',
+        allowedPaths: ['packages/conductor'],
+        excludedPaths: [],
+        rollbackReference: 'HEAD',
+      },
+    }), {
+      decision: 'rework',
+      defectClass: 'scope',
+      nextStage: 'detective',
+      basis: ['scope changed'],
+      evidenceReviewed: ['owner direction'],
+      stateUpdate: 'replace the baseline',
+    })
+    expect(replanned.baseline).toBeNull()
+  })
+
+  it('escalates a rework once the rework budget is exhausted', () => {
+    const run = makeRun({
+      currentStage: 'auditor',
+      budget: { maxReworkCycles: 2, maxRalphRounds: 0 },
+      history: [
+        gateRecord({ gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
+        gateRecord({ gate: 'E', stage: 'auditor', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
+      ],
+    })
+    const next = recordGate(run, {
+      decision: 'rework',
+      defectClass: 'implementation',
+      nextStage: 'headsman',
+      basis: ['still failing'],
+      evidenceReviewed: [],
+      stateUpdate: 'escalate',
+    })
+    expect(next.history.at(-1)).toMatchObject({ gate: 'E', decision: 'escalate', nextStage: 'headsman' })
+    expect(next.status).toBe('escalated')
+    expect(reworkCycles(next)).toBe(2)
+  })
+
+  it('records an abort as terminal and stops at the current stage', () => {
+    const next = recordGate(makeRun({ currentStage: 'headsman' }), {
+      decision: 'abort',
+      basis: ['stop condition met'],
+      evidenceReviewed: [],
+      stateUpdate: 'stop',
+    })
+    expect(next.status).toBe('aborted')
+    expect(next.currentStage).toBe('headsman')
+    expect(next.history[0]).toMatchObject({ gate: 'D', decision: 'abort' })
+    expect(next.history[0]?.nextStage).toBeUndefined()
+  })
+
+  it('records an explicit escalate and parks the run', () => {
+    const next = recordGate(makeRun({ currentStage: 'strategist' }), {
+      decision: 'escalate',
+      basis: ['needs owner decision'],
+      evidenceReviewed: [],
+      stateUpdate: 'ask owner',
+    })
+    expect(next.status).toBe('escalated')
+    expect(next.history[0]).toMatchObject({ gate: 'B', decision: 'escalate' })
+  })
+
+  it('rejects a gate decision on a non-gated stage', () => {
+    for (const stage of ['intake', 'ralph', 'closeout'] as const) {
+      expect(() => recordGate(makeRun({ currentStage: stage }), PASS)).toThrow(/owns no gate/)
+    }
+  })
+
+  it('rejects a gate decision on a terminal run', () => {
+    expect(() => recordGate(makeRun({ status: 'closed' }), PASS)).toThrow(/closed/)
+    expect(() => recordGate(makeRun({ status: 'aborted' }), PASS)).toThrow(/aborted/)
+  })
+
+  it('requires a defect class and a rework target for a rework', () => {
+    const run = makeRun({ currentStage: 'auditor' })
+    expect(() => recordGate(run, {
+      decision: 'rework', basis: [], evidenceReviewed: [], nextStage: 'headsman', stateUpdate: '',
+    })).toThrow(/defect class/)
+    expect(() => recordGate(run, {
+      decision: 'rework', basis: [], evidenceReviewed: [], defectClass: 'implementation', stateUpdate: '',
+    })).toThrow(/target stage/)
+  })
+
+  it('does not mutate the input run', () => {
+    const run = makeRun({ currentStage: 'detective' })
+    recordGate(run, PASS)
+    expect(run.history).toHaveLength(0)
+    expect(run.currentStage).toBe('detective')
+    expect(run.status).toBe('running')
+  })
+
+  it('requires explicit owner authority and records a traceable closeout without executing it', () => {
+    const run = makeRun({
+      authority: { owner: 'user', permittedActions: ['read', 'deploy'] },
+      currentStage: 'closeout',
+      status: 'awaiting_authorization',
+      decision: {
+        run_id: 'CON-2026-0001', decision: 'go', basis: ['verified'], evidence_reviewed: ['report'],
+        conditions: [], open_risks: [], required_follow_up: [],
+      },
+    })
+    const authorization = {
+      authorizedBy: 'user', action: 'deploy' as const, actionsTaken: ['deployed release 12'],
+      outcomeEvidence: ['deployment health check passed'], unverifiedItems: [], openRisks: [],
+      followUp: [{ owner: 'release-owner', dueCondition: 'next release window' }],
+      traceability: {
+        mandate: ['request'], baseline: ['abc120'], changes: ['abc123'],
+        verification: ['CI 42'], decision: ['Gate G'],
+      },
+    }
+    const closed = closeRun(run, authorization)
+    expect(closed.status).toBe('closed')
+    expect(closed.closeout).toMatchObject({
+      arbiter_decision: 'go', authorized_by: 'user', authorized_action: 'deploy',
+      actions_taken: ['deployed release 12'], follow_up: [{ owner: 'release-owner', due_condition: 'next release window' }],
+    })
+    expect(run.status).toBe('awaiting_authorization')
+  })
+
+  it('rejects closeout from the wrong owner or for an unauthorized action', () => {
+    const run = makeRun({
+      currentStage: 'closeout', status: 'awaiting_authorization',
+      decision: {
+        run_id: 'CON-2026-0001', decision: 'go', basis: [], evidence_reviewed: [],
+        conditions: [], open_risks: [], required_follow_up: [],
+      },
+    })
+    const authorization = {
+      authorizedBy: 'impostor', action: 'merge' as const, actionsTaken: [], outcomeEvidence: ['evidence'],
+      unverifiedItems: [], openRisks: [], followUp: [],
+      traceability: { mandate: [], baseline: [], changes: [], verification: [], decision: [] },
+    }
+    expect(() => closeRun(run, authorization)).toThrow(/mandate owner/)
+    expect(() => closeRun(run, { ...authorization, authorizedBy: 'user' })).toThrow(/outside the run authority/)
+  })
+
+  it('rejects closeout without the required GO state and normalized evidence', () => {
+    const baseAuthorization = {
+      authorizedBy: 'user', action: 'record-only' as const, actionsTaken: [], outcomeEvidence: ['evidence'],
+      unverifiedItems: [], openRisks: [], followUp: [],
+      traceability: { mandate: [], baseline: [], changes: [], verification: [], decision: [] },
+    }
+    expect(() => closeRun(makeRun(), baseAuthorization)).toThrow(/not awaiting closeout/)
+    const awaiting = makeRun({ currentStage: 'closeout', status: 'awaiting_authorization' })
+    expect(() => closeRun(awaiting, baseAuthorization)).toThrow(/no recorded Arbiter GO/)
+    const go = makeRun({
+      currentStage: 'closeout', status: 'awaiting_authorization',
+      decision: {
+        run_id: 'CON-2026-0001', decision: 'go', basis: ['verified'], evidence_reviewed: ['report'],
+        conditions: [], open_risks: [], required_follow_up: [],
+      },
+    })
+    expect(() => closeRun(go, { ...baseAuthorization, outcomeEvidence: [] })).toThrow(/outcome evidence/)
+    expect(() => closeRun(go, { ...baseAuthorization, outcomeEvidence: [' '] })).toThrow(/outcome evidence/)
+    expect(() => closeRun(go, { ...baseAuthorization, actionsTaken: [' '] })).toThrow(/lists/)
+    expect(() => closeRun(go, {
+      ...baseAuthorization,
+      followUp: [{ owner: '', dueCondition: 'later' }],
+    })).toThrow(/follow-up/)
+    expect(() => closeRun(go, {
+      ...baseAuthorization,
+      followUp: [{ owner: 'owner', dueCondition: ' later ' }],
+    })).toThrow(/follow-up/)
+  })
+})

@@ -1,0 +1,438 @@
+import { describe, expect, it } from 'vitest'
+import { ConductorRunId, drive } from '../src/index.ts'
+import type {
+  ConductorDispatcher,
+  ConductorRun,
+  ConductorStage,
+  DecisionRecord,
+  SpecialistEnvelope,
+} from '../src/index.ts'
+
+function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
+  return {
+    runId: ConductorRunId('CON-2026-0001'),
+    objective: 'ship the feature',
+    scope: [],
+    inputArtifacts: [],
+    allowedPaths: ['packages/conductor'],
+    excludedPaths: [],
+    sourceBaseline: null,
+    authority: { owner: 'user', permittedActions: ['read'] },
+    constraints: [],
+    acceptanceCriteria: ['feature works'],
+    budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
+    baseline: null,
+    currentStage: 'detective',
+    history: [],
+    specialistReports: [],
+    status: 'running',
+    ...overrides,
+  }
+}
+
+function makeEnvelope(stage: ConductorStage, overrides: Partial<SpecialistEnvelope> = {}): SpecialistEnvelope {
+  return {
+    run_id: 'CON-2026-0001',
+    stage,
+    baseline_ref: 'HEAD',
+    ...stage === 'detective' ? { source_baseline: 'HEAD' } : {},
+    status: 'ready',
+    summary: 'done',
+    evidence: [{ kind: 'test', reference: `${stage}-check`, outcome: 'passed' }],
+    findings: [],
+    assumptions: [],
+    blockers: [],
+    artifacts: [],
+    change_requests: [],
+    recommended_transition: { target: 'conductor', rationale: 'evaluate' },
+    confidence: 'high',
+    ...stage === 'devils-advocate' ? {
+      execution_baseline: {
+        scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
+        allowedPaths: ['packages/conductor'], excludedPaths: [], rollbackReference: 'HEAD',
+      },
+    } : {},
+    ...overrides,
+  }
+}
+
+function makeDecision(decision: 'go' | 'no-go' = 'go'): DecisionRecord {
+  return {
+    run_id: 'CON-2026-0001',
+    decision,
+    basis: ['evidence meets criteria'],
+    evidence_reviewed: ['delivery package'],
+    conditions: [],
+    open_risks: [],
+    required_follow_up: [],
+  }
+}
+
+function dispatcherFor(envelope: unknown, decision: unknown = makeDecision()): ConductorDispatcher {
+  return {
+    async dispatchSpecialist() { return envelope as SpecialistEnvelope },
+    async dispatchArbiter() { return decision as DecisionRecord },
+  }
+}
+
+describe('dsh-conductor drive', () => {
+  it('drives through every gate to a GO decision and closeout', async () => {
+    const dispatcher: ConductorDispatcher = {
+      async dispatchSpecialist(stage) { return makeEnvelope(stage) },
+      async dispatchArbiter() { return makeDecision('go') },
+    }
+    const outcome = await drive(makeRun({ currentStage: 'detective' }), dispatcher)
+    expect(outcome.kind).toBe('decision')
+    if (outcome.kind !== 'decision') throw new Error('expected decision')
+    expect(outcome.decision.decision).toBe('go')
+    expect(outcome.run.currentStage).toBe('closeout')
+    expect(outcome.run.status).toBe('awaiting_authorization')
+    expect(outcome.run.sourceBaseline).toBe('HEAD')
+    expect(outcome.run.decision).toEqual(outcome.decision)
+    expect(outcome.run.history.map(record => record.gate)).toEqual(['A', 'B', 'C', 'D', 'E', 'F', 'G'])
+    expect(outcome.run.specialistReports.map(report => report.stage)).toEqual([
+      'detective', 'strategist', 'devils-advocate', 'headsman', 'auditor', 'integrator',
+    ])
+  })
+
+  it('does not turn a ready self-report into a gate pass without evidence', async () => {
+    const dispatcher: ConductorDispatcher = {
+      async dispatchSpecialist(stage) { return makeEnvelope(stage, { evidence: [] }) },
+      async dispatchArbiter() { return makeDecision('go') },
+    }
+    const outcome = await drive(makeRun(), dispatcher)
+    expect(outcome.kind).toBe('blocked')
+    if (outcome.kind === 'blocked') {
+      expect(outcome.blocker).toMatch(/fresh evidence/)
+      expect(outcome.run.history.at(-1)?.decision).toBe('escalate')
+      expect(outcome.run.specialistReports).toHaveLength(1)
+    }
+  })
+
+  it('rejects a ready Detective that did not establish the missing source baseline', async () => {
+    const dispatcher: ConductorDispatcher = {
+      async dispatchSpecialist(stage) {
+        const envelope = makeEnvelope(stage)
+        if (stage !== 'detective') return envelope
+        const { source_baseline: _omitted, ...withoutSourceBaseline } = envelope
+        return withoutSourceBaseline
+      },
+      async dispatchArbiter() { return makeDecision('go') },
+    }
+    const outcome = await drive(makeRun(), dispatcher)
+    expect(outcome.kind).toBe('blocked')
+    if (outcome.kind === 'blocked') expect(outcome.blocker).toMatch(/establish source_baseline/)
+  })
+
+  it('rejects a Gate C baseline that widens the owner-authorized paths', async () => {
+    const dispatcher: ConductorDispatcher = {
+      async dispatchSpecialist(stage) {
+        if (stage !== 'devils-advocate') return makeEnvelope(stage)
+        return makeEnvelope(stage, {
+          execution_baseline: {
+            scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
+            allowedPaths: ['.'], excludedPaths: [], rollbackReference: 'HEAD',
+          },
+        })
+      },
+      async dispatchArbiter() { return makeDecision('go') },
+    }
+    const outcome = await drive(makeRun(), dispatcher)
+    expect(outcome.kind).toBe('blocked')
+    if (outcome.kind === 'blocked') expect(outcome.blocker).toMatch(/owner-authorized run paths/)
+  })
+
+  it('routes an auditor rework back to headsman and continues', async () => {
+    let auditorCalls = 0
+    const dispatched: ConductorStage[] = []
+    const dispatcher: ConductorDispatcher = {
+      async dispatchSpecialist(stage) {
+        dispatched.push(stage)
+        if (stage === 'auditor') {
+          auditorCalls += 1
+          if (auditorCalls === 1) return makeEnvelope(stage, { status: 'rework' })
+        }
+        return makeEnvelope(stage)
+      },
+      async dispatchArbiter() { return makeDecision('go') },
+    }
+    const outcome = await drive(makeRun({ currentStage: 'detective' }), dispatcher)
+    expect(outcome.kind).toBe('decision')
+    expect(dispatched).toEqual([
+      'detective', 'strategist', 'devils-advocate', 'headsman', 'auditor', 'headsman', 'auditor', 'integrator',
+    ])
+    const run = outcome.kind === 'decision' ? outcome.run : undefined
+    expect(run?.history.filter(record => record.decision === 'rework')).toHaveLength(1)
+  })
+
+  it('routes a scope rework from the auditor to detective', async () => {
+    const dispatched: ConductorStage[] = []
+    const dispatcher: ConductorDispatcher = {
+      async dispatchSpecialist(stage) {
+        dispatched.push(stage)
+        if (stage === 'auditor') {
+          return makeEnvelope(stage, {
+            status: 'rework',
+            change_requests: [{ target: 'scope', reason: 'scope was misunderstood', impact: 're-scope' }],
+          })
+        }
+        return makeEnvelope(stage)
+      },
+      async dispatchArbiter() { return makeDecision('go') },
+    }
+    await drive(makeRun({ currentStage: 'detective' }), dispatcher)
+    const auditor = dispatched.indexOf('auditor')
+    expect(dispatched[auditor + 1]).toBe('detective')
+  })
+
+  it('parks a blocked specialist result for the owner', async () => {
+    const dispatcher: ConductorDispatcher = {
+      async dispatchSpecialist(stage) {
+        if (stage === 'detective') return makeEnvelope(stage, { status: 'blocked', blockers: ['missing mandate'] })
+        return makeEnvelope(stage)
+      },
+      async dispatchArbiter() { return makeDecision('go') },
+    }
+    const outcome = await drive(makeRun({ currentStage: 'detective' }), dispatcher)
+    expect(outcome.kind).toBe('blocked')
+    if (outcome.kind === 'blocked') {
+      expect(outcome.run.status).toBe('escalated')
+      expect(outcome.run.history.at(-1)?.decision).toBe('escalate')
+    }
+  })
+
+  it('rejects a malformed envelope as a blocker, not a pass', async () => {
+    const dispatcher: ConductorDispatcher = {
+      async dispatchSpecialist() {
+        return {
+          run_id: 'wrong-id', stage: 'detective', status: 'ready', summary: '',
+          baseline_ref: 'HEAD',
+          evidence: [], findings: [], assumptions: [], blockers: [], artifacts: [], change_requests: [],
+          recommended_transition: { target: 'strategist', rationale: '' }, confidence: 'high',
+        } as unknown as SpecialistEnvelope
+      },
+      async dispatchArbiter() { return makeDecision('go') },
+    }
+    const outcome = await drive(makeRun({ currentStage: 'detective' }), dispatcher)
+    expect(outcome.kind).toBe('blocked')
+    if (outcome.kind === 'blocked') {
+      expect(outcome.blocker).toMatch(/run_id|stage|summary/)
+    }
+  })
+
+  it('escalates an authority change request from a specialist', async () => {
+    const dispatcher: ConductorDispatcher = {
+      async dispatchSpecialist(stage) {
+        if (stage === 'headsman') {
+          return makeEnvelope(stage, {
+            status: 'rework',
+            change_requests: [{ target: 'authority', reason: 'needs write access', impact: 'blocked' }],
+          })
+        }
+        return makeEnvelope(stage)
+      },
+      async dispatchArbiter() { return makeDecision('go') },
+    }
+    const outcome = await drive(makeRun({ currentStage: 'detective' }), dispatcher)
+    expect(outcome.kind).toBe('blocked')
+    if (outcome.kind === 'blocked') expect(outcome.blocker).toContain('authority change')
+  })
+
+  it('escalates an arbiter NO-GO to the owner', async () => {
+    const dispatcher: ConductorDispatcher = {
+      async dispatchSpecialist(stage) { return makeEnvelope(stage) },
+      async dispatchArbiter() { return makeDecision('no-go') },
+    }
+    const outcome = await drive(makeRun({ currentStage: 'detective' }), dispatcher)
+    expect(outcome.kind).toBe('blocked')
+    if (outcome.kind === 'blocked') {
+      expect(outcome.blocker).toContain('NO-GO')
+      expect(outcome.run.status).toBe('escalated')
+    }
+  })
+
+  it('rejects an Arbiter GO whose basis is blank', async () => {
+    const dispatcher: ConductorDispatcher = {
+      async dispatchSpecialist(stage) { return makeEnvelope(stage) },
+      async dispatchArbiter() { return { ...makeDecision('go'), basis: [''] } },
+    }
+    const outcome = await drive(makeRun({ currentStage: 'detective' }), dispatcher)
+    expect(outcome.kind).toBe('blocked')
+    if (outcome.kind === 'blocked') {
+      expect(outcome.blocker).toMatch(/basis.*non-empty normalized strings/)
+      expect(outcome.run.history.at(-1)?.decision).toBe('escalate')
+    }
+  })
+
+  it('rejects an Arbiter GO whose reviewed evidence is blank', async () => {
+    const dispatcher: ConductorDispatcher = {
+      async dispatchSpecialist(stage) { return makeEnvelope(stage) },
+      async dispatchArbiter() { return { ...makeDecision('go'), evidence_reviewed: [''] } },
+    }
+    const outcome = await drive(makeRun({ currentStage: 'detective' }), dispatcher)
+    expect(outcome.kind).toBe('blocked')
+    if (outcome.kind === 'blocked') {
+      expect(outcome.blocker).toMatch(/evidence_reviewed.*non-empty normalized strings/)
+      expect(outcome.run.history.at(-1)?.decision).toBe('escalate')
+    }
+  })
+
+  it('escalates once the rework budget is exhausted', async () => {
+    const dispatcher: ConductorDispatcher = {
+      async dispatchSpecialist(stage) {
+        if (stage === 'auditor') return makeEnvelope(stage, { status: 'rework' })
+        return makeEnvelope(stage)
+      },
+      async dispatchArbiter() { return makeDecision('go') },
+    }
+    const outcome = await drive(makeRun({ currentStage: 'detective', budget: { maxReworkCycles: 1, maxRalphRounds: 0 } }), dispatcher)
+    expect(outcome.kind).toBe('blocked')
+    if (outcome.kind === 'blocked') {
+      expect(outcome.run.status).toBe('escalated')
+      expect(outcome.run.history.filter(record => record.decision === 'rework')).toHaveLength(1)
+      expect(outcome.run.history.at(-1)?.decision).toBe('escalate')
+    }
+  })
+
+  it('rejects non-dispatchable stages and write-capable stages without Gate C', async () => {
+    for (const stage of ['intake', 'ralph', 'closeout'] as const) {
+      await expect(drive(makeRun({ currentStage: stage }), dispatcherFor(makeEnvelope('detective'))))
+        .rejects.toThrow(/cannot dispatch stage/)
+    }
+    for (const stage of ['headsman', 'auditor', 'integrator'] as const) {
+      await expect(drive(makeRun({ currentStage: stage }), dispatcherFor(makeEnvelope(stage))))
+        .rejects.toThrow(/immutable Gate C execution baseline/)
+    }
+  })
+
+  it('rejects every malformed specialist envelope field at the child boundary', async () => {
+    const valid = makeEnvelope('detective')
+    const malformed: Array<[unknown, RegExp]> = [
+      [null, /no structured envelope/],
+      [[], /no structured envelope/],
+      [{ ...valid, stage: 'strategist' }, /stage does not match/],
+      [{ ...valid, baseline_ref: ' ' }, /baseline_ref/],
+      [{ ...valid, status: 'unknown' }, /status is invalid/],
+      [{ ...valid, source_baseline: 'OTHER' }, /baseline_ref must match/],
+      [{ ...valid, summary: '' }, /summary/],
+      [{ ...valid, evidence: null }, /list fields/],
+      [{ ...valid, findings: null }, /list fields/],
+      [{ ...valid, assumptions: null }, /list fields/],
+      [{ ...valid, blockers: null }, /list fields/],
+      [{ ...valid, artifacts: null }, /list fields/],
+      [{ ...valid, change_requests: null }, /list fields/],
+      [{ ...valid, recommended_transition: null }, /recommended_transition/],
+      [{ ...valid, recommended_transition: { target: 'strategist', rationale: 'wrong owner' } }, /recommended_transition/],
+      [{ ...valid, confidence: 'certain' }, /confidence/],
+    ]
+    for (const [envelope, message] of malformed) {
+      const outcome = await drive(makeRun(), dispatcherFor(envelope))
+      expect(outcome.kind).toBe('blocked')
+      if (outcome.kind === 'blocked') expect(outcome.blocker).toMatch(message)
+    }
+  })
+
+  it('requires envelope baseline identity after the Detective establishes it', async () => {
+    const outcome = await drive(
+      makeRun({ currentStage: 'strategist', sourceBaseline: 'HEAD' }),
+      dispatcherFor(makeEnvelope('strategist', { baseline_ref: 'OTHER' })),
+    )
+    expect(outcome.kind).toBe('blocked')
+    if (outcome.kind === 'blocked') expect(outcome.blocker).toMatch(/assessed baseline HEAD/)
+  })
+
+  it('validates every Gate C execution-baseline field and owner path list', async () => {
+    const valid = makeEnvelope('devils-advocate').execution_baseline!
+    const malformed: Array<[unknown, RegExp]> = [
+      [null, /requires execution_baseline/],
+      [{ ...valid, scopeVersion: '' }, /scopeVersion/],
+      [{ ...valid, planVersion: 1 }, /planVersion/],
+      [{ ...valid, acceptanceVersion: ' acceptance ' }, /acceptanceVersion/],
+      [{ ...valid, rollbackReference: '' }, /rollbackReference/],
+      [{ ...valid, allowedPaths: [1] }, /allowedPaths/],
+      [{ ...valid, excludedPaths: [' '] }, /excludedPaths/],
+      [{ ...valid, excludedPaths: ['private'] }, /excludedPaths.*owner-declared/],
+    ]
+    for (const [execution_baseline, message] of malformed) {
+      const outcome = await drive(
+        makeRun({ currentStage: 'devils-advocate', sourceBaseline: 'HEAD' }),
+        dispatcherFor(makeEnvelope('devils-advocate', { execution_baseline: execution_baseline as never })),
+      )
+      expect(outcome.kind).toBe('blocked')
+      if (outcome.kind === 'blocked') expect(outcome.blocker).toMatch(message)
+    }
+  })
+
+  it('requires acceptance criteria and normalized fresh evidence for a pass', async () => {
+    const cases: Array<[ConductorRun, SpecialistEnvelope, RegExp]> = [
+      [makeRun({ acceptanceCriteria: [] }), makeEnvelope('detective'), /acceptance criterion/],
+      [makeRun(), makeEnvelope('detective', {
+        evidence: [{ kind: 'test', reference: '', outcome: 'passed' }],
+      }), /normalized reference and outcome/],
+      [makeRun(), makeEnvelope('detective', {
+        evidence: [{ kind: 'test', reference: 'check', outcome: ' passed ' }],
+      }), /normalized reference and outcome/],
+    ]
+    for (const [run, envelope, message] of cases) {
+      const outcome = await drive(run, dispatcherFor(envelope))
+      expect(outcome.kind).toBe('blocked')
+      if (outcome.kind === 'blocked') expect(outcome.blocker).toMatch(message)
+    }
+  })
+
+  it('validates Arbiter decision identity, tags, lists, and GO evidence', async () => {
+    const valid = makeDecision()
+    const malformed: Array<[unknown, RegExp]> = [
+      [null, /no structured decision/],
+      [[], /no structured decision/],
+      [{ ...valid, run_id: 'CON-2026-9999' }, /run_id does not match/],
+      [{ ...valid, decision: 'maybe' }, /decision is invalid/],
+      [{ ...valid, conditions: [1] }, /conditions/],
+      [{ ...valid, open_risks: [' '] }, /open_risks/],
+      [{ ...valid, required_follow_up: null }, /required_follow_up/],
+      [{ ...valid, basis: [] }, /requires acceptance criteria/],
+      [{ ...valid, evidence_reviewed: [] }, /requires acceptance criteria/],
+    ]
+    for (const [decision, message] of malformed) {
+      const outcome = await drive(makeRun({ currentStage: 'arbiter' }), dispatcherFor(valid, decision))
+      expect(outcome.kind).toBe('blocked')
+      if (outcome.kind === 'blocked') expect(outcome.blocker).toMatch(message)
+    }
+    const withoutCriteria = await drive(
+      makeRun({ currentStage: 'arbiter', acceptanceCriteria: [] }),
+      dispatcherFor(valid, valid),
+    )
+    expect(withoutCriteria.kind).toBe('blocked')
+  })
+
+  it('derives every rework defect class and stage fallback without specialist-owned routing', async () => {
+    const cases: Array<[ConductorStage, SpecialistEnvelope['change_requests'], ConductorStage]> = [
+      ['detective', [], 'detective'],
+      ['strategist', [], 'strategist'],
+      ['strategist', [{ target: 'plan', reason: 'plan', impact: 'replan' }], 'strategist'],
+      ['devils-advocate', [{ target: 'baseline', reason: 'baseline', impact: 'replan' }], 'strategist'],
+      ['headsman', [], 'headsman'],
+      ['integrator', [], 'integrator'],
+    ]
+    const baseline = makeEnvelope('devils-advocate').execution_baseline!
+    for (const [stage, change_requests, expected] of cases) {
+      let firstDispatch = true
+      const dispatcher: ConductorDispatcher = {
+        async dispatchSpecialist(dispatchedStage) {
+          if (firstDispatch) {
+            firstDispatch = false
+            return makeEnvelope(dispatchedStage, { status: 'rework', change_requests })
+          }
+          return makeEnvelope(dispatchedStage)
+        },
+        async dispatchArbiter() { return makeDecision() },
+      }
+      const outcome = await drive(
+        makeRun({ currentStage: stage, sourceBaseline: 'HEAD', baseline }),
+        dispatcher,
+      )
+      expect(outcome.kind).toBe('decision')
+      expect(outcome.run.history).toContainEqual(expect.objectContaining({ decision: 'rework', nextStage: expected }))
+    }
+  })
+})
