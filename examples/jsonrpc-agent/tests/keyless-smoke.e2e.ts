@@ -165,7 +165,12 @@ describe('jsonrpc-agent keyless smoke', () => {
       expect(log).toBeDefined()
       const compressed = await readFile(join(sessionsRoot, log!))
       expect(compressed.subarray(0, 4).toString('hex')).toBe('28b52ffd')
-      expect(JSON.parse((await decompress(compressed)).toString())).toMatchObject({ type: 'session', id: 'main' })
+      const persistedRecords = (await decompress(compressed)).toString()
+        .split('\n')
+        .filter(line => line.trim().length > 0)
+        .map(line => JSON.parse(line) as Record<string, unknown>)
+      expect(persistedRecords).not.toHaveLength(0)
+      expect(persistedRecords[0]).toMatchObject({ type: 'session', id: 'main' })
     } finally {
       // No-op after exit; reject: false settles on every outcome, so cleanup never races teardown.
       child.kill('SIGKILL')

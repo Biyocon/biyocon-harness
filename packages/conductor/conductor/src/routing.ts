@@ -31,8 +31,10 @@ export function decisionForStatus(status: SpecialistStatus): GateDecision {
       return 'escalate'
     case 'failed':
       return 'escalate'
+    /* v8 ignore start -- SpecialistStatus is a closed typed union; a future variant must fail loud here. */
     default:
       return assertNever(status)
+    /* v8 ignore stop */
   }
 }
 
@@ -52,8 +54,10 @@ export function reworkTarget(defectClass: DefectClass): ConductorStage {
       return 'headsman'
     case 'delivery':
       return 'integrator'
+    /* v8 ignore start -- DefectClass is a closed typed union; a future variant must fail loud here. */
     default:
       return assertNever(defectClass)
+    /* v8 ignore stop */
   }
 }
 
@@ -106,11 +110,13 @@ export function routeGate(gate: GateId, status: SpecialistStatus, defectClass?: 
     case 'escalate':
       nextStage = undefined
       break
+    /* v8 ignore start -- decisionForStatus cannot produce abort, and GateDecision is closed. */
     case 'abort':
       nextStage = undefined
       break
     default:
       assertNever(decision)
+    /* v8 ignore stop */
   }
 
   const routed: RoutedGate = { decision }
@@ -123,6 +129,8 @@ export function routeGate(gate: GateId, status: SpecialistStatus, defectClass?: 
   return routed
 }
 
+/* v8 ignore start -- closed typed switches call this only if their declared unions gain an unhandled member. */
 function assertNever(value: never): never {
   throw new Error(`Unreachable routing value: ${String(value)}`)
 }
+/* v8 ignore stop */
