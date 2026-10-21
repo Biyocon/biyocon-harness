@@ -10,11 +10,11 @@ Status: implemented
 
 ## 决策
 
-当 `github.event.repository.fork` 为 true 时，三个 Linux Node 24 作业和 `all checks passed` 判定作业运行在 `ubuntu-24.04`，原生 Windows 作业运行在 `windows-2025`。fork 判断在每个运行器选择器中都位于第一分支，先于 `DSH_CI_FAILOVER_LINUX` 或 `DSH_CI_FAILOVER_WINDOWS`，因此仓库变量无法把公共 fork 的工作路由到自托管运行器。非 fork 仓库保留现有的企业标签、Dependabot 例外和变量控制的故障切换行为。
+只有当拉取请求头仓库存在、其仓库 ID 和所有者 ID 与当前仓库上下文匹配，并且 `fork` 字段是布尔值 `false` 时，三个 Linux Node 24 作业、`all checks passed` 判定作业和原生 Windows 作业才会使用已配置、企业或自托管路由。任何缺失、null、空、类型不同或不匹配的值都不受信任，并使用带公共并发配置的 `ubuntu-24.04` 或 `windows-2025`。仓库本身是 fork 时，即使拉取请求来自同一仓库，也仍使用安全的托管路径。这个正向信任判断先于 `DSH_CI_FAILOVER_LINUX` 和 `DSH_CI_FAILOVER_WINDOWS`，因此仓库变量无法把不受信任的工作路由到持久化运行器；明确受信任的头仓库保留 Dependabot 例外和变量控制的故障切换行为。
 
 公共 fork 配置将 Linux 静态门禁限制为两个并发门禁，将覆盖率限制为两个测试工作进程和一个门禁，将消费端门禁与代码检查器限制为两个工作进程，并将快照限制为四个工作进程。原生 Windows 使用一个覆盖率工作进程、一个门禁工作进程和两个 publint 工作进程。这些值适配标准托管运行器的四个 CPU，同时不改变非 fork 仓库所用的大型运行器或自托管限制。
 
-即使存在故障切换变量，托管缓存恢复与 Playwright 依赖安装仍沿公共 fork 分支执行。自托管热备演练和组织运行器基准作业要求 `github.event.repository.fork == false`，防止公共 fork 派发持久化主机作业或使用不可用的企业标签。
+即使存在故障切换变量，不受信任或未知的拉取请求元数据也默认使用托管缓存恢复和 Playwright 依赖安装。只有同一个正向仓库、所有者和布尔非 fork 判断才能选择自托管 Playwright 步骤。非拉取请求的自托管热备演练和组织运行器基准作业保留顶层 `github.event.repository.fork == false` 守卫，因为相应的推送和 `workflow_dispatch` 事件没有拉取请求头仓库。
 
 Linux 配置从不可变的 Launchpad Librarian 对象下载 Bubblewrap `0.9.0-1ubuntu0.3`，并在解包前验证 SHA-256 `2461f1beee9cb04c8942739fe1a2b37e7b7c2a3d518f0779dc75f9245baa3094`。下载或校验和失败会在修改可执行文件路径、AppArmor 设置或运行 Bubblewrap 探测之前终止准备。
 
@@ -28,7 +28,7 @@ Linux 配置从不可变的 Launchpad Librarian 对象下载 Bubblewrap `0.9.0-1
 
 ## 后果
 
-公共 fork 可以在临时 GitHub 托管机器上运行完整的拉取请求工作流，但四个受影响的作业拥有更少的 CPU，运行时间可能更长。fork 仓库不会运行自托管热备演练或组织运行器基准作业。工作流测试会锁定运行器选择优先级、fork 并发、托管设置以及非 fork 保护条件，使后续故障切换修改无法悄然恢复公共 fork 到自托管运行器的路由。
+不受信任的拉取请求头可以在临时 GitHub 托管机器上运行主要的无密钥 CI，但四个受影响的作业拥有更少的 CPU，运行时间可能更长。需要密钥的真实 API E2E 对 fork 和 Dependabot 拉取请求仍保持跳过。fork 仓库不会运行自托管热备演练或组织运行器基准作业。工作流测试会锁定正向仓库、所有者和非 fork 信任判断、安全托管默认值、并发、设置以及非拉取请求保护条件，使后续故障切换修改无法悄然恢复未知或不受信任的头仓库到持久化运行器的路由。
 
 ## 验证
 
