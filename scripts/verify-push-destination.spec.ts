@@ -94,6 +94,22 @@ describe('push destination normalization', () => {
     ])).toEqual({ remoteName: 'renamed-fork', repository: ALLOWED_PUSH_REPOSITORY })
   })
 
+  for (const location of [
+    'https:/github.com/Biyocon/deepseek-harness.git',
+    'https:github.com/Biyocon/deepseek-harness.git',
+    'https:///github.com/Biyocon/deepseek-harness.git',
+    'https://github.com/Biyocon\\deepseek-harness.git',
+    'https://%67ithub.com/Biyocon/deepseek-harness.git',
+    'https://github.com/another/../Biyocon/deepseek-harness.git',
+    'https://github.com/another/%2e%2e/Biyocon/deepseek-harness.git',
+    'ssh:/git@github.com/Biyocon/deepseek-harness.git',
+  ]) {
+    it(`rejects URL repair for ${location}`, () => {
+      expect(normalizePushRepository(location)).toBeUndefined()
+      expect(() => validatePushDestination(['biyocon', location])).toThrow(/not an unambiguous/u)
+    })
+  }
+
   for (const [label, character] of [
     ['NUL', '\u0000'],
     ['tab', '\t'],
@@ -119,6 +135,18 @@ describe('push destination normalization', () => {
 })
 
 describe('pre-push job ordering', () => {
+  it('rejects an SCP-looking HTTPS location before typecheck', () => {
+    const { marker, root } = createHookFixture()
+    const result = runFixtureHook(root, marker, [
+      'biyocon',
+      'https:/github.com/Biyocon/deepseek-harness.git',
+    ])
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('not an unambiguous')
+    expect(existsSync(marker)).toBe(false)
+  })
+
   it('stops before typecheck when the destination is rejected', () => {
     const { marker, root } = createHookFixture()
     const result = runFixtureHook(root, marker, [

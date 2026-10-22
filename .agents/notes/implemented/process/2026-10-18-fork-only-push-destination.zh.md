@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-上游仓库是只读抓取源，Biyocon fork 是唯一推送目标。pre-push 验证器检查 Git 的远程位置，只规范化无歧义的 GitHub HTTPS 与 SSH 形式，拒绝直接 URL 推送，并且只允许 `Biyocon/deepseek-harness`。Lefthook 在 typecheck 前以管道顺序运行验证器，因此拒绝结果会阻止 typecheck 启动。
+上游仓库是只读抓取源，Biyocon fork 是唯一推送目标。pre-push 验证器检查 Git 的远程位置，只识别显式的 GitHub HTTPS/SSH authority 或 GitHub SCP 语法，拒绝直接 URL 推送，并且只允许 `Biyocon/deepseek-harness`。它保留原始路径，而不采用可能与 Git 传输选择不同的浏览器 URL 修复规则。Lefthook 在 typecheck 前以管道顺序运行验证器，因此拒绝结果会阻止 typecheck 启动。
 
 上游变更通过 merge-forward 进入新的 Biyocon 集成分支。集成操作从精确的 Biyocon master 提交开始，记录上游提交，在解决冲突时保留 fork 功能，并且只有通过评审和单独授权的合并才能进入 Biyocon master。活跃功能分支 merge-forward 更新后的 Biyocon master，不改写历史。
 
@@ -24,4 +24,4 @@ Status: implemented
 
 ## Verification
 
-`scripts/verify-push-destination.spec.ts` 覆盖允许和拒绝的位置、远程名独立性、直接与不完整调用、类似 shell 的输入以及 fail-fast 作业顺序。`scripts/install-lefthook.spec.ts` 覆盖隔离的 worktree 钩子和用户所有钩子路径的保留。typecheck、lint、文档同步和空白检查覆盖仓库集成。
+`scripts/verify-push-destination.spec.ts` 覆盖允许和拒绝的位置、格式错误的 authority 与路径、远程名独立性、直接与不完整调用、类似 shell 的输入以及 fail-fast 作业顺序。`scripts/install-lefthook.spec.ts` 覆盖隔离的 worktree 钩子和用户所有钩子路径的保留。typecheck、lint、文档同步和空白检查覆盖仓库集成。

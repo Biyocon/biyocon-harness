@@ -27,21 +27,10 @@ function normalizeScpLocation(location) {
 }
 
 function normalizeUrlLocation(location) {
-  let parsed
-  try {
-    parsed = new URL(location)
-  } catch {
-    return undefined
-  }
-  const protocol = parsed.protocol.toLowerCase()
-  const isHttps = protocol === 'https:'
-  const isSsh = protocol === 'ssh:'
-  if (!isHttps && !isSsh) return undefined
-  if (parsed.hostname.toLowerCase() !== 'github.com' || parsed.port !== '') return undefined
-  if (parsed.password !== '') return undefined
-  if ((isHttps && parsed.username !== '') || (isSsh && parsed.username !== 'git')) return undefined
-  if (parsed.search !== '' || parsed.hash !== '') return undefined
-  return normalizedRepositoryPath(parsed.pathname)
+  // Git distinguishes URL authorities from SCP syntax; browser URL repair is unsafe here.
+  const match = /^(?:https:\/\/github\.com|ssh:\/\/git@github\.com)(\/[^?#\\]+)$/iu.exec(location)
+  if (match === null) return undefined
+  return normalizedRepositoryPath(match[1])
 }
 
 /**
