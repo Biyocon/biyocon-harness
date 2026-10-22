@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-03-client-domain-graph-root-boundary.md
-2026-09-03-client-domain-graph-root-boundary.md: dd8cd0036edc26e05c70d86d00ce3bbfe7b6f2ae
-2026-09-03-client-domain-graph-root-boundary.zh.md: 024aa4e40253b29a6915a22d98cc9fb2ea9c771c
+2026-09-03-client-domain-graph-root-boundary.md: 6a26536ff1615f829617acd13f46ccb2a9fb4f2f
+2026-09-03-client-domain-graph-root-boundary.zh.md: 3d0b5563fdfe04464a636ba415eba1482fb50855

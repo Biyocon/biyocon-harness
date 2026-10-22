@@ -3,23 +3,9 @@
 // the interaction's consumer package.
 
 import type {
-  ClientResponse, MuxFrame, RpcId, RpcReceipt, SessionId,
+  ClientResponse, RpcId, RpcReceipt, SessionId,
 } from '@deepseek-ai/dsh-api-remotes/client'
-
-/** Kind-keyed payload map: the requested frame's domain fields (envelope fields stripped). */
-export interface PendingPayloads {
-  approval: Omit<Extract<MuxFrame, { type: 'approval/requested' }>, 'type' | 'sessionId'>
-  question: Omit<Extract<MuxFrame, { type: 'question/requested' }>, 'type' | 'sessionId'>
-}
-
-/** Pending-interaction discriminant (the keys of PendingPayloads). */
-export type PendingKind = keyof PendingPayloads
-
-/** Session-list summary of the user action currently blocking progress. */
-export type PendingInteractionStatus = 'approval' | 'plan-review' | 'question'
-
-/** Kind-discriminated union of concrete waits: narrowing on `kind` types `payload`. */
-export type PendingInteraction = { [K in PendingKind]: PendingWait<K> }[PendingKind]
+import type { PendingKind, PendingPayloads } from './contract/pending.ts'
 
 /** Key prefixes, one per kind (the key doubles as the Session pending-map key). */
 const KEY_PREFIX: Record<PendingKind, string> = { approval: 'a', question: 'q' }

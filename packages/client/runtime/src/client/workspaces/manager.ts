@@ -4,27 +4,10 @@ import type {
   HostFrame, IApiClient, RpcError, RpcRequest, RpcResult, SessionId, WorkspaceId, WorkspaceView,
 } from '@deepseek-ai/dsh-api-remotes/client'
 import { transportError } from '@deepseek-ai/dsh-host-apiproxy/api'
-import { Notifier } from '../sessions/notifier.ts'
+import type { WorkspaceListPhase, WorkspaceListSnapshot } from '../contract/workspaces.ts'
+import { Notifier } from '../notifier.ts'
 import { Workspace, type WorkspaceCreateInput } from './workspace.ts'
 
-/** Monotone workspace-list arrival lifecycle. */
-export type WorkspaceListPhase = 'pending' | 'ready'
-
-/** Immutable workspace-list snapshot. */
-export interface WorkspaceListSnapshot {
-  items: readonly WorkspaceView[]
-  /**
-   * Registry-global archive set in Host order (hidden from grouping
-   * surfaces; accounting slots retained). A plain array, not a Set: public
-   * snapshot state stays in the store engine's plain-data vocabulary
-   * (immer drafts reject Sets without the MapSet plugin); membership
-   * lookups build their own transient Set where they need one.
-   */
-  archivedSessionIds: readonly SessionId[]
-  state: 'idle' | 'loading' | 'error'
-  phase: WorkspaceListPhase
-  error: RpcError | null
-}
 
 type WorkspaceDelta =
   | { type: 'upsert'; workspace: WorkspaceView }

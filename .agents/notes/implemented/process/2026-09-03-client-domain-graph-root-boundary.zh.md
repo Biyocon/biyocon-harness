@@ -18,6 +18,8 @@ gate 实现在 `scripts/verify-client-domain-graph.ts` 中，以导出纯函数�
 
 根边界规则记录在本篇，而非 [web client architecture note](../architecture/2026-07-19-gui-web-client-architecture.md) 中；后者仍然持有目录结构与层级模型的权威定义。本篇是流程/工具层面的补充说明，不替代该架构笔记，也不替代任何包级约定。
 
+同一变更也在不引入例外的前提下清除了真实残差。运行时 DTO 与服务状态移入仅含类型的 `contract/` 模块；scope、待处理交互、通知、上下文来源与快照值归属客户端根目录。会话输入和阻塞类型同样归入 `contract/`；指标、统计与工作区行组件归入共同的客户端所有者；仅由 skeleton 消费的读取器与装饰逻辑归入 skeleton。所有移动均保留包的公共类型/值导出名称，并保持运行时行为、CSS 与用户可见文本不变。
+
 ## Alternatives considered
 
 **为 `ui-input-trigger` 增加包级白名单。** 这会消除误报，但会把包名硬编码进 gate，而且只要其他包从 `src/` 导入其 `src/client/` 半区外的共享代码，问题就会再次出现。根边界规则一次性修正了这类错误。
@@ -28,4 +30,4 @@ gate 实现在 `scripts/verify-client-domain-graph.ts` 中，以导出纯函数�
 
 ## Consequences
 
-四个 `ui-input-trigger` 误报消失，剩余 `packages/client/runtime/`、`packages/client/ui-conversation/` 以及 `packages/client/ui-workspace/` 中的 23 个已知真实残差继续被报告（退出码 1），直到它们被单独重构。未来任何逃逸 `src/client/` 的导入都会被本 gate 忽略，因此包级耦合必须由 `verify-module-graph`、清单与代码审查来捕获。
+四个 `ui-input-trigger` 误报消失，23 个真实残差通过所有权移动被清除，而不是通过白名单、抑制规则或 barrel 间接层规避。客户端领域图因此报告零违规。未来任何逃逸 `src/client/` 的导入都会被本 gate 忽略，因此包级耦合必须由 `verify-module-graph`、清单与代码审查来捕获。

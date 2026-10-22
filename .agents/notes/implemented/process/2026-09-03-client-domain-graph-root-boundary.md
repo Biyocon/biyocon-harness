@@ -18,6 +18,8 @@ The gate is implemented in `scripts/verify-client-domain-graph.ts` as exported p
 
 The root boundary rule is documented here rather than in the [web client architecture note](../architecture/2026-07-19-gui-web-client-architecture.md), which still owns the directory shape and layer model. This note is a process/tooling clarification that supersedes neither that architecture note nor any package-specific convention.
 
+The same change closes the genuine residuals without exceptions. Runtime DTOs and service-facing state now live in type-only `contract/` modules, while scope, pending interaction, notification, context-provenance, and snapshot values live at the client root. Conversation input and block types likewise live in `contract/`; metrics, statistics, and workspace rows live at their common client owner; skeleton-only readers and decorations live with the skeleton that consumes them. The moves preserve the package's public type/value export names and keep runtime behavior, CSS, and user-facing text unchanged.
+
 ## Alternatives considered
 
 **Add a package-level allowlist for `ui-input-trigger`.** This would silence the false positives but would hard-code package names into the gate and would break again whenever another package imports shared code from `src/` outside its `src/client/` half. The root-boundary rule fixes the class of errors.
@@ -28,4 +30,4 @@ The root boundary rule is documented here rather than in the [web client archite
 
 ## Consequences
 
-The four `ui-input-trigger` false positives disappear, leaving exactly 23 known real residuals inside `packages/client/runtime/` and `packages/client/ui-conversation/` plus one in `packages/client/ui-workspace/`. Those residuals represent genuine sibling-domain or top-level non-assembly imports and remain reported (exit code 1) until they are refactored separately. Any future import that escapes `src/client/` will be ignored by this gate, so package-level coupling must be caught by `verify-module-graph`, the manifest, and code review instead.
+The four `ui-input-trigger` false positives disappear and the 23 genuine residuals are removed by ownership moves rather than allowlists, suppressions, or barrel indirection. The client-domain graph therefore reports zero violations. Any future import that escapes `src/client/` will be ignored by this gate, so package-level coupling must be caught by `verify-module-graph`, the manifest, and code review instead.

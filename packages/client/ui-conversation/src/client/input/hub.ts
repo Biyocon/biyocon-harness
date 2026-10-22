@@ -8,14 +8,22 @@
  * bail events) and owns the default-sink choreography: every session is a
  * real host entity, so the sink is one unconditional prompt path.
  */
-import type { ClientContext, ISessions, SessionBinding, SessionFace, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, ISessions, ObservableSnapshot, SessionBinding, SessionFace, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { InputTriggerController } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
-import { queueReadFaceOf } from '../queue/store.ts'
-import type { ComposerKeyboard, DraftAttachmentId, SessionInputResolver, SessionInput } from './contract.ts'
+import type { QueuedMessage } from '../contract/input.ts'
+import type { ComposerKeyboard, DraftAttachmentId, SessionInputResolver, SessionInput } from '../contract/input.ts'
 import type { InputSubmitMode } from '../contract/composer-submission.ts'
 import type { PopupDismissFace } from './facade.ts'
 import { SessionInputShell } from './facade.ts'
+
+/** Project one Session's transient inbox as a bare observable. */
+function queueReadFaceOf(session: SessionFace): ObservableSnapshot<readonly QueuedMessage[]> {
+  return {
+    getSnapshot: () => session.getSnapshot().queue,
+    subscribe: listener => session.subscribe(listener),
+  }
+}
 
 /** Structural command face for per-session popup resolution. */
 interface CommandFace {
