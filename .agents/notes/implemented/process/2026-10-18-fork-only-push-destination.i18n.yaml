@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-10-18-fork-only-push-destination.md
-2026-10-18-fork-only-push-destination.md: b89c03c4617063b366ee1db0b439c16581985971
-2026-10-18-fork-only-push-destination.zh.md: 306e3b2ceee587345bc44f500cce314ff90021bb
+2026-10-18-fork-only-push-destination.md: 11978f1976a4cf345d9b78ca9e52b3489b25262a
+2026-10-18-fork-only-push-destination.zh.md: 2a137cb7cd9e651b35b8268ce28824f1718bae10

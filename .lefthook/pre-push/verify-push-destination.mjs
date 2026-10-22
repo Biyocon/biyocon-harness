@@ -78,9 +78,22 @@ export function validatePushDestination(args) {
   return { remoteName, repository }
 }
 
+function hookArguments(args) {
+  if (args[0] !== '--from-git-hook-env') return args
+  const payload = process.env.DSH_GIT_PRE_PUSH_ARGS
+  if (args.length !== 1 || payload === undefined) {
+    throw new Error('missing Git pre-push argument transport; reinstall repository hooks')
+  }
+  const parsed = JSON.parse(payload)
+  if (!Array.isArray(parsed) || parsed.some(argument => typeof argument !== 'string')) {
+    throw new Error('invalid Git pre-push argument transport')
+  }
+  return parsed
+}
+
 function main() {
   try {
-    validatePushDestination(process.argv.slice(2))
+    validatePushDestination(hookArguments(process.argv.slice(2)))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error(`[verify-push-destination] ${message}`)
