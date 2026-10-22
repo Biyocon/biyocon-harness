@@ -16,29 +16,12 @@
  * stays alive for history viewing.
  */
 import { Context as CordisContext } from '@deepseek-ai/cordis'
-import type { Context, Fiber } from '@deepseek-ai/cordis'
+import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
-import type { TypertClientRemote, TypertRemoteScopeApi } from '@deepseek-ai/dsh-typert-protocol'
-
-/** Client Cordis Context carrying one Agent identity and its scoped Remote namespaces. */
-export type AgentContext = Omit<Context, 'remote'> & {
-  readonly remote: TypertClientRemote & TypertRemoteScopeApi<'agent'>
-}
+import type { AgentContext, AgentScopeHandle } from './contract/scope.ts'
 
 /** Context tag written by {@link createScope}. */
 const kScope = Symbol('dsh.client.scope')
-
-/** A minted Agent scope and its disposal boundary. */
-export interface AgentScopeHandle {
-  /**
-   * Tagged context: scope-owned registrations and scoped dispatch both go
-   * through it (passing it as the dispatch subject routes to this agent's
-   * tagged listeners plus every untagged one).
-   */
-  ctx: AgentContext
-  /** Backing fiber (dispose tears down every scope-owned registration). */
-  fiber: Fiber
-}
 
 /** Shared no-op plugin backing each Agent scope fiber. */
 function agentScope(): void {}
