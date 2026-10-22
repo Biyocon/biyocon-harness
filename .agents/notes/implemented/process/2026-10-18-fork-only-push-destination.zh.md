@@ -12,7 +12,7 @@ Status: implemented
 
 上游仓库是只读抓取源，Biyocon fork 是唯一推送目标。pre-push 验证器检查 Git 的远程位置，只识别显式的 GitHub HTTPS/SSH authority 或 GitHub SCP 语法，拒绝直接 URL 推送，并且只允许 `Biyocon/deepseek-harness`。它保留原始路径，而不采用可能与 Git 传输选择不同的浏览器 URL 修复规则。Lefthook 在 typecheck 前以管道顺序运行验证器，因此拒绝结果会阻止 typecheck 启动。
 
-生成的钩子调用 `scripts/run-lefthook.mjs`。分发器将继承的 pre-push 传输值替换为以 JSON 编码的 Git 原始参数数组，然后不经 shell、仅以 `run pre-push` 启动 Lefthook。验证器的 script 作业使用固定参数并读取该载荷；远程名和位置都不会成为 shell 语法或 Lefthook 选项。其他钩子保留原有参数，但不携带该载荷。
+生成的钩子调用 `scripts/run-lefthook.mjs`。分发器将继承的 pre-push 传输值替换为以 JSON 编码的 Git 原始参数数组，然后不经 shell、仅以 `run pre-push` 启动 Lefthook。验证器的 script 作业使用固定参数并读取该载荷；远程名和位置都不会成为 shell 语法或 Lefthook 选项。其他钩子保留原有参数，但不携带该载荷。拒绝诊断不会输出可能包含凭据的原始远程位置。
 
 上游变更通过 merge-forward 进入新的 Biyocon 集成分支。集成操作从精确的 Biyocon master 提交开始，记录上游提交，在解决冲突时保留 fork 功能，并且只有通过评审和单独授权的合并才能进入 Biyocon master。活跃功能分支 merge-forward 更新后的 Biyocon master，不改写历史。
 

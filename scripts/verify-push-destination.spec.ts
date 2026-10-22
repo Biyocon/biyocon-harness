@@ -231,6 +231,23 @@ describe('installed pre-push hook', { timeout: 30_000 }, () => {
     expectHookResult(fixture, runFixtureHook(fixture, ['origin', location]), 1, 'not an unambiguous')
   })
 
+  for (const [label, location] of [
+    ['userinfo', 'https://dsh-synthetic-credential@github.com/Biyocon/deepseek-harness.git'],
+    ['query', `${fork}?access_token=dsh-synthetic-credential`],
+  ] as const) {
+    for (const entry of ['validator CLI', 'installed hook']) {
+      it(`omits credentials from rejected ${label} diagnostics through the ${entry}`, () => {
+        const fixture = createHookFixture()
+        const result = entry === 'validator CLI'
+          ? command(fixture, process.execPath, [validator, 'biyocon', location])
+          : runFixtureHook(fixture, ['biyocon', location])
+        expectHookResult(fixture, result, 1, 'not an unambiguous')
+        expect.soft(result.stdout).not.toContain('dsh-synthetic-credential')
+        expect.soft(result.stderr).not.toContain('dsh-synthetic-credential')
+      })
+    }
+  }
+
   for (const remoteName of [
     'x;true;#',
     'quoted\'"remote',

@@ -68,7 +68,7 @@ export function validatePushDestination(args) {
   }
   const repository = normalizePushRepository(remoteLocation)
   if (repository === undefined) {
-    throw new Error(`push destination is not an unambiguous GitHub HTTPS or SSH repository: ${JSON.stringify(remoteLocation)}`)
+    throw new Error('push destination is not an unambiguous GitHub HTTPS or SSH repository; configure a named remote for the Biyocon fork')
   }
   if (repository !== ALLOWED_PUSH_REPOSITORY) {
     throw new Error(
