@@ -400,6 +400,7 @@ async function runSpecialist(
   maxRalphHandoffChars: number,
 ): Promise<SpecialistEnvelope> {
   const roleName = ROLE_SKILL[stage]
+  /* v8 ignore next -- runSpecialist receives only stages covered by the complete ROLE_SKILL mapping. */
   if (roleName === undefined) throw new Error(`Conductor stage "${stage}" has no role skill`)
   const [roleBody, specialistBody] = await Promise.all([
     requireSkill(ctx, parent, signal, roleName),
@@ -460,6 +461,7 @@ async function runArbiter(
   run: ConductorRun,
 ): Promise<DecisionRecord> {
   const arbiterRole = ROLE_SKILL['arbiter']
+  /* v8 ignore next -- the preset's typed ROLE_SKILL constant always declares the Arbiter role. */
   if (arbiterRole === undefined) throw new Error('Conductor Arbiter role skill mapping is unavailable')
   const [roleBody, closeoutBody] = await Promise.all([
     requireSkill(ctx, parent, signal, arbiterRole),

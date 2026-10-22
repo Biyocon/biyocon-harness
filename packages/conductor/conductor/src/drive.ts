@@ -83,6 +83,7 @@ export async function drive(
       throw new Error(`Conductor stage "${stage}" requires the immutable Gate C execution baseline`)
     }
     const gate = gateOfStage(stage)
+    /* v8 ignore next -- the preceding stage guards narrow the closed ConductorStage union to gated stages. */
     if (gate === undefined) {
       throw new Error(`Conductor stage "${stage}" owns no gate`)
     }
@@ -366,10 +367,13 @@ function defectClassFromEnvelope(envelope: SpecialistEnvelope, stage: ConductorS
       case 'plan':
       case 'baseline':
         return 'plan'
+      /* v8 ignore next 2 -- authority requests are escalated before rework routing reaches this classifier. */
       case 'authority':
         break
+      /* v8 ignore start -- ChangeRequest.target is a closed typed union; a future variant must fail loud here. */
       default:
         assertNever(request.target)
+      /* v8 ignore stop */
     }
   }
   switch (stage) {
@@ -384,13 +388,17 @@ function defectClassFromEnvelope(envelope: SpecialistEnvelope, stage: ConductorS
     case 'integrator':
     case 'arbiter':
       return 'delivery'
+    /* v8 ignore start -- drive rejects non-gated stages before deriving a rework class. */
     case 'intake':
     case 'ralph':
     case 'closeout':
       throw new Error(`stage "${stage}" owns no rework defect class`)
+    /* v8 ignore stop */
   }
 }
 
+/* v8 ignore start -- closed typed switches call this only if their declared unions gain an unhandled member. */
 function assertNever(value: never): never {
   throw new Error(`Unreachable drive value: ${String(value)}`)
 }
+/* v8 ignore stop */

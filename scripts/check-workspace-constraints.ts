@@ -131,6 +131,9 @@ function workspaceManifests(): WorkspaceManifest[] {
 }
 
 const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
+  // The Conductor entry and invariant share persistence through a generated
+  // runtime chunk, so the published payload must keep that hashed artifact.
+  '@deepseek-ai/dsh-conductor': ['lib/persistence-*.js'],
   // Profile bundles publish their dsh.bundle.patch layer beside the lib.
   '@deepseek-ai/dsh-base': ['cordis.patch.yml'],
   '@deepseek-ai/dsh-web-app': ['cordis.patch.yml'],
