@@ -50,6 +50,11 @@ pre-merge-commit:
       run: node_modules/.bin/tsx scripts/verify-archived-agent-notes.ts
 
 pre-push:
+  piped: true
   jobs:
+    - name: push destination
+      script: verify-push-destination.mjs
+      runner: node
+
     - name: typecheck
       run: pnpm run typecheck

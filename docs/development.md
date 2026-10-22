@@ -100,6 +100,14 @@ DEEPSEEK_BASE_URL=https://... # optional
 
 ### Git integrations
 
+#### Repository remotes and upstream sync
+
+`deepseek-ai/deepseek-harness` is the fetch-only upstream. Pushes and pull requests must target `Biyocon/deepseek-harness` through a named remote; the pre-push destination guard rejects upstream, other repositories, ambiguous locations, and direct URL pushes before typecheck starts. Do not bypass the guard with `--no-verify`. Edit `AGENTS.md`, not `CLAUDE.md`, because the latter is its symlink. The [fork-only destination Agent Note](../.agents/notes/implemented/process/2026-10-18-fork-only-push-destination.md) owns the rationale and accepted transports.
+
+To import upstream changes without discarding Biyocon features, record the exact `biyocon/master` and `origin/master` commits, fetch only `origin/master`, and create a Biyocon integration branch and worktree from `biyocon/master`. Merge-forward `origin/master`; do not rebase, reset, squash, or force-push. Resolve every conflict by preserving the required Biyocon behavior, run the checks selected for the combined change, then push the integration branch only to `biyocon` and open a pull request whose base and head are both in `Biyocon/deepseek-harness`. Merge requires green CI, review, and separate owner authorization. Afterward, merge-forward the updated Biyocon master into active feature branches without rewriting their commits.
+
+Do not use GitHub's upstream-targeted compare flow or **Sync fork** for a diverged Biyocon master. Those paths either propose Biyocon changes to upstream or bypass the reviewable integration branch that protects fork-only features.
+
 The pairing merge driver derives a conflicted `.i18n.yaml` record from the confirmed ancestor, current, and other owner blobs when both language files use Git's default text strategy and merge cleanly. It fails closed on owner conflicts, non-text merge configuration, or invalid records; after an already-stopped merge, run `pnpm run resolve-translation-pairing-conflicts`, which stages every safe pairing record and exits unsuccessfully if other pairing conflicts still need manual work. See the [bilingual documentation contract](i18n/README.md#the-pairing-contract) for the exact files and states the driver accepts.
 
 The installer probes the exact Node/tsx driver entrypoint before publishing its worktree configuration. If that runtime later becomes unavailable, the Node-independent launcher writes Git's ordinary text result, leaves the sidecar unresolved, and prints the recovery path; restore dependencies and run `pnpm run resolve-translation-pairing-conflicts`, or run `git merge --abort`. If `pre-merge-commit` rejects an otherwise clean merge, Git leaves the complete result staged without a commit; repair the failure and run `git commit`, or abort. The [automatic pairing merges Agent Note](../.agents/notes/implemented/process/2026-08-08-automatic-translation-pairing-merges.md#failure-contract) owns the exact index and `MERGE_HEAD` states.
@@ -108,7 +116,7 @@ lefthook is configured in `lefthook.yml` as a fast local checkpoint:
 
 - `pre-commit` verifies staged pairing records against the staged owner blobs, validates staged files with the project-free `.oxlintrc.staged.json` profile and applies Oxlint fixes with one bounded retry, regenerates `THIRD_PARTY_NOTICES.md` when a staged file is one of its inputs, checks the staged diff for whitespace errors, and runs the vendor manifest guard.
 - `pre-merge-commit` performs the same index-backed pairing check before Git creates an automatic merge commit.
-- `pre-push` runs `pnpm run typecheck`, which completes the Host lib phase, including generated Typert contracts, before the Client TypeScript check.
+- `pre-push` first rejects any destination other than the named Biyocon fork, then runs `pnpm run typecheck`, which completes the Host lib phase, including generated Typert contracts, before the Client TypeScript check.
 
 The vendor manifest guard checks that changes under `vendor/*/src` are staged with the matching `vendor/README.md` manifest update. See `vendor/README.md` before editing vendored code.
 
