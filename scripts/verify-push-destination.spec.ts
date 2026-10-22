@@ -94,6 +94,21 @@ describe('push destination normalization', () => {
     ])).toEqual({ remoteName: 'renamed-fork', repository: ALLOWED_PUSH_REPOSITORY })
   })
 
+  for (const [label, character] of [
+    ['NUL', '\u0000'],
+    ['tab', '\t'],
+    ['newline', '\n'],
+    ['carriage return', '\r'],
+    ['unit separator', '\u001f'],
+    ['DEL', '\u007f'],
+  ] as const) {
+    it(`rejects an embedded ASCII ${label} character before URL parsing`, () => {
+      const location = `https://github.com/Biyocon/deepseek-${character}harness.git`
+      expect(normalizePushRepository(location)).toBeUndefined()
+      expect(() => validatePushDestination(['biyocon', location])).toThrow(/not an unambiguous/u)
+    })
+  }
+
   it('rejects direct URL pushes and incomplete hook arguments', () => {
     const location = 'https://github.com/Biyocon/deepseek-harness.git'
     expect(() => validatePushDestination([location, location])).toThrow(/direct URL pushes/u)
