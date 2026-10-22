@@ -102,7 +102,7 @@ DEEPSEEK_BASE_URL=https://... # optional
 
 #### 仓库远程与上游同步
 
-`deepseek-ai/deepseek-harness` 是只读抓取上游。推送和拉取请求必须通过具名远程指向 `Biyocon/deepseek-harness`；pre-push 目标守卫会在 typecheck 开始前拒绝上游、其他仓库、含糊位置和直接 URL 推送。不得使用 `--no-verify` 绕过守卫。请编辑 `AGENTS.md`，不要单独编辑作为其符号链接的 `CLAUDE.md`。[仅允许向 fork 推送 Agent Note](../.agents/notes/implemented/process/2026-10-18-fork-only-push-destination.md)记录了决策依据和允许的传输方式。
+`deepseek-ai/deepseek-harness` 是只读抓取上游。推送必须使用指向 `Biyocon/deepseek-harness` 的具名远程；拉取请求的 base 和 head 必须都属于该仓库。pre-push 目标守卫会在 typecheck 开始前拒绝上游、其他仓库、含糊位置和直接 URL 推送。不得使用 `--no-verify` 绕过守卫。请编辑 `AGENTS.md`，不要单独编辑作为其符号链接的 `CLAUDE.md`。[仅允许向 fork 推送 Agent Note](../.agents/notes/implemented/process/2026-10-18-fork-only-push-destination.md)记录了决策依据和允许的传输方式。
 
 要在不丢弃 Biyocon 功能的前提下引入上游变更，请先记录 `biyocon/master` 和 `origin/master` 的精确提交，只抓取 `origin/master`，再从 `biyocon/master` 创建 Biyocon 集成分支和 worktree。将 `origin/master` merge-forward 进该分支；不得 rebase、reset、squash 或 force-push。处理每个冲突时都要保留所需的 Biyocon 行为，为合并后的改动运行所选检查，然后只把集成分支推送到 `biyocon`，并创建 base 与 head 都位于 `Biyocon/deepseek-harness` 的拉取请求。合并必须经过绿色 CI、评审和单独的所有者授权。随后把更新后的 Biyocon master 分别 merge-forward 到活跃功能分支，不得改写其提交。
 
