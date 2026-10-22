@@ -56,6 +56,7 @@ describe('web e2e: startup auto-selection', () => {
     browser = await chromium.launch()
     page = await newEnglishPage(browser)
     tripwire = watchConsole(page)
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
   }, 180_000)
@@ -69,12 +70,19 @@ describe('web e2e: startup auto-selection', () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-first-workspace-stable-tree'))
     await page.locator(`${ROOT_PHASE}[data-phase="hero"]`).waitFor({ timeout: 15_000 })
     const headline = page.getByText('Into the Unknown', { exact: true })
-    const fish = headline.locator('xpath=preceding-sibling::span[1]/*[name()="svg"]')
-    const fishHitbox = fish.locator('..')
-    expect(await fish.evaluate(node => getComputedStyle(node).color))
-      .toBe(await headline.evaluate(node => getComputedStyle(node).color))
-    await fishHitbox.hover()
-    expect(await fish.evaluate(node => getComputedStyle(node).animationName)).not.toBe('none')
+    const brandmark = headline.locator('xpath=preceding-sibling::span[1]/img')
+    const brandmarkHitbox = brandmark.locator('..')
+    expect(await brandmark.getAttribute('src')).toBe('/biyocon-brandmark.png')
+    expect(await brandmark.getAttribute('alt')).toBe('')
+    expect(await brandmark.getAttribute('aria-hidden')).toBe('true')
+    expect(await brandmark.evaluate(async (node) => {
+      const image = node as HTMLImageElement
+      await image.decode()
+      return image.naturalWidth
+    })).toBeGreaterThan(0)
+    expect(await brandmark.evaluate(node => node.getBoundingClientRect().height)).toBe(34)
+    await brandmarkHitbox.hover()
+    expect(await brandmark.evaluate(node => getComputedStyle(node).animationName)).not.toBe('none')
     await page.evaluate(() => {
       const refs = {
         root: document.querySelector('div[data-phase="hero"]'),

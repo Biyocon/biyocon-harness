@@ -20,7 +20,7 @@ manifest 有意不包含 `lang`、`theme_color` 或 `background_color`。产品�
 
 ## 验证
 
-Web 构建产物测试解析输出的 manifest，并固定完整的元数据对象，包括面向用户显示的名称、简称、两个 PNG 图标、根路径身份、启动边界和显示模式，同时验证生产构建的 `index.html` 仍保留该链接。另一项构建产物检查仅断言交付的 `favicon.png` 与 `apple-touch-icon.png` 非空，并不声称进行像素或来源验证。`dsh-host-frontend-static` 的真实 Loader 组合测试提供一个 `.webmanifest` fixture（测试前置数据），并固定其 `application/manifest+json` 媒体类型。
+Web 构建产物测试解析输出的 manifest，并固定完整的元数据对象，包括面向用户显示的名称、简称、两个 PNG 图标、根路径身份、启动边界和显示模式，同时验证生产构建的 `index.html` 仍保留该链接。其他构建产物检查固定两个 manifest 图标（192 与 512 像素）、`favicon.png`（32 像素）与 `apple-touch-icon.png`（180 像素）的 PNG 签名、`IHDR` 文件头和正方形尺寸；这些检查不解码像素，也不验证资产来源。`dsh-host-frontend-static` 的真实 Loader 组合测试提供一个 `.webmanifest` fixture（测试前置数据），并固定其 `application/manifest+json` 媒体类型。
 
 ## 曾考虑的替代方案
 

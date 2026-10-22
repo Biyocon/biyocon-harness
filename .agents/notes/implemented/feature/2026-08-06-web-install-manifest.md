@@ -20,7 +20,7 @@ This feature adds no service worker, cache policy, or offline fallback. The mani
 
 ## Verification
 
-The built-Web test parses the emitted manifest and pins the complete metadata object, including the human-visible name, compact name, both PNG icons, root identity, launch boundary, and display mode, while also verifying that the production `index.html` retains the link. A further built-Web check asserts only that the shipped `favicon.png` and `apple-touch-icon.png` are non-empty; no pixel or provenance validation is claimed. The `dsh-host-frontend-static` real Loader composition test serves a `.webmanifest` fixture and pins its `application/manifest+json` media type.
+The built-Web test parses the emitted manifest and pins the complete metadata object, including the human-visible name, compact name, both PNG icons, root identity, launch boundary, and display mode, while also verifying that the production `index.html` retains the link. Further built-Web checks pin the PNG signature, `IHDR` header, and square dimensions of both manifest icons (192 and 512 pixels), `favicon.png` (32 pixels), and `apple-touch-icon.png` (180 pixels); they do not decode pixels or establish asset provenance. The `dsh-host-frontend-static` real Loader composition test serves a `.webmanifest` fixture and pins its `application/manifest+json` media type.
 
 ## Alternatives considered
 

@@ -1,6 +1,5 @@
-/* NEW SESSION hero (figma Input_Bottom 75:8208): fish + title, workspace chip
-   above the shared InputBar card. The input itself is InputBar — only stack
-   geometry and the chip live here. */
+/* New-session hero: brandmark + title, workspace chip above the shared InputBar
+   card. Stack geometry follows figma Input_Bottom 75:8208; InputBar owns the input. */
 
 .root {
   display: flex;
@@ -70,8 +69,6 @@
   justify-content: center;
 }
 
-/* The Biyocon brandmark keeps its source brand blue; transform-origin is kept
-   for the same subtle hover motion the previous mark used. */
 .brandmark {
   transform-origin: 50% 60%;
 }

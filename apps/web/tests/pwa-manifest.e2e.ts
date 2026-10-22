@@ -34,9 +34,17 @@ it('ships install metadata with the built web application', async () => {
   })
 })
 
-it('ships a PNG favicon and touch icon derived from the Biyocon brandmark', async () => {
-  const favicon = await readFile(join(DIST_ROOT, 'favicon.png'))
-  expect(favicon.length).toBeGreaterThan(0)
-  const appleTouch = await readFile(join(DIST_ROOT, 'apple-touch-icon.png'))
-  expect(appleTouch.length).toBeGreaterThan(0)
+it.each([
+  ['biyocon-brandmark-192.png', 192],
+  ['biyocon-brandmark-512.png', 512],
+  ['favicon.png', 32],
+  ['apple-touch-icon.png', 180],
+] as const)('ships %s with PNG and IHDR headers and %ipx square dimensions', async (filename, size) => {
+  const png = await readFile(join(DIST_ROOT, filename))
+  expect(png.length, `${filename} must contain the complete PNG signature and IHDR chunk`).toBeGreaterThanOrEqual(33)
+  expect(png.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  expect(png.readUInt32BE(8)).toBe(13)
+  expect(png.subarray(12, 16).toString('ascii')).toBe('IHDR')
+  expect(png.readUInt32BE(16)).toBe(size)
+  expect(png.readUInt32BE(20)).toBe(size)
 })
