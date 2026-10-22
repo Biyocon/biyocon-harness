@@ -265,6 +265,8 @@ describe('worktree-local Lefthook installer', { timeout: 30_000 }, () => {
 
     const mainHook = readFileSync(join(mainHooks, 'pre-commit'), 'utf8')
     const linkedHook = readFileSync(join(linkedHooks, 'pre-commit'), 'utf8')
+    const mainPushHook = readFileSync(join(mainHooks, 'pre-push'), 'utf8')
+    const linkedPushHook = readFileSync(join(linkedHooks, 'pre-push'), 'utf8')
     const canonicalMain = git(fixture, fixture.main, ['rev-parse', '--show-toplevel'])
     const canonicalLinked = git(fixture, fixture.linked, ['rev-parse', '--show-toplevel'])
     expect(mainHook).toContain(`# root=${canonicalMain}`)
@@ -273,6 +275,8 @@ describe('worktree-local Lefthook installer', { timeout: 30_000 }, () => {
     expect(linkedHook).toContain(`# root=${canonicalLinked}`)
     expect(linkedHook).toContain('# config=linked-worktree-config')
     expect(linkedHook).not.toContain(canonicalMain)
+    expect(mainPushHook).toContain('# config=main-worktree-config')
+    expect(linkedPushHook).toContain('# config=linked-worktree-config')
     expect(existsSync(join(mainHooks, 'pre-merge-commit'))).toBe(true)
     expect(existsSync(join(linkedHooks, 'pre-merge-commit'))).toBe(true)
     expect(readFileSync(legacyHook, 'utf8')).toBe('#!/bin/sh\n# legacy hook\n')

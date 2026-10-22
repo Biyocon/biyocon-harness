@@ -2,6 +2,8 @@
 # repository-wide gate matrix.
 # Install: `node scripts/install-lefthook.mjs` (runs automatically via postinstall).
 
+lefthook: node scripts/run-lefthook.mjs
+
 pre-commit:
   jobs:
     - name: translation pairing (staged records)
@@ -50,6 +52,12 @@ pre-merge-commit:
       run: node_modules/.bin/tsx scripts/verify-archived-agent-notes.ts
 
 pre-push:
+  piped: true
   jobs:
+    - name: push destination
+      script: verify-push-destination.mjs
+      runner: node
+      args: --from-git-hook-env
+
     - name: typecheck
       run: pnpm run typecheck
