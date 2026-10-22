@@ -18,7 +18,7 @@ import type { PendingInteraction } from './pending.ts'
 import type { ContextProvenanceView, KnownContextForm } from './context-provenance.ts'
 import type {
   ChatConversationViewNode, ConversationTimelineSnapshot, ConversationViewSnapshotStore,
-} from '../contract/conversation.ts'
+} from './conversation.ts'
 export type { TodoItem }
 
 /** Request configuration recorded for one provider call. */
@@ -47,30 +47,6 @@ export type AssistantBlock =
   | { kind: 'image'; attachment: ImageAttachmentRef }
   | { kind: 'tool-call'; callId: string; name: string; argsRaw: string }
   | { kind: 'other'; block: unknown }
-
-/**
- * core ContentBlock[] -> AssistantBlock[] (classifier shared by finalized messages and partial block-end).
- * @param content - core content blocks verbatim.
- * @returns UI-classified blocks in source order.
- */
-export function toAssistantBlocks(content: readonly ContentBlock[]): AssistantBlock[] {
-  return content.map(toAssistantBlock)
-}
-
-/**
- * Classify one block (ToolCallBlock fields are id/arguments, mapped to callId/argsRaw).
- * @param block - one core content block.
- * @returns the UI classification.
- */
-export function toAssistantBlock(block: ContentBlock): AssistantBlock {
-  switch (block.type) {
-    case 'text': return { kind: 'text', text: block.text }
-    case 'reasoning': return { kind: 'reasoning', text: block.text }
-    case 'image': return { kind: 'image', attachment: block.attachment }
-    case 'tool-call': return { kind: 'tool-call', callId: String(block.id), name: block.name, argsRaw: block.arguments }
-    default: return { kind: 'other', block }
-  }
-}
 
 /** A finalized user message. */
 export interface UserMessageNode {
@@ -398,35 +374,6 @@ export interface ChatSnapshot {
   readonly locations: ChatLocationNodeIndex
   readonly timeline: ConversationTimelineSnapshot
   readonly legacy: LegacyConversationSlice
-}
-
-const EMPTY_LIST: readonly never[] = []
-const EMPTY_TIMELINE: ConversationTimelineSnapshot = { turnOrder: EMPTY_LIST, turns: new Map() }
-
-/** Empty target store used by fixtures and Sessions without registered views. */
-export const EMPTY_CONVERSATION_VIEWS: ConversationViewSnapshotStore = {
-  get: () => undefined,
-}
-
-/** Empty Chat target used before a view builder is registered. */
-export const EMPTY_CHAT_SNAPSHOT: ChatSnapshot = {
-  order: EMPTY_LIST,
-  nodes: {
-    get: () => undefined,
-    values: () => EMPTY_LIST,
-  },
-  locations: {
-    getTurn: () => EMPTY_LIST,
-    getStep: () => EMPTY_LIST,
-  },
-  timeline: EMPTY_TIMELINE,
-  legacy: {
-    nodes: EMPTY_LIST,
-    turnTimings: new Map(),
-    turnEnds: new Map(),
-    partial: null,
-    runningCalls: EMPTY_LIST,
-  },
 }
 
 /** The immutable snapshot contract Session hands to uSES (see the web client architecture RFC). */
