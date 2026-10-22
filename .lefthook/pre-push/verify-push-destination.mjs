@@ -43,7 +43,7 @@ export function normalizePushRepository(location) {
   if (
     typeof location !== 'string'
     || location === ''
-    || /[\u0000-\u001f\u007f]/u.test(location)
+    || /[^\u0020-\u007e]/u.test(location)
     || location.trim() !== location
   ) {
     return undefined

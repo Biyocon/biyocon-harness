@@ -103,8 +103,10 @@ describe('push destination normalization', () => {
     'https://github.com/another/../Biyocon/deepseek-harness.git',
     'https://github.com/another/%2e%2e/Biyocon/deepseek-harness.git',
     'ssh:/git@github.com/Biyocon/deepseek-harness.git',
+    'httpſ://github.com/Biyocon/deepseek-harness.git',
+    'ſsh://git@github.com/Biyocon/deepseek-harness.git',
   ]) {
-    it(`rejects URL repair for ${location}`, () => {
+    it(`rejects unsupported syntax in ${location}`, () => {
       expect(normalizePushRepository(location)).toBeUndefined()
       expect(() => validatePushDestination(['biyocon', location])).toThrow(/not an unambiguous/u)
     })
