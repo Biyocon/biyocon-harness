@@ -24,6 +24,10 @@ import type {
   GateId,
   GateRecord,
 } from './types.ts'
+import { executionBaselineHash, executionEffectProfile } from './quality.ts'
+
+/** Current pre-release durable Conductor record format. */
+export const CONDUCTOR_RECORD_FORMAT_VERSION = 1
 
 /**
  * The initial, dispatch-ready run state. The run starts at `detective` with an
@@ -42,7 +46,7 @@ export interface CreateRunInput {
   excludedPaths?: string[]
   /** Source state observed at intake, when already known. */
   sourceBaseline?: string
-  /** The mandate owner and permitted external actions. */
+  /** The mandate owner, used for attribution only. */
   authority: ConductorAuthority
   /** Non-negotiable constraints on the work. */
   constraints?: string[]
@@ -60,6 +64,7 @@ export interface CreateRunInput {
  */
 export function createRun(runId: ConductorRunId, input: CreateRunInput): ConductorRun {
   return {
+    recordFormatVersion: CONDUCTOR_RECORD_FORMAT_VERSION,
     runId,
     objective: input.objective,
     scope: [...(input.scope ?? [])],
@@ -67,17 +72,20 @@ export function createRun(runId: ConductorRunId, input: CreateRunInput): Conduct
     allowedPaths: [...(input.allowedPaths ?? [])],
     excludedPaths: [...(input.excludedPaths ?? [])],
     sourceBaseline: input.sourceBaseline ?? null,
-    authority: { ...input.authority, permittedActions: [...input.authority.permittedActions] },
+    authority: { owner: input.authority.owner },
     constraints: [...(input.constraints ?? [])],
     acceptanceCriteria: [...(input.acceptanceCriteria ?? [])],
     budget:
       input.budget === undefined
         ? { maxReworkCycles: 3, maxRalphRounds: 0 }
         : { ...input.budget },
+    baselineHistory: [],
     baseline: null,
+    executionAuthorization: null,
     currentStage: 'detective',
     history: [],
     specialistReports: [],
+    qualityExecutions: [],
     status: 'running',
   }
 }
@@ -177,6 +185,8 @@ export interface GateVerdict {
   nextStage?: ConductorStage
   /** Short, concrete description of the run-state change this decision applies. */
   stateUpdate: string
+  /** Exact baseline hash for Gate C pass and later attempts under an active baseline. */
+  executionBaselineHash?: string
 }
 
 /**
@@ -200,6 +210,28 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
   const gate = gateOfStage(run.currentStage)
   if (gate === undefined) {
     throw new Error(`Conductor stage "${run.currentStage}" owns no gate; cannot record a gate decision`)
+  }
+
+  const activeBaselineHash = run.baseline === null ? undefined : executionBaselineHash(run.baseline)
+  if (gate === 'C' && verdict.decision === 'pass') {
+    if (activeBaselineHash === undefined || run.executionAuthorization === null) {
+      throw new Error('Conductor Gate C pass requires a host-authorized execution baseline')
+    }
+    if (run.executionAuthorization.executionBaselineHash !== activeBaselineHash) {
+      throw new Error('Conductor Gate C authorization does not match the active execution baseline')
+    }
+    const requiredProfile = executionEffectProfile(run.baseline as NonNullable<ConductorRun['baseline']>)
+    const approvedProfile = run.executionAuthorization.effectProfile
+    if (approvedProfile.filesystem !== requiredProfile.filesystem
+      || approvedProfile.quality !== requiredProfile.quality) {
+      throw new Error('Conductor Gate C authorization does not match the required execution effects')
+    }
+    if (verdict.executionBaselineHash !== activeBaselineHash) {
+      throw new Error('Conductor Gate C pass requires the active execution baseline hash')
+    }
+  } else if (verdict.executionBaselineHash !== undefined
+    && verdict.executionBaselineHash !== activeBaselineHash) {
+    throw new Error(`Conductor gate ${gate} execution baseline hash does not match the active baseline`)
   }
 
   let decision: GateDecision = verdict.decision
@@ -262,6 +294,12 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
     evidenceReviewed: verdict.evidenceReviewed,
     stateUpdate: verdict.stateUpdate,
   }
+  const requiredBaselineHash = gate === 'C' && decision === 'pass'
+    ? verdict.executionBaselineHash
+    : gate === 'D' || gate === 'E' || gate === 'F' || gate === 'G'
+      ? activeBaselineHash
+      : undefined
+  if (requiredBaselineHash !== undefined) record.executionBaselineHash = requiredBaselineHash
   if (decision === 'rework' && verdict.defectClass !== undefined) {
     record.defectClass = verdict.defectClass
   }
@@ -272,7 +310,7 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
   return {
     ...run,
     ...decision === 'rework' && (verdict.defectClass === 'scope' || verdict.defectClass === 'plan')
-      ? { baseline: null }
+      ? { baseline: null, executionAuthorization: null }
       : {},
     currentStage: nextStage ?? run.currentStage,
     status,
@@ -297,10 +335,6 @@ export function closeRun(run: ConductorRun, authorization: CloseoutAuthorization
   }
   if (authorization.authorizedBy !== run.authority.owner) {
     throw new Error(`closeout authorization must come from mandate owner "${run.authority.owner}"`)
-  }
-  if (authorization.action !== 'record-only'
-    && !run.authority.permittedActions.includes(authorization.action)) {
-    throw new Error(`closeout action "${authorization.action}" is outside the run authority`)
   }
   if (authorization.outcomeEvidence.length === 0
     || authorization.outcomeEvidence.some(item => item.length === 0 || item !== item.trim())) {

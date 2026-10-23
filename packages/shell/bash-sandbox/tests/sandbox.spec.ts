@@ -94,7 +94,7 @@ describe('the provider hand-off', () => {
     expect(result.sandbox).toEqual({ mode: 'read-only', denied: false, enforcement: 'full' })
     expect(calls).toEqual([{
       argv: ['bash', '-c', 'echo \'a b\' "c\'d"'],
-      policy: { mode: 'read-only', workspaceRoot: resolve(process.cwd()) },
+      policy: { mode: 'read-only', network: 'inherit', workspaceRoot: resolve(process.cwd()) },
     }])
   })
 
@@ -145,7 +145,7 @@ describe('the provider hand-off', () => {
     const { bash, calls } = await setup({ mode: 'workspace-write' })
     const result = await bash.run(bash.resolve({ command: 'true' }))
     expect(result.sandbox).toEqual({ mode: 'workspace-write', denied: false, enforcement: 'full' })
-    expect(calls[0]?.policy).toEqual({ mode: 'workspace-write', workspaceRoot: resolve(process.cwd()) })
+    expect(calls[0]?.policy).toEqual({ mode: 'workspace-write', network: 'inherit', workspaceRoot: resolve(process.cwd()) })
   })
 
   it('an explicit workspaceRoot on the policy wins', async () => {
@@ -319,7 +319,10 @@ describe('per-call sandbox policy (the session and escalation carrier)', () => {
     expect(bash.resolve({ command: 'true', sandboxPolicy: explicit }).sandboxPolicy).toEqual(explicit)
     await bash.run(bash.resolve({ command: 'true', sandboxPolicy: explicit }))
     await bash.run(bash.resolve({ command: 'true' }))
-    expect(calls.map(call => call.policy)).toEqual([explicit, executionPolicy('read-only')])
+    expect(calls.map(call => call.policy)).toEqual([
+      { ...explicit, network: 'inherit' },
+      { ...executionPolicy('read-only'), network: 'inherit' },
+    ])
   })
 
   it('an escalated run reports the mode it ACTUALLY ran under', async () => {

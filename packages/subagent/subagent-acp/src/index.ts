@@ -148,7 +148,9 @@ class AcpProvider implements SubagentProvider {
     outputSchema: false,
     depthLimit: false,
     toolFilter: false,
+    toolGuard: false,
     persona: false,
+    toolContribution: false,
   }
   // Context contract: an out-of-process ACP child starts fresh — no parent conversation crosses the process boundary.
   readonly inheritsParentContext = false

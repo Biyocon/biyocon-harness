@@ -83,7 +83,7 @@ The host keeps a ledger of forwarded child starts. A graceful worker supplies th
 | `syncTimeoutMs` | `5000` | VM timeout for the script's initial synchronous slice. |
 | `disposeGraceMs` | `5000` | Bound before force-settlement/termination and for public disposal. |
 
-An owning consumer may set `WorkflowStartRequest.subagentProvider` and `WorkflowStartRequest.maxTotalAgents` for one run. These are engine-level policy, not script hooks or model-facing options; the ordinary `workflow` tool leaves both unset. A per-run total-child cap may lower but never raise the configured `maxTotalAgents` ceiling.
+An owning consumer may set `WorkflowStartRequest.subagentProvider`, `WorkflowStartRequest.maxTotalAgents`, and the four trusted `child*` policies for one run. These are engine-level policy, not script hooks or model-facing options; the ordinary `workflow` tool leaves them unset. `childToolContribution` remains a host-only callback: the host forwards the same identity to each child start without serializing it into the worker protocol. A per-run total-child cap may lower but never raise the configured `maxTotalAgents` ceiling.
 
 ## Model Experience
 

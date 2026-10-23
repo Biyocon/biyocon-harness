@@ -6,7 +6,7 @@
 
 ## 契约
 
-可信 runtime consumer 可以调用导出的 `runRalphWorkflow(ctx, request)`，提供明确界限以及可选的 child tool/persona policy。面向模型的工具委托给同一 runner，因此 Conductor 不会重复 Ralph loop，也不会让 Ralph 通过 Conductor gate。
+可信 runtime consumer 可以调用导出的 `runRalphWorkflow(ctx, request)`，提供明确界限以及可选的 child tool/persona policy，其中包括仅限 host 的 child tool contribution。Runner 会把该 contribution 原样传给每个全新 Round，并在发布 workflow 前拒绝不具备相应能力的 provider。面向模型的工具委托给同一 runner，因此 Conductor 不会重复 Ralph loop，也不会让 Ralph 通过 Conductor gate。
 
 `ralph({ objective, maxRounds? })` 会等待整个运行完成。部署配置中的 `maxRounds` 既是默认值，也是调用覆盖值的上限。每个 Ralph Round 通过 `subagentProvider` 启动一个子 agent；该提供方必须存在、支持结构化输出，并报告 `inheritsParentContext: false`。已配置的提供方以 `WorkflowStartRequest.subagentProvider` 传递，使固定脚本无法检查或更改路由，普通的模型编写 `workflow` 工具也不会因此获得提供方选择器。解析后的 Round 上限还会作为 `WorkflowStartRequest.maxTotalAgents` 传递，使固定循环与引擎的子 agent 总数后备上限协同；Ralph 上限超过引擎部署上限时，引擎会在发布运行前拒绝。
 

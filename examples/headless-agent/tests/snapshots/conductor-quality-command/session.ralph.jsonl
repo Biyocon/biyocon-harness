@@ -1,0 +1,11 @@
+{"type":"session","version":0,"id":"59999999-9999-4999-8999-999999999999","createdAt":1783952003500,"cwd":"{{cwd}}","parentSession":"51111111-1111-4111-8111-111111111111"}
+{"type":"assistant/chunk","seq":0,"time":1783952003501,"data":{"turn":1,"step":1,"chunk":{"type":"block-start","index":0,"blockType":"tool-call"}}}
+{"type":"assistant/chunk","seq":1,"time":1783952003502,"data":{"turn":1,"step":1,"chunk":{"type":"tool-call-delta","index":0,"id":"ralph-quality","name":"conductor_quality_check","argumentsDelta":"{\"command_id\":\"snapshot-check\"}"}}}
+{"type":"assistant/chunk","seq":2,"time":1783952003503,"data":{"turn":1,"step":1,"chunk":{"type":"block-end","index":0,"block":{"type":"tool-call","id":"ralph-quality","name":"conductor_quality_check","arguments":"{\"command_id\":\"snapshot-check\"}"}}}}
+{"type":"assistant/chunk","seq":3,"time":1783952003504,"data":{"turn":1,"step":1,"chunk":{"type":"usage","usage":{"inputTokens":30,"outputTokens":8}}}}
+{"type":"assistant/chunk","seq":4,"time":1783952003505,"data":{"turn":1,"step":1,"chunk":{"type":"finish","reason":{"kind":"tool-calls"}}}}
+{"type":"assistant/chunk","seq":5,"time":1783952003506,"data":{"turn":1,"step":2,"chunk":{"type":"block-start","index":0,"blockType":"tool-call"}}}
+{"type":"assistant/chunk","seq":6,"time":1783952003507,"data":{"turn":1,"step":2,"chunk":{"type":"tool-call-delta","index":0,"id":"ralph-report","name":"structured_output","argumentsDelta":"{\"status\":\"complete\",\"summary\":\"Ralph ran the bound snapshot quality check.\",\"evidence\":[\"Host quality evidence is available to Headsman.\"],\"nextSteps\":[],\"blocker\":\"\"}"}}}
+{"type":"assistant/chunk","seq":7,"time":1783952003508,"data":{"turn":1,"step":2,"chunk":{"type":"block-end","index":0,"block":{"type":"tool-call","id":"ralph-report","name":"structured_output","arguments":"{\"status\":\"complete\",\"summary\":\"Ralph ran the bound snapshot quality check.\",\"evidence\":[\"Host quality evidence is available to Headsman.\"],\"nextSteps\":[],\"blocker\":\"\"}"}}}}
+{"type":"assistant/chunk","seq":8,"time":1783952003509,"data":{"turn":1,"step":2,"chunk":{"type":"usage","usage":{"inputTokens":40,"outputTokens":12}}}}
+{"type":"assistant/chunk","seq":9,"time":1783952003510,"data":{"turn":1,"step":2,"chunk":{"type":"finish","reason":{"kind":"tool-calls"}}}}

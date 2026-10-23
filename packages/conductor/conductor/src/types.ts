@@ -12,6 +12,7 @@
  */
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 
 /**
  * Identifies one Conductor run. The runtime mints `CON-YYYY-NNNN`; every
@@ -47,22 +48,65 @@ export type ConductorStage =
   | 'arbiter'
   | 'closeout'
 
-/**
- * An external action a run's {@link ConductorAuthority} may permit. Every value
- * is negative-space: a GO from The Arbiter grants none of them; only the
- * mandate owner's explicit authority does.
- */
+/** An external action that may be recorded during owner-authorized closeout. */
 export type ConductorAction = 'read' | 'write' | 'commit' | 'push' | 'merge' | 'release' | 'publish' | 'deploy'
 
-/**
- * Who owns the mandate and which external actions they permit. The permitted
- * actions bound every specialist stage and the closeout release step.
- */
+/** Attribution for the mandate; execution authorization is host-owned and separate. */
 export interface ConductorAuthority {
   /** The mandate owner: a human, the initiating agent ('emperor'), or another named owner. */
   owner: string
-  /** External actions the owner has authorized for this run. */
-  permittedActions: ConductorAction[]
+}
+
+/** Host-approved effects for one immutable execution baseline. */
+export interface ExecutionEffectProfile {
+  /** Maximum filesystem effect granted to specialists under the baseline. */
+  filesystem: 'read-only' | 'workspace-write'
+  /** Whether deployment-owned quality commands may execute. */
+  quality: 'none' | 'catalog'
+  /** External effects are never part of Conductor execution authorization. */
+  external: 'none'
+}
+
+/** Durable host authorization bound to one exact Gate-C baseline. */
+export interface ExecutionAuthorization {
+  /** SHA-256 of the baseline the host approved. */
+  executionBaselineHash: string
+  /** Exact effects approved for that baseline. */
+  effectProfile: ExecutionEffectProfile
+}
+
+/** Stable deployment-owned quality-command identity. */
+export type QualityCommandId = Branded<'QualityCommandId'>
+
+/**
+ * Brand a validated quality-command id.
+ * @param id - deployment-owned normalized command id.
+ * @returns the branded command identity.
+ */
+export function QualityCommandId(id: string): QualityCommandId {
+  return id as QualityCommandId
+}
+
+/** Stable host-owned evidence identity for one quality execution. */
+export type QualityEvidenceId = Branded<'QualityEvidenceId'>
+
+/**
+ * Brand a minted quality-evidence id.
+ * @param id - host-minted evidence identity.
+ * @returns the branded evidence identity.
+ */
+export function QualityEvidenceId(id: string): QualityEvidenceId {
+  return id as QualityEvidenceId
+}
+
+/** A Gate-C binding to one immutable deployment command definition. */
+export interface QualityCommandBinding {
+  /** Deployment command id selected at Gate C. */
+  id: QualityCommandId
+  /** SHA-256 of the complete normalized deployment definition. */
+  definitionHash: string
+  /** Gates at which this command requires fresh passing evidence. */
+  requiredGates: Array<'D' | 'E'>
 }
 
 /**
@@ -95,6 +139,54 @@ export interface ExecutionBaseline {
   excludedPaths: string[]
   /** Reference that locates the state to roll back to if execution fails. */
   rollbackReference: string
+  /** Host-resolved immutable command bindings selected at Gate C. */
+  qualityCommands: QualityCommandBinding[]
+}
+
+/** The model-authored Gate-C baseline proposal before host catalog resolution. */
+export interface ExecutionBaselineProposal extends Omit<ExecutionBaseline, 'qualityCommands'> {
+  /** Deployment command ids requested for the immutable baseline. */
+  qualityCommandIds: string[]
+}
+
+/** Policy stage a quality command may serve. */
+export type QualityPolicyStage = 'headsman' | 'auditor'
+
+/** Actual executor: Ralph uses Headsmans policy without owning Gate D. */
+export type QualityExecutorStage = QualityPolicyStage | 'ralph'
+
+/** Host classification for an unsuccessful quality execution. */
+export type QualityExecutionFailure =
+  | 'nonzero-exit'
+  | 'signal'
+  | 'timeout'
+  | 'cancelled'
+  | 'denied'
+  | 'runner-failure'
+  | 'sandbox-unavailable'
+
+/** Durable host-owned evidence for one exact catalog command execution. */
+export interface QualityExecutionRecord {
+  evidenceId: QualityEvidenceId
+  runId: ConductorRunId
+  childSessionId: SessionId
+  commandId: QualityCommandId
+  definitionHash: string
+  executionBaselineHash: string
+  gate: 'D' | 'E'
+  cycle: number
+  policyStage: QualityPolicyStage
+  executorStage: QualityExecutorStage
+  outcome: 'passed' | 'failed'
+  failure?: QualityExecutionFailure
+  exitCode: number | null
+  signal: string | null
+  startedAt: string
+  finishedAt: string
+  stdoutSha256: string
+  stderrSha256: string
+  stdoutTruncated: boolean
+  stderrTruncated: boolean
 }
 
 /**
@@ -118,6 +210,8 @@ export type ConductorRunStatus =
  * Arbiter can review the full record.
  */
 export interface ConductorRun {
+  /** Pre-release durable record format; unsupported versions are rejected without migration. */
+  recordFormatVersion: 1
   /** The run's id. */
   runId: ConductorRunId
   /** The desired outcome. */
@@ -132,7 +226,7 @@ export interface ConductorRun {
   excludedPaths: string[]
   /** Source state observed at intake; Detective may establish it when absent. */
   sourceBaseline: string | null
-  /** The mandate owner and permitted external actions. */
+  /** The mandate owner, used for attribution only. */
   authority: ConductorAuthority
   /** Non-negotiable constraints on the work. */
   constraints: string[]
@@ -140,14 +234,20 @@ export interface ConductorRun {
   acceptanceCriteria: string[]
   /** Rework and Ralph round limits. */
   budget: ConductorBudget
-  /** The immutable execution baseline; null until Gate C passes. */
+  /** Every host-authorized Gate-C baseline, retained append-only across rework. */
+  baselineHistory: ExecutionBaseline[]
+  /** The active immutable execution baseline; null until Gate C passes or after scope/plan rework. */
   baseline: ExecutionBaseline | null
+  /** Host-owned authorization for the active baseline, or null before approval and after invalidation. */
+  executionAuthorization: ExecutionAuthorization | null
   /** The stage the run is currently at. */
   currentStage: ConductorStage
   /** Every gate decision recorded so far, in order. */
   history: GateRecord[]
   /** Validated specialist envelopes retained for downstream handoffs and Arbiter review. */
   specialistReports: SpecialistEnvelope[]
+  /** Host-owned command evidence accumulated before Gate D and Gate E decisions. */
+  qualityExecutions: QualityExecutionRecord[]
   /** The run's lifecycle status. */
   status: ConductorRunStatus
   /** The Arbiter decision recorded at Gate G, when reached. */
@@ -193,6 +293,8 @@ export interface GateRecord {
   nextStage?: ConductorStage
   /** Short, concrete description of the run-state change this decision applies. */
   stateUpdate: string
+  /** Hash of the active execution baseline for Gate C pass and every later attempt under it. */
+  executionBaselineHash?: string
 }
 
 /** A specialist's delivery readiness — never a gate pass (Conductor decides that). */
@@ -286,6 +388,8 @@ export interface SpecialistEnvelope {
   change_requests: ChangeRequest[]
   /** Candidate immutable execution baseline; required for a ready Gate C result. */
   execution_baseline?: ExecutionBaseline
+  /** Host evidence ids cited by this specialist; free-form evidence cannot replace them. */
+  quality_evidence_ids: string[]
   /** The only allowed transition: back to Conductor. */
   recommended_transition: RecommendedTransition
   /** The specialist's confidence in its result. */

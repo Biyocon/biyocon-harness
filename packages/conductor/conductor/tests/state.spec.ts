@@ -8,11 +8,13 @@ import {
   recordGate,
   reworkCycles,
   stageOfGate,
+  executionBaselineHash,
 } from '../src/index.ts'
 import type { ConductorRun, ConductorStage, GateId, GateRecord, GateVerdict } from '../src/index.ts'
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
+    recordFormatVersion: 1,
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -20,14 +22,17 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     allowedPaths: [],
     excludedPaths: [],
     sourceBaseline: null,
-    authority: { owner: 'user', permittedActions: ['read'] },
+    authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: [],
     budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
+    baselineHistory: [],
     baseline: null,
+    executionAuthorization: null,
     currentStage: 'detective',
     history: [],
     specialistReports: [],
+    qualityExecutions: [],
     status: 'running',
     ...overrides,
   }
@@ -50,7 +55,7 @@ describe('dsh-conductor gate engine', () => {
     const inputArtifacts = ['report.json']
     const allowedPaths = ['packages/conductor']
     const excludedPaths = ['packages/conductor/private']
-    const authority: ConductorRun['authority'] = { owner: 'user', permittedActions: ['read', 'write'] }
+    const authority: ConductorRun['authority'] = { owner: 'user' }
     const constraints = ['no release']
     const acceptanceCriteria = ['coverage passes']
     const budget = { maxReworkCycles: 2, maxRalphRounds: 1 }
@@ -72,7 +77,6 @@ describe('dsh-conductor gate engine', () => {
     allowedPaths.push('outside')
     excludedPaths.push('outside/private')
     authority.owner = 'other'
-    authority.permittedActions.pop()
     constraints.push('outside constraint')
     acceptanceCriteria.push('outside criterion')
     budget.maxReworkCycles = 99
@@ -83,7 +87,7 @@ describe('dsh-conductor gate engine', () => {
       allowedPaths: ['packages/conductor'],
       excludedPaths: ['packages/conductor/private'],
       sourceBaseline: 'HEAD',
-      authority: { owner: 'user', permittedActions: ['read', 'write'] },
+      authority: { owner: 'user' },
       constraints: ['no release'],
       acceptanceCriteria: ['coverage passes'],
       budget: { maxReworkCycles: 2, maxRalphRounds: 1 },
@@ -91,7 +95,7 @@ describe('dsh-conductor gate engine', () => {
 
     const defaulted = createRun(ConductorRunId('CON-2026-0003'), {
       objective: 'cover the default input path',
-      authority: { owner: 'user', permittedActions: ['read'] },
+      authority: { owner: 'user' },
     })
     expect(defaulted).toMatchObject({
       scope: [],
@@ -107,7 +111,7 @@ describe('dsh-conductor gate engine', () => {
     defaulted.budget.maxReworkCycles = 99
     const secondDefaulted = createRun(ConductorRunId('CON-2026-0004'), {
       objective: 'prove defaults are per-run',
-      authority: { owner: 'user', permittedActions: ['read'] },
+      authority: { owner: 'user' },
     })
     expect(secondDefaulted.scope).toEqual([])
     expect(secondDefaulted.budget).toEqual({ maxReworkCycles: 3, maxRalphRounds: 0 })
@@ -157,6 +161,44 @@ describe('dsh-conductor gate engine', () => {
     expect(next.status).toBe('running')
   })
 
+  it('requires host authorization bound to the exact Gate C baseline', () => {
+    const baseline = {
+      scopeVersion: 'scope-v1', planVersion: 'plan-v1', acceptanceVersion: 'accept-v1',
+      allowedPaths: [], excludedPaths: [], rollbackReference: 'HEAD', qualityCommands: [],
+    }
+    const hash = executionBaselineHash(baseline)
+    const run = makeRun({
+      currentStage: 'devils-advocate',
+      baselineHistory: [baseline],
+      baseline,
+      executionAuthorization: {
+        executionBaselineHash: hash,
+        effectProfile: { filesystem: 'read-only', quality: 'none', external: 'none' },
+      },
+    })
+    expect(() => recordGate({ ...run, executionAuthorization: null }, {
+      ...PASS, executionBaselineHash: hash,
+    })).toThrow(/host-authorized/)
+    expect(() => recordGate(run, { ...PASS, executionBaselineHash: 'f'.repeat(64) })).toThrow(/baseline hash/)
+    expect(() => recordGate({ ...run, executionAuthorization: {
+      ...run.executionAuthorization!, executionBaselineHash: 'f'.repeat(64),
+    } }, { ...PASS, executionBaselineHash: hash })).toThrow(/authorization does not match/)
+    for (const effectProfile of [
+      { filesystem: 'workspace-write', quality: 'none', external: 'none' },
+      { filesystem: 'read-only', quality: 'catalog', external: 'none' },
+    ] as const) {
+      expect(() => recordGate({ ...run, executionAuthorization: {
+        executionBaselineHash: hash, effectProfile,
+      } }, { ...PASS, executionBaselineHash: hash })).toThrow(/required execution effects/)
+    }
+    expect(() => recordGate({ ...run, currentStage: 'headsman' }, {
+      ...PASS, executionBaselineHash: 'f'.repeat(64),
+    })).toThrow(/does not match the active baseline/)
+    expect(recordGate(run, { ...PASS, executionBaselineHash: hash }).history[0]).toMatchObject({
+      gate: 'C', decision: 'pass', executionBaselineHash: hash,
+    })
+  })
+
   it('records an Arbiter pass by moving the run to closeout', () => {
     const next = recordGate(makeRun({ currentStage: 'arbiter' }), PASS)
     expect(next.currentStage).toBe('closeout')
@@ -187,6 +229,7 @@ describe('dsh-conductor gate engine', () => {
         allowedPaths: ['packages/conductor'],
         excludedPaths: [],
         rollbackReference: 'HEAD',
+        qualityCommands: [],
       },
     }), {
       decision: 'rework',
@@ -276,7 +319,7 @@ describe('dsh-conductor gate engine', () => {
 
   it('requires explicit owner authority and records a traceable closeout without executing it', () => {
     const run = makeRun({
-      authority: { owner: 'user', permittedActions: ['read', 'deploy'] },
+      authority: { owner: 'user' },
       currentStage: 'closeout',
       status: 'awaiting_authorization',
       decision: {
@@ -302,7 +345,7 @@ describe('dsh-conductor gate engine', () => {
     expect(run.status).toBe('awaiting_authorization')
   })
 
-  it('rejects closeout from the wrong owner or for an unauthorized action', () => {
+  it('rejects closeout from the wrong owner', () => {
     const run = makeRun({
       currentStage: 'closeout', status: 'awaiting_authorization',
       decision: {
@@ -316,7 +359,7 @@ describe('dsh-conductor gate engine', () => {
       traceability: { mandate: [], baseline: [], changes: [], verification: [], decision: [] },
     }
     expect(() => closeRun(run, authorization)).toThrow(/mandate owner/)
-    expect(() => closeRun(run, { ...authorization, authorizedBy: 'user' })).toThrow(/outside the run authority/)
+    expect(closeRun(run, { ...authorization, authorizedBy: 'user' }).closeout?.authorized_action).toBe('merge')
   })
 
   it('rejects closeout without the required GO state and normalized evidence', () => {

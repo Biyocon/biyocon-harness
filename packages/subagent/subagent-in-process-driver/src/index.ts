@@ -29,6 +29,7 @@ import {
 } from '@deepseek-ai/dsh-subagent'
 import type {
   ResolvedSubagentStartRequest,
+  SubagentChildToolContribution,
   SubagentDescriptorData,
   SubagentResult,
   SubagentRun,
@@ -68,6 +69,8 @@ function toStopReason(reason: TurnEndReason | undefined): SubagentStopReason {
 export interface InProcessRunOptions {
   /** Completed-turn seed for fork, or undefined for a fresh spawn. */
   readonly seed?: SessionEvent[]
+  /** Spawn-only trusted tool installer for the unpublished child scope. */
+  readonly toolContribution?: SubagentChildToolContribution
 }
 
 /** Error used when cancellation wins before the child publication boundary. */
@@ -124,6 +127,10 @@ export async function startInProcessRun(
       toolFilter: request.toolFilter,
       toolGuard: request.toolGuard,
     })
+    if (options.toolContribution !== undefined) {
+      const contribution = options.toolContribution
+      childCtx.effect(() => contribution(childCtx))
+    }
     if (request.outputSchema !== undefined) {
       structured = attachStructuredRuntime(childCtx, request.outputSchema)
     }

@@ -11,6 +11,7 @@ import type {
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
+    recordFormatVersion: 1,
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -18,14 +19,17 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     allowedPaths: ['packages/conductor'],
     excludedPaths: [],
     sourceBaseline: null,
-    authority: { owner: 'user', permittedActions: ['read'] },
+    authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: ['feature works'],
     budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
+    baselineHistory: [],
     baseline: null,
+    executionAuthorization: null,
     currentStage: 'detective',
     history: [],
     specialistReports: [],
+    qualityExecutions: [],
     status: 'running',
     ...overrides,
   }
@@ -45,12 +49,14 @@ function makeEnvelope(stage: ConductorStage): SpecialistEnvelope {
     blockers: [],
     artifacts: [],
     change_requests: [],
+    quality_evidence_ids: [],
     recommended_transition: { target: 'conductor', rationale: 'evaluate' },
     confidence: 'high',
     ...stage === 'devils-advocate' ? {
       execution_baseline: {
         scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
         allowedPaths: ['packages/conductor'], excludedPaths: [], rollbackReference: 'HEAD',
+        qualityCommands: [],
       },
     } : {},
   }
@@ -85,6 +91,12 @@ describe('dsh-conductor gate invariants', () => {
   it('a GO reaches closeout but performs and records no release action', async () => {
     const dispatcher: ConductorDispatcher = {
       async dispatchSpecialist(stage) { return makeEnvelope(stage) },
+      async authorizeExecution(_run, baseline) {
+        return {
+          executionBaselineHash: (await import('../src/index.ts')).executionBaselineHash(baseline),
+          effectProfile: { filesystem: 'workspace-write', quality: 'none', external: 'none' },
+        }
+      },
       async dispatchArbiter() { return makeDecision('go') },
     }
     const outcome = await drive(makeRun({ currentStage: 'detective' }), dispatcher)

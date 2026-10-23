@@ -100,7 +100,7 @@ export class SandboxPwshExecutor extends PwshLocalExecutor {
       const result = await super.run(spec)
       return { ...result, sandbox: { mode, denied: false } }
     }
-    const confined = this.confine(spec, { ...policy, mode })
+    const confined = this.confine(spec, { ...policy, mode, network: 'inherit' })
     let result: ShellRunResult
     try {
       result = await this.runArgv(spec, confined.argv)
@@ -127,7 +127,7 @@ export class SandboxPwshExecutor extends PwshLocalExecutor {
     if (mode === 'danger-full-access') return super.start(spec)
     // Once startArgv returns, install facts synchronously; promise settlement
     // cannot run before start() returns.
-    const confined = this.confine(spec, { ...policy, mode })
+    const confined = this.confine(spec, { ...policy, mode, network: 'inherit' })
     let proc: ShellProcess
     try {
       proc = this.startArgv(spec, confined.argv)

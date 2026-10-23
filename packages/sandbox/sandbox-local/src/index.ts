@@ -44,14 +44,24 @@ import { bwrapProfileArgs, landlockProfileArgs, seatbeltProfileArgs } from './pr
 export interface Config {
   /**
    * Override the runner argv; bwrap-compatible profile arguments are appended. A
-   * non-empty override asserts full enforcement and skips built-in selection and
-   * probing. A runner that starts but refuses its profile must be identifiable by
+   * non-empty override asserts full file enforcement and skips built-in selection
+   * and probing; network-denial enforcement is configured separately. A runner
+   * that starts but refuses its profile must be identifiable by
    * {@link runnerFailureSignatures}. Consumers classify a spawn rejection only after
    * confirming the workdir is usable. `ENOENT` or `EACCES` identifies the runner when
    * `error.path` equals argv[0] and `error.syscall` is `spawn` or `spawn <runner>`, or
    * when `error.path` is absent and `error.syscall` is exactly `spawn <runner>`.
    */
   runnerCommand?: string[]
+  /**
+   * Enforcement the configured runner claims for `network: deny`. The appended
+   * bwrap-compatible `--unshare-net` profile isolates IP networking but does not
+   * block host Unix-domain sockets exposed through read-only mounts, so the
+   * default is `partial`. Set `full` only when the configured runner adds a
+   * stronger mechanism that denies every network operation beyond that profile.
+   * Rejected without {@link runnerCommand}.
+   */
+  runnerNetworkDenyEnforcement?: SandboxEnforcement
   /**
    * Case-insensitive stderr substrings emitted when a configured
    * {@link runnerCommand} refuses its profile before executing the wrapped
@@ -83,7 +93,7 @@ function defaultProbeBwrap(timeoutMs: number): boolean {
  * every macOS; if it ever disappears, this probe is what fails closed.
  */
 function defaultProbeSeatbelt(seatbeltExec: string, timeoutMs: number): boolean {
-  const probe = spawnSync(seatbeltExec, [...seatbeltProfileArgs({ mode: 'read-only', workspaceRoot: '/' }), '--', 'true'], {
+  const probe = spawnSync(seatbeltExec, [...seatbeltProfileArgs({ mode: 'read-only', network: 'inherit', workspaceRoot: '/' }), '--', 'true'], {
     timeout: timeoutMs,
     stdio: 'ignore',
   })
@@ -168,7 +178,7 @@ const PLATFORM_CHAINS: Record<string, readonly SelectedRunner['runner'][]> = {
 /**
  * Enforcement completeness a rung claims when selected WITHOUT a probe (a
  * chain of one). `bwrap` and Seatbelt govern every promised file effect by
- * construction, so the claim is a profile fact; `landlock` is listed for the
+ * construction, so the file-policy claim is a profile fact; `landlock` is listed for the
  * table's totality but is unreachable unprobed today (the Linux chain has
  * two rungs, so it is only ever selected through its probe, whose report is
  * what distinguishes full from per-ABI-partial — and the launcher additionally
@@ -251,6 +261,7 @@ export class LocalSandboxProvider extends SandboxProvider {
   // Inline schema call: the config catalog walks `static Config` statically.
   static Config: z<Config> = z.object({
     runnerCommand: z.array(z.string()).default([]),
+    runnerNetworkDenyEnforcement: z.union(['partial', 'full']).default('partial'),
     runnerFailureSignatures: z.array(z.string()).default([]),
     probeTimeoutMs: z.natural().default(5_000),
   })
@@ -259,6 +270,7 @@ export class LocalSandboxProvider extends SandboxProvider {
   internals: SandboxInternals = {}
 
   private readonly runnerCommand: string[] | undefined
+  private readonly runnerNetworkDenyEnforcement: SandboxEnforcement
   private readonly configuredRunnerFailureSignatures: string[]
   private readonly probeTimeoutMs: number
   /** Cached chain verdict; undefined until the first confined wrap needs it. */
@@ -279,6 +291,7 @@ export class LocalSandboxProvider extends SandboxProvider {
     // those runtime facts. An empty runnerCommand means "not configured":
     // use the platform chain.
     const runner = config.runnerCommand as string[]
+    const runnerNetworkDenyEnforcement = config.runnerNetworkDenyEnforcement as SandboxEnforcement
     const runnerFailureSignatures = config.runnerFailureSignatures as string[]
     if (runner.length === 0 && runnerFailureSignatures.length > 0) {
       throw new Error('sandbox-local: runnerFailureSignatures requires runnerCommand')
@@ -286,10 +299,14 @@ export class LocalSandboxProvider extends SandboxProvider {
     if (runner.length > 0 && runnerFailureSignatures.length === 0) {
       throw new Error('sandbox-local: runnerCommand requires at least one runnerFailureSignatures entry')
     }
+    if (runner.length === 0 && runnerNetworkDenyEnforcement === 'full') {
+      throw new Error('sandbox-local: runnerNetworkDenyEnforcement full requires runnerCommand')
+    }
     if (runnerFailureSignatures.some(signature => signature.trim().length === 0 || /[\r\n]/u.test(signature))) {
       throw new Error('sandbox-local: runnerFailureSignatures entries must be non-empty single-line strings')
     }
     this.runnerCommand = runner.length > 0 ? runner : undefined
+    this.runnerNetworkDenyEnforcement = runnerNetworkDenyEnforcement
     this.configuredRunnerFailureSignatures = runnerFailureSignatures
     this.probeTimeoutMs = config.probeTimeoutMs as number
     assertPositiveFinite('probeTimeoutMs', this.probeTimeoutMs)
@@ -308,8 +325,8 @@ export class LocalSandboxProvider extends SandboxProvider {
    * chain's runner speaking its own profile dialect.
    *
    * @param argv - the exact argv the caller is about to spawn.
-   * @param policy - the file-effect policy this execution runs under.
-   * @returns the wrapped argv plus the selected backend's enforcement completeness, denial
+   * @param policy - the complete file and network policy this execution runs under.
+   * @returns the wrapped argv plus the selected backend's concrete-policy enforcement completeness, denial
    *   signatures, and structured runner-failure rules; throws the fail-closed
    *   `SANDBOX_UNAVAILABLE` error when the platform has no usable runner.
    */
@@ -317,7 +334,7 @@ export class LocalSandboxProvider extends SandboxProvider {
     if (this.runnerCommand !== undefined) {
       return {
         argv: [...this.runnerCommand, ...bwrapProfileArgs(policy), '--', ...argv],
-        enforcement: 'full',
+        enforcement: policy.network === 'deny' ? this.runnerNetworkDenyEnforcement : 'full',
         denialSignatures: DENIAL_SIGNATURES.runnerCommand,
         runnerFailureRules: [{ fatalSignatures: this.configuredRunnerFailureSignatures }],
       }
@@ -326,10 +343,18 @@ export class LocalSandboxProvider extends SandboxProvider {
     const runnerArgv = this.runnerArgv(selected.runner, policy)
     return {
       argv: [...runnerArgv, '--', ...argv],
-      enforcement: selected.enforcement,
+      enforcement: this.enforcementFor(selected, policy),
       denialSignatures: DENIAL_SIGNATURES[selected.runner],
       runnerFailureRules: RUNNER_FAILURE_RULES[selected.runner],
     }
+  }
+
+  /** Resolve enforcement for the selected runner against the complete concrete policy. */
+  private enforcementFor(selected: SelectedRunner, policy: SandboxPolicy): SandboxEnforcement {
+    if (policy.network === 'deny' && selected.runner !== 'seatbelt') {
+      return 'partial'
+    }
+    return selected.enforcement
   }
 
   /** The selected rung's runner invocation (program + profile arguments) for one policy. */

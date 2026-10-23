@@ -1,18 +1,20 @@
 /**
  * Conductor run-state runtime entry point.
  *
- * This package owns the Conductor run and gate vocabulary. The run state
- * machine, gate engine, and persistence land in later tasks; this entry point
- * re-exports the shared types so consumers reach them from the package root.
+ * This package owns the Conductor run and gate vocabulary, state machine,
+ * host-authorized execution baseline, durable evidence lineage, and persistence.
+ * This entry point exposes those contracts to runtime consumers.
  * @module @deepseek-ai/dsh-conductor
  */
 
-export { ConductorRunId } from './types.ts'
+export { ConductorRunId, QualityCommandId, QualityEvidenceId } from './types.ts'
 export type {
   ArbiterDecision,
   ChangeRequest,
   ChangeRequestTarget,
   ConductorAction,
+  ExecutionAuthorization,
+  ExecutionEffectProfile,
   ConductorAuthority,
   ConductorBudget,
   ConductorCloseoutAction,
@@ -27,16 +29,31 @@ export type {
   EvidenceItem,
   EvidenceKind,
   ExecutionBaseline,
+  ExecutionBaselineProposal,
   Finding,
   FindingSeverity,
   GateDecision,
   GateId,
   GateRecord,
+  QualityCommandBinding,
+  QualityExecutionFailure,
+  QualityExecutionRecord,
+  QualityExecutorStage,
+  QualityPolicyStage,
   RecommendedTransition,
   SpecialistEnvelope,
   SpecialistStatus,
 } from './types.ts'
-export { closeRun, createRun, gateOfStage, nextStageAfterPass, recordGate, reworkCycles, stageOfGate } from './state.ts'
+export {
+  closeRun,
+  CONDUCTOR_RECORD_FORMAT_VERSION,
+  createRun,
+  gateOfStage,
+  nextStageAfterPass,
+  recordGate,
+  reworkCycles,
+  stageOfGate,
+} from './state.ts'
 export type { CreateRunInput, GateVerdict } from './state.ts'
 export {
   InMemoryConductorRunStore,
@@ -50,5 +67,6 @@ export type { ConductorCheckpointData, ConductorRunStore } from './persistence.t
 export { decisionForStatus, reworkTarget, routeGate } from './routing.ts'
 export type { RoutedGate } from './routing.ts'
 export { drive } from './drive.ts'
-export type { ConductorCheckpoint, ConductorDispatcher, ConductorOutcome } from './drive.ts'
+export type { ConductorCheckpoint, ConductorDispatcher, ConductorOutcome, SpecialistDispatchResult } from './drive.ts'
+export { executionBaselineHash, executionEffectProfile, nextQualityCycle, snapshotQualityBindings } from './quality.ts'
 export { isValidRunId, mintRunId } from './run-id.ts'

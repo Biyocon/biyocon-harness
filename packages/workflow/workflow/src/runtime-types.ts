@@ -7,6 +7,7 @@
  */
 
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { SubagentChildToolContribution } from '@deepseek-ai/dsh-subagent'
 import type { ToolGuard, ToolRestriction } from '@deepseek-ai/dsh-tools'
 import type {
   WorkflowMeta, WorkflowResult, WorkflowRunId,
@@ -32,6 +33,8 @@ export interface WorkflowStartRequest {
   childToolFilter?: ToolRestriction
   /** Trusted host-owned argument-aware policy applied to every child in this run. */
   childToolGuard?: ToolGuard
+  /** Trusted host-owned tool installer applied to every child in this run. */
+  childToolContribution?: SubagentChildToolContribution
   /** Trusted host-owned persona applied to every child in this run. */
   childPersona?: string
   /** The agent on whose behalf the run executes (parent of every child). */

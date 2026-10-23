@@ -58,10 +58,11 @@ assumptions: []
 blockers: []
 artifacts: []
 change_requests: []
+quality_evidence_ids: []
 recommended_transition:
   target: conductor
   rationale: <hvad Conductor skal vurdere>
 confidence: low | medium | high
 ```
 
-`ready` betyder kun, at specialistarbejdet er afleveringsklart. Det betyder ikke gate-pass eller frigivelsesgodkendelse. Udelad `source_baseline`, medmindre en ready Detective etablerer den source-reference, som manglede ved intake. En ready Devil's Advocate ved Gate C inkluderer desuden `execution_baseline` med `scopeVersion`, `planVersion`, `acceptanceVersion`, `allowedPaths`, `excludedPaths` og `rollbackReference`; andre stages udelader feltet. Gæt ikke på pass/fail, hvis evidensen er utilstrækkelig; brug `blocked` eller `rework` med forklaring.
+`ready` betyder kun, at specialistarbejdet er afleveringsklart. Det betyder ikke gate-pass eller frigivelsesgodkendelse. Udelad `source_baseline`, medmindre en ready Detective etablerer den source-reference, som manglede ved intake. En ready Devil's Advocate ved Gate C inkluderer desuden `execution_baseline` med `scopeVersion`, `planVersion`, `acceptanceVersion`, `allowedPaths`, `excludedPaths`, `rollbackReference` og `qualityCommandIds`; hosten resolver id'erne til valgte definition hashes og godkender den eksakte baseline gennem en host-ejet approval. Andre stages udelader feltet. Headsman og Auditor citerer kun unikke records, som deres private quality tool faktisk producerede i den aktuelle dispatch, i `quality_evidence_ids`; de gengiver ikke rå command text. Gæt ikke på pass/fail, hvis evidensen er utilstrækkelig; brug `blocked` eller `rework` med forklaring.

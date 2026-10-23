@@ -18,11 +18,33 @@ import type {
   DecisionRecord,
   DefectClass,
   ExecutionBaseline,
+  ExecutionAuthorization,
+  ExecutionEffectProfile,
+  QualityCommandBinding,
+  QualityExecutionRecord,
   SpecialistEnvelope,
   SpecialistStatus,
 } from './types.ts'
 import { gateOfStage, recordGate } from './state.ts'
 import { routeGate } from './routing.ts'
+import {
+  executionBaselineHash,
+  executionEffectProfile,
+  nextQualityCycle,
+  snapshotQualityBindings,
+} from './quality.ts'
+
+/** Host-owned result of one specialist dispatch. */
+export interface SpecialistDispatchResult {
+  /** Model-authored specialist envelope after boundary validation. */
+  envelope: SpecialistEnvelope
+  /** Model-boundary validation failure discovered while resolving host-owned fields. */
+  boundaryProblem?: string
+  /** Host-produced records completed during this dispatch. */
+  qualityExecutions: QualityExecutionRecord[]
+  /** Stage-applicable baseline bindings that this gate requires. */
+  requiredQualityCommands: QualityCommandBinding[]
+}
 
 /**
  * Spawns specialists and the Arbiter. A dispatcher rejects only on an
@@ -35,7 +57,23 @@ export interface ConductorDispatcher {
    * @param stage - the gated stage to dispatch (never `intake`, `ralph`, `closeout`, or `arbiter`).
    * @param run - the current run snapshot.
    */
-  dispatchSpecialist(stage: ConductorStage, run: ConductorRun): Promise<SpecialistEnvelope>
+  dispatchSpecialist(
+    stage: ConductorStage,
+    run: ConductorRun,
+  ): Promise<SpecialistDispatchResult | SpecialistEnvelope>
+  /**
+   * Ask the host to authorize the exact Gate-C baseline and effect profile.
+   * A null result is an explicit rejection; a rejection or thrown infrastructure
+   * failure blocks the run before any write-capable specialist is dispatched.
+   * @param run - run snapshot before Gate C passes.
+   * @param baseline - resolved immutable baseline proposed for approval.
+   * @param effectProfile - exact effects required by that baseline.
+   */
+  authorizeExecution(
+    run: ConductorRun,
+    baseline: ExecutionBaseline,
+    effectProfile: ExecutionEffectProfile,
+  ): Promise<ExecutionAuthorization | null>
   /**
    * Run the Arbiter and return its GO/NO-GO decision.
    * @param run - the current run snapshot with its full gate history.
@@ -88,10 +126,15 @@ export async function drive(
       throw new Error(`Conductor stage "${stage}" owns no gate`)
     }
 
-    const envelope = await dispatcher.dispatchSpecialist(stage, current)
-    const malformed = envelopeProblem(envelope, stage, current)
+    const dispatched: unknown = await dispatcher.dispatchSpecialist(stage, current)
+    const dispatch: SpecialistDispatchResult = typeof dispatched === 'object' && dispatched !== null && 'envelope' in dispatched
+      ? dispatched as SpecialistDispatchResult
+      : { envelope: dispatched as SpecialistEnvelope, qualityExecutions: [], requiredQualityCommands: [] }
+    const envelope = dispatch.envelope
+    const qualityExecutions = [...current.qualityExecutions, ...structuredClone(dispatch.qualityExecutions)]
+    const malformed = dispatch.boundaryProblem ?? envelopeProblem(envelope, stage, current)
     if (malformed !== undefined) {
-      current = recordGate(current, {
+      current = recordGate({ ...current, qualityExecutions }, {
         decision: 'escalate',
         basis: [malformed],
         evidenceReviewed: [],
@@ -100,13 +143,24 @@ export async function drive(
       await checkpoint(current)
       return { kind: 'blocked', blocker: malformed, run: current }
     }
+    const evidenceProblem = dispatchEvidenceProblem(envelope, dispatch.qualityExecutions, current.qualityExecutions)
+    if (evidenceProblem !== undefined) {
+      current = recordGate({ ...current, qualityExecutions }, {
+        decision: 'escalate',
+        basis: [evidenceProblem],
+        evidenceReviewed: dispatch.qualityExecutions.map(record => record.evidenceId),
+        stateUpdate: `reject invalid ${stage} quality evidence references`,
+      })
+      await checkpoint(current)
+      return { kind: 'blocked', blocker: evidenceProblem, run: current }
+    }
     const specialistReports = [...current.specialistReports, structuredClone(envelope)]
-    const passProblem = gatePassProblem(envelope, current)
+    const passProblem = gatePassProblem(envelope, { ...current, qualityExecutions }, dispatch.requiredQualityCommands)
     if (passProblem !== undefined) {
-      current = recordGate({ ...current, specialistReports }, {
+      current = recordGate({ ...current, specialistReports, qualityExecutions }, {
         decision: 'escalate',
         basis: [passProblem],
-        evidenceReviewed: envelope.evidence.map(item => item.reference),
+        evidenceReviewed: [...envelope.evidence.map(item => item.reference), ...envelope.quality_evidence_ids],
         stateUpdate: `reject unsupported ${stage} readiness claim`,
       })
       await checkpoint(current)
@@ -115,7 +169,7 @@ export async function drive(
 
     const authorityRequest = authorityChangeRequest(envelope)
     if (authorityRequest !== undefined) {
-      current = recordGate({ ...current, specialistReports }, {
+      current = recordGate({ ...current, specialistReports, qualityExecutions }, {
         decision: 'escalate',
         basis: [authorityRequest.reason],
         evidenceReviewed: envelope.evidence.map(item => item.reference),
@@ -126,6 +180,8 @@ export async function drive(
     }
 
     let baseline: ExecutionBaseline | null = current.baseline
+    let baselineHistory = current.baselineHistory
+    let executionAuthorization = current.executionAuthorization
     let sourceBaseline = current.sourceBaseline
     if (gate === 'A' && envelope.status === 'ready' && sourceBaseline === null) {
       sourceBaseline = envelope.source_baseline as string
@@ -143,14 +199,64 @@ export async function drive(
         return { kind: 'blocked', blocker: baselineProblem, run: current }
       }
       baseline = snapshotBaseline(envelope.execution_baseline as ExecutionBaseline)
+      const profile = executionEffectProfile(baseline)
+      let authorization: ExecutionAuthorization | null
+      try {
+        authorization = await dispatcher.authorizeExecution(current, baseline, profile)
+      } catch (cause) {
+        const blocker = `execution authorization unavailable: ${errorMessage(cause)}`
+        current = recordGate({ ...current, specialistReports }, {
+          decision: 'escalate',
+          basis: [blocker],
+          evidenceReviewed: envelope.evidence.map(item => item.reference),
+          stateUpdate: 'Gate C execution authorization unavailable',
+        })
+        await checkpoint(current)
+        return { kind: 'blocked', blocker, run: current }
+      }
+      if (authorization === null) {
+        const blocker = 'execution authorization rejected by host'
+        current = recordGate({ ...current, specialistReports }, {
+          decision: 'escalate',
+          basis: [blocker],
+          evidenceReviewed: envelope.evidence.map(item => item.reference),
+          stateUpdate: 'Gate C execution authorization rejected',
+        })
+        await checkpoint(current)
+        return { kind: 'blocked', blocker, run: current }
+      }
+      const authorizationProblem = executionAuthorizationProblem(authorization, baseline, profile)
+      if (authorizationProblem !== undefined) {
+        current = recordGate({ ...current, specialistReports }, {
+          decision: 'escalate',
+          basis: [authorizationProblem],
+          evidenceReviewed: envelope.evidence.map(item => item.reference),
+          stateUpdate: 'reject mismatched Gate C execution authorization',
+        })
+        await checkpoint(current)
+        return { kind: 'blocked', blocker: authorizationProblem, run: current }
+      }
+      executionAuthorization = structuredClone(authorization)
+      baselineHistory = [...current.baselineHistory, snapshotBaseline(baseline)]
     }
 
     const defectClass = envelope.status === 'rework' ? defectClassFromEnvelope(envelope, stage) : undefined
-    current = recordGate({ ...current, baseline, sourceBaseline, specialistReports }, {
+    current = recordGate({
+      ...current,
+      baseline,
+      baselineHistory,
+      executionAuthorization,
+      sourceBaseline,
+      specialistReports,
+      qualityExecutions,
+    }, {
       ...routeGate(gate, envelope.status, defectClass),
       basis: [envelope.summary],
-      evidenceReviewed: envelope.evidence.map(item => item.reference),
+      evidenceReviewed: [...envelope.evidence.map(item => item.reference), ...envelope.quality_evidence_ids],
       stateUpdate: envelope.summary,
+      ...gate === 'C' && envelope.status === 'ready' && baseline !== null
+        ? { executionBaselineHash: executionBaselineHash(baseline) }
+        : {},
     })
     await checkpoint(current)
 
@@ -249,7 +355,8 @@ function envelopeProblem(envelope: unknown, stage: ConductorStage, run: Conducto
     return 'envelope summary must be a non-empty normalized string'
   }
   if (!isArray(value['evidence']) || !isArray(value['findings']) || !isArray(value['assumptions'])
-    || !isArray(value['blockers']) || !isArray(value['artifacts']) || !isArray(value['change_requests'])) {
+    || !isArray(value['blockers']) || !isArray(value['artifacts']) || !isArray(value['change_requests'])
+    || !isStringArray(value['quality_evidence_ids'])) {
     return 'envelope list fields must be arrays'
   }
   const transition = value['recommended_transition']
@@ -281,7 +388,62 @@ function executionBaselineProblem(value: unknown, run: ConductorRun): string | u
   if (!sameStrings(baseline['excludedPaths'], run.excludedPaths)) {
     return 'execution_baseline.excludedPaths must exactly match the owner-declared exclusions'
   }
+  if (!Array.isArray(baseline['qualityCommands'])) {
+    return 'execution_baseline.qualityCommands must be an array'
+  }
+  const commandIds = new Set<string>()
+  for (const value of baseline['qualityCommands']) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return 'execution_baseline.qualityCommands must contain bindings'
+    }
+    const binding = value as Record<string, unknown>
+    if (!nonEmptyText(binding['id']) || !/^[a-f0-9]{64}$/.test(String(binding['definitionHash']))) {
+      return 'execution_baseline quality bindings require a normalized id and SHA-256 definitionHash'
+    }
+    if (commandIds.has(binding['id'])) return 'execution_baseline quality command ids must be unique'
+    commandIds.add(binding['id'])
+  }
   return undefined
+}
+
+/** Validate host authorization against the exact baseline and requested effects. */
+function executionAuthorizationProblem(
+  authorization: ExecutionAuthorization,
+  baseline: ExecutionBaseline,
+  profile: ExecutionEffectProfile,
+): string | undefined {
+  if (authorization.executionBaselineHash !== executionBaselineHash(baseline)) {
+    return 'execution authorization does not match the Gate C baseline hash'
+  }
+  if (authorization.effectProfile.filesystem !== profile.filesystem
+    || authorization.effectProfile.quality !== profile.quality) {
+    return 'execution authorization does not match the Gate C effect profile'
+  }
+  return undefined
+}
+
+/** Require specialist evidence ids to be the exact current dispatch record set. */
+function dispatchEvidenceProblem(
+  envelope: SpecialistEnvelope,
+  dispatched: readonly QualityExecutionRecord[],
+  previous: readonly QualityExecutionRecord[],
+): string | undefined {
+  const cited = envelope.quality_evidence_ids
+  if (new Set(cited).size !== cited.length) return 'quality_evidence_ids must be unique'
+  const dispatchedIds = dispatched.map(record => record.evidenceId)
+  if (new Set(dispatchedIds).size !== dispatchedIds.length) return 'dispatch quality evidence ids must be unique'
+  const previousIds = new Set<string>(previous.map(record => record.evidenceId))
+  if (dispatchedIds.some(id => previousIds.has(id))) return 'dispatch quality evidence ids must not reuse prior evidence'
+  const citedSet = new Set(cited)
+  const dispatchedSet = new Set<string>(dispatchedIds)
+  if (cited.some(id => !dispatchedSet.has(id)) || dispatchedIds.some(id => !citedSet.has(id))) {
+    return 'quality_evidence_ids must exactly match the current dispatch evidence records'
+  }
+  return undefined
+}
+
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause)
 }
 
 /** Copy a wire baseline so later model-owned mutation cannot alter run state. */
@@ -293,6 +455,7 @@ function snapshotBaseline(value: ExecutionBaseline): ExecutionBaseline {
     allowedPaths: [...value.allowedPaths],
     excludedPaths: [...value.excludedPaths],
     rollbackReference: value.rollbackReference,
+    qualityCommands: snapshotQualityBindings(value.qualityCommands),
   }
 }
 
@@ -305,7 +468,11 @@ function sameStrings(left: readonly string[], right: readonly string[]): boolean
   return left.length === right.length && left.every((value, index) => value === right[index])
 }
 
-function gatePassProblem(envelope: SpecialistEnvelope, run: ConductorRun): string | undefined {
+function gatePassProblem(
+  envelope: SpecialistEnvelope,
+  run: ConductorRun,
+  requiredQualityCommands: readonly QualityCommandBinding[],
+): string | undefined {
   if (envelope.status !== 'ready') return undefined
   if (!isStringArray(run.acceptanceCriteria) || run.acceptanceCriteria.length === 0) {
     return 'a gate pass requires at least one normalized acceptance criterion'
@@ -314,6 +481,27 @@ function gatePassProblem(envelope: SpecialistEnvelope, run: ConductorRun): strin
   for (const evidence of envelope.evidence) {
     if (!nonEmptyText(evidence.reference) || !nonEmptyText(evidence.outcome)) {
       return 'ready specialist evidence must include a normalized reference and outcome'
+    }
+  }
+  if ((run.currentStage === 'headsman' || run.currentStage === 'auditor') && requiredQualityCommands.length > 0) {
+    const baseline = run.baseline as ExecutionBaseline
+    const gate = run.currentStage === 'headsman' ? 'D' : 'E'
+    const cycle = nextQualityCycle(run, gate)
+    const baselineHash = executionBaselineHash(baseline)
+    const cited = new Set(envelope.quality_evidence_ids)
+    for (const binding of requiredQualityCommands) {
+      const record = run.qualityExecutions.find(item => cited.has(item.evidenceId)
+        && item.commandId === binding.id
+        && item.definitionHash === binding.definitionHash
+        && item.runId === run.runId
+        && item.gate === gate
+        && item.cycle === cycle
+        && item.executionBaselineHash === baselineHash
+        && item.policyStage === run.currentStage
+        && item.outcome === 'passed')
+      if (record === undefined) {
+        return `Gate ${gate} requires fresh passing quality evidence for command "${binding.id}"`
+      }
     }
   }
   return undefined

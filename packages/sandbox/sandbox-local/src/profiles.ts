@@ -9,12 +9,13 @@ import { writableRoots } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 
 /**
- * Build the bwrap profile arguments for one file-effect policy.
- * @param policy - file-effect policy to express as bwrap mounts.
+ * Build the bwrap profile arguments for one file and network policy.
+ * @param policy - policy to express as bwrap namespaces and mounts.
  * @returns profile arguments before the trailing separator and command argv.
  */
 export function bwrapProfileArgs(policy: SandboxPolicy): string[] {
   const args = ['--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc', '--die-with-parent']
+  if (policy.network === 'deny') args.push('--unshare-net')
   if (policy.mode === 'workspace-write') {
     args.push('--tmpfs', '/tmp')
     args.push('--bind', policy.workspaceRoot, policy.workspaceRoot)
@@ -23,8 +24,10 @@ export function bwrapProfileArgs(policy: SandboxPolicy): string[] {
 }
 
 /**
- * Build the Landlock launcher grants for one file-effect policy.
- * @param policy - file-effect policy to express as Landlock allow-list grants.
+ * Build the Landlock launcher grants for one file policy. Landlock does not
+ * express network denial; the provider reports partial enforcement when the
+ * concrete policy requests it.
+ * @param policy - policy whose file effects become Landlock allow-list grants.
  * @returns launcher grant arguments before the trailing separator and command argv.
  */
 export function landlockProfileArgs(policy: SandboxPolicy): string[] {
@@ -41,15 +44,17 @@ function sbplString(path: string): string {
 }
 
 /**
- * Build the sandbox-exec arguments and SBPL profile for one policy. The
+ * Build the sandbox-exec arguments and SBPL profile for one policy. Network
+ * denial is emitted before the file rules when requested. The
  * writable roots come from the shared {@link writableRoots} helper (canonical,
  * deduplicated) so the Seatbelt grant and the in-process fs fence
  * (`@deepseek-ai/dsh-fs-sandbox`) can never drift apart.
- * @param policy - file-effect policy to express as an SBPL profile.
+ * @param policy - file and network policy to express as an SBPL profile.
  * @returns sandbox-exec arguments before the trailing separator and command argv.
  */
 export function seatbeltProfileArgs(policy: SandboxPolicy): string[] {
   const forms = ['(version 1)', '(allow default)', '(deny file-write*)', `(allow file-write* (literal ${sbplString('/dev/null')}))`]
+  if (policy.network === 'deny') forms.push('(deny network*)')
   const roots = writableRoots(policy)
   if (roots.length > 0) {
     forms.push(`(allow file-write* ${roots.map(root => `(subpath ${sbplString(root)})`).join(' ')})`)

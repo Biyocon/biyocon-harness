@@ -2,6 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import { executionBaselineHash } from '@deepseek-ai/dsh-conductor'
+import type { ExecutionAuthorization, ExecutionBaseline } from '@deepseek-ai/dsh-conductor'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import {
   IMPLEMENTATION_TOOLS,
@@ -10,6 +12,15 @@ import {
   toolRestrictionForStage,
   WRITE_TOOLS,
 } from '../src/capability.ts'
+
+const WRITE_AUTHORIZATION: ExecutionAuthorization = {
+  executionBaselineHash: '0'.repeat(64),
+  effectProfile: { filesystem: 'workspace-write', quality: 'none', external: 'none' },
+}
+
+function authorize(baseline: ExecutionBaseline): ExecutionAuthorization {
+  return { ...WRITE_AUTHORIZATION, executionBaselineHash: executionBaselineHash(baseline) }
+}
 
 const filesystem = vi.hoisted(() => ({ rejectExistenceChecks: false }))
 
@@ -25,19 +36,21 @@ vi.mock('node:fs', async (importOriginal) => {
 describe('dsh-tool-conductor capability policies', () => {
   it('keeps read-only stages to the read/search tools', () => {
     for (const stage of ['detective', 'strategist', 'devils-advocate', 'auditor', 'arbiter'] as const) {
-      expect(toolRestrictionForStage(stage, ['read', 'write'])).toEqual({ allow: [...READ_TOOLS] })
+      expect(toolRestrictionForStage(stage, WRITE_AUTHORIZATION)).toEqual({ allow: [...READ_TOOLS] })
     }
   })
 
   it('removes shell and release-capable tools from the Headsman', () => {
-    expect(toolRestrictionForStage('headsman', ['read', 'write'])).toEqual({ allow: [...IMPLEMENTATION_TOOLS] })
+    expect(toolRestrictionForStage('headsman', WRITE_AUTHORIZATION)).toEqual({ allow: [...IMPLEMENTATION_TOOLS] })
   })
 
   it('denies Headsman writes outside allowed paths and every excluded path', () => {
-    const guard = toolGuardForStage('headsman', {
+    const baseline: ExecutionBaseline = {
       scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
       allowedPaths: ['packages/conductor'], excludedPaths: ['packages/conductor/private'], rollbackReference: 'HEAD',
-    }, ['read', 'write'])
+      qualityCommands: [],
+    }
+    const guard = toolGuardForStage('headsman', baseline, authorize(baseline))
     const execution = (file_path: string) => ({
       name: 'write', arguments: { file_path }, agent: { session: { header: { cwd: process.cwd() } } },
     }) as unknown as ToolExecution
@@ -47,10 +60,12 @@ describe('dsh-tool-conductor capability policies', () => {
   })
 
   it('limits Integrator writes to docs and Agent Notes inside the baseline', () => {
-    const guard = toolGuardForStage('integrator', {
+    const baseline: ExecutionBaseline = {
       scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
       allowedPaths: ['.'], excludedPaths: [], rollbackReference: 'HEAD',
-    }, ['read', 'write'])
+      qualityCommands: [],
+    }
+    const guard = toolGuardForStage('integrator', baseline, authorize(baseline))
     const execution = (file_path: string) => ({
       name: 'edit', arguments: { file_path }, agent: { session: { header: { cwd: process.cwd() } } },
     }) as unknown as ToolExecution
@@ -67,10 +82,12 @@ describe('dsh-tool-conductor capability policies', () => {
       mkdirSync(allowed)
       mkdirSync(outside)
       symlinkSync(outside, join(allowed, 'alias'), process.platform === 'win32' ? 'junction' : 'dir')
-      const guard = toolGuardForStage('headsman', {
+      const baseline: ExecutionBaseline = {
         scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
         allowedPaths: [allowed], excludedPaths: [], rollbackReference: 'HEAD',
-      }, ['read', 'write'])
+        qualityCommands: [],
+      }
+      const guard = toolGuardForStage('headsman', baseline, authorize(baseline))
       const execution = {
         name: 'write',
         arguments: { file_path: join(allowed, 'alias', 'escape.md') },
@@ -83,44 +100,54 @@ describe('dsh-tool-conductor capability policies', () => {
   })
 
   it('gives the Integrator read and write tools but no shell', () => {
-    expect(toolRestrictionForStage('integrator', ['read', 'write'])).toEqual({ allow: [...READ_TOOLS, ...WRITE_TOOLS] })
+    expect(toolRestrictionForStage('integrator', WRITE_AUTHORIZATION)).toEqual({ allow: [...READ_TOOLS, ...WRITE_TOOLS] })
   })
 
-  it('intersects write-capable stages with the mandate actions', () => {
-    expect(toolRestrictionForStage('headsman', ['read'])).toEqual({ allow: [...READ_TOOLS] })
-    expect(toolRestrictionForStage('headsman', ['write'])).toEqual({ allow: [...WRITE_TOOLS] })
-    const guard = toolGuardForStage('headsman', {
+  it('requires matching host authorization for write-capable stages', () => {
+    expect(toolRestrictionForStage('headsman', null)).toEqual({ allow: [...READ_TOOLS] })
+    const baseline: ExecutionBaseline = {
       scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
       allowedPaths: ['.'], excludedPaths: [], rollbackReference: 'HEAD',
-    }, ['read'])
-    expect(guard({ name: 'write', arguments: { file_path: 'sandbox/output.txt' } } as ToolExecution)).toMatch(/does not permit write/)
+      qualityCommands: [],
+    }
+    const guard = toolGuardForStage('headsman', baseline, null)
     expect(guard({ name: 'read', arguments: {} } as ToolExecution)).toBeUndefined()
+    expect(guard({ name: 'write', arguments: { file_path: 'sandbox/output.txt' } } as ToolExecution))
+      .toMatch(/lacks matching host authorization/)
+    const stale = { ...WRITE_AUTHORIZATION, executionBaselineHash: 'f'.repeat(64) }
+    expect(toolGuardForStage('headsman', baseline, stale)({
+      name: 'write', arguments: { file_path: 'sandbox/output.txt' },
+    } as ToolExecution)).toMatch(/lacks matching host authorization/)
   })
 
   it('requires baselines for write-capable stages and ignores reads for read-only stages', () => {
-    expect(() => toolGuardForStage('headsman', null, ['write'])).toThrow(/approved execution baseline/)
-    expect(() => toolGuardForStage('integrator', null, ['write'])).toThrow(/approved execution baseline/)
-    expect(toolGuardForStage('auditor', null, ['read'])({ name: 'read', arguments: {} } as ToolExecution))
+    expect(() => toolGuardForStage('headsman', null, WRITE_AUTHORIZATION)).toThrow(/approved execution baseline/)
+    expect(() => toolGuardForStage('integrator', null, WRITE_AUTHORIZATION)).toThrow(/approved execution baseline/)
+    expect(toolGuardForStage('auditor', null, null)({ name: 'read', arguments: {} } as ToolExecution))
       .toBeUndefined()
   })
 
   it('rejects malformed or unresolvable write targets and accepts absolute in-scope targets', () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-conductor-targets-'))
     try {
-      const guard = toolGuardForStage('headsman', {
+      const baseline: ExecutionBaseline = {
         scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
         allowedPaths: [root], excludedPaths: [], rollbackReference: 'HEAD',
-      }, ['write'])
+        qualityCommands: [],
+      }
+      const guard = toolGuardForStage('headsman', baseline, authorize(baseline))
       expect(guard({ name: 'write', arguments: null } as unknown as ToolExecution)).toMatch(/requires file_path/)
       expect(guard({ name: 'write', arguments: { file_path: '' } } as ToolExecution)).toMatch(/requires file_path/)
       expect(guard({ name: 'read', arguments: {} } as ToolExecution)).toBeUndefined()
       expect(guard({ name: 'write', arguments: { file_path: join(root, 'new.md') } } as ToolExecution)).toBeUndefined()
 
       const missingRoot = join(root, 'missing', 'file.md')
-      const missingGuard = toolGuardForStage('headsman', {
+      const missingBaseline: ExecutionBaseline = {
         scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
         allowedPaths: [missingRoot], excludedPaths: [], rollbackReference: 'HEAD',
-      }, ['write'])
+        qualityCommands: [],
+      }
+      const missingGuard = toolGuardForStage('headsman', missingBaseline, authorize(missingBaseline))
       filesystem.rejectExistenceChecks = true
       try {
         expect(missingGuard({ name: 'write', arguments: { file_path: missingRoot } } as ToolExecution))
@@ -140,10 +167,12 @@ describe('dsh-tool-conductor capability policies', () => {
     try {
       for (const platform of ['win32', 'linux']) {
         Object.defineProperty(process, 'platform', { ...original, value: platform })
-        const guard = toolGuardForStage('headsman', {
+        const baseline: ExecutionBaseline = {
           scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
           allowedPaths: [root], excludedPaths: [], rollbackReference: 'HEAD',
-        }, ['write'])
+          qualityCommands: [],
+        }
+        const guard = toolGuardForStage('headsman', baseline, authorize(baseline))
         expect(guard({ name: 'write', arguments: { file_path: join(root, 'case.md') } } as ToolExecution))
           .toBeUndefined()
       }
@@ -155,7 +184,7 @@ describe('dsh-tool-conductor capability policies', () => {
 
   it('rejects stages that own no specialist capability policy', () => {
     for (const stage of ['intake', 'ralph', 'closeout'] as const) {
-      expect(() => toolRestrictionForStage(stage, ['read'])).toThrow(/capability policy/)
+      expect(() => toolRestrictionForStage(stage, null)).toThrow(/capability policy/)
     }
   })
 })

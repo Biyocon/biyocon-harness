@@ -54,12 +54,14 @@ class StubProvider implements SubagentProvider {
   readonly capabilities: SubagentCapabilities
   readonly inheritsParentContext: boolean
 
-  constructor(options?: { outputSchema?: boolean; inheritsParentContext?: boolean }) {
+  constructor(options?: { outputSchema?: boolean; inheritsParentContext?: boolean; toolContribution?: boolean }) {
     this.capabilities = {
       outputSchema: options?.outputSchema ?? true,
       depthLimit: true,
       toolFilter: true,
+      toolGuard: true,
       persona: true,
+      toolContribution: options?.toolContribution ?? true,
     }
     this.inheritsParentContext = options?.inheritsParentContext ?? false
   }
@@ -142,6 +144,44 @@ async function settleCompleted(
 }
 
 describe('dsh-tool-ralph', () => {
+  it('forwards one trusted child contribution to every Ralph round', async () => {
+    const { ctx, engine, parent } = await setup()
+    const childToolContribution = () => () => {}
+    const pending = toolRalph.runRalphWorkflow(ctx, {
+      objective: 'Run the bounded implementation loop.',
+      maxRounds: 2,
+      maxHandoffChars: 9000,
+      maxResultChars: 9000,
+      subagentProvider: 'fresh',
+      parent,
+      signal: new AbortController().signal,
+      childToolContribution,
+    })
+    await vi.waitFor(() => { expect(engine.requests).toHaveLength(1) })
+    expect(engine.requests[0]!.childToolContribution).toBe(childToolContribution)
+    engine.settle({
+      value: { status: 'complete', roundsStarted: 1, report: COMPLETE },
+      stopReason: 'completed',
+      agentsStarted: 1,
+    })
+    await expect(pending).resolves.toMatchObject({ result: { status: 'complete' } })
+  })
+
+  it('rejects a Ralph child contribution before workflow start when the provider lacks support', async () => {
+    const { ctx, engine, parent } = await setup({ provider: new StubProvider({ toolContribution: false }) })
+    await expect(toolRalph.runRalphWorkflow(ctx, {
+      objective: 'Run the bounded implementation loop.',
+      maxRounds: 2,
+      maxHandoffChars: 9000,
+      maxResultChars: 9000,
+      subagentProvider: 'fresh',
+      parent,
+      signal: new AbortController().signal,
+      childToolContribution: () => () => {},
+    })).rejects.toThrow(/does not support child tool contributions/)
+    expect(engine.requests).toEqual([])
+  })
+
   it('starts the fixed workflow through the configured fresh provider and renders completion', async () => {
     const { ctx, engine, parent } = await setup({ config: { maxRounds: 9, maxHandoffChars: 9000 } })
     const pending = execute(ctx, { objective: '  Finish the migration.  ', maxRounds: 4 }, { agent: parent })

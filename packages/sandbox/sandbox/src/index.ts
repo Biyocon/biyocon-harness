@@ -19,17 +19,26 @@ export {
 } from './escalation.ts'
 export type { EscalationApproval, EscalationApprover, EscalationOutcome, EscalationRequest } from './escalation.ts'
 export { canonicalPath, writableRoots } from './roots.ts'
+export {
+  classifyRunnerFailure,
+  isRunnerSpawnFailure,
+  matchesSandboxSignature,
+} from './classification.ts'
+export type { RunnerFailureMatch } from './classification.ts'
 
 /**
- * File-effect policy for confined processes. `read-only` permits only required
+ * File-effect mode for confined processes. `read-only` permits only required
  * sinks such as `/dev/null`; `workspace-write` also permits the workspace and a
  * backend-defined temp area; `danger-full-access` bypasses confinement. Network
- * and process visibility are outside this vocabulary.
+ * isolation is an independent per-call field on {@link SandboxPolicy}.
  */
 export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 
 /** A confining (non-`danger-full-access`) mode — the modes a {@link SandboxPolicy} can carry. */
 export type ConfinedSandboxMode = Exclude<SandboxMode, 'danger-full-access'>
+
+/** Network policy for one confined process. */
+export type SandboxNetwork = 'inherit' | 'deny'
 
 /**
  * The complete file-effect policy resolved for one capability call. The root
@@ -53,7 +62,7 @@ export interface SandboxExecutionPolicy {
 
 /**
  * Enforcement completeness for this host. `partial` means an active backend or
- * older kernel ABI cannot govern every promised file effect; callers requiring
+ * older kernel ABI cannot govern every promised effect; callers requiring
  * an absolute boundary must not treat it as `full`.
  */
 export type SandboxEnforcement = 'full' | 'partial'
@@ -69,6 +78,8 @@ export type SandboxEnforcement = 'full' | 'partial'
 export interface SandboxPolicy extends SandboxExecutionPolicy {
   /** The file-effect mode this execution runs under. */
   mode: ConfinedSandboxMode
+  /** Whether the child inherits host network access or must have all network access denied. */
+  network: SandboxNetwork
 }
 
 /**
@@ -90,12 +101,12 @@ export interface RunnerFailureRule {
 /**
  * A {@link SandboxProvider.confine} result: the argv to spawn in place of
  * the caller's own, plus the enforcement completeness the selected backend
- * achieves for it.
+ * achieves for the complete file and network policy.
  */
 export interface ConfinedArgv {
   /** The wrapped argv (runner, profile, separator, then the caller's argv). */
   argv: string[]
-  /** How completely the selected backend enforces the policy's file effects. */
+  /** How completely the selected backend enforces the complete file and network policy. */
   enforcement: SandboxEnforcement
   /**
    * The selected backend's denial DIALECT: the case-insensitive stderr
@@ -167,10 +178,10 @@ export abstract class SandboxProvider extends Service {
    * @param argv - the exact argv the caller is about to spawn (program plus
    *   arguments), NOT a shell string — a shell-shaped consumer passes
    *   `['bash', '-c', command]`.
-   * @param policy - the file-effect policy this execution runs under,
+   * @param policy - the complete file and network policy this execution runs under,
    *   carried per call (see {@link SandboxPolicy}).
    * @returns the argv to spawn instead, plus the enforcement completeness
-   *   the selected backend achieves for it.
+   *   the selected backend achieves for that concrete policy.
    */
   abstract confine(argv: readonly string[], policy: SandboxPolicy): ConfinedArgv
 }

@@ -977,8 +977,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       {
         signature: 'abstract confine(argv: readonly string[], policy: SandboxPolicy): ConfinedArgv',
         description: 'Wrap `argv` so it executes confined under `policy` on this host; the caller spawns the returned argv in place of its own.',
-        parameters: [{ name: 'argv', description: 'the exact argv the caller is about to spawn (program plus arguments), NOT a shell string — a shell-shaped consumer passes `[\'bash\', \'-c\', command]`.' }, { name: 'policy', description: 'the file-effect policy this execution runs under, carried per call (see {@link SandboxPolicy}).' }],
-        returns: 'the argv to spawn instead, plus the enforcement completeness the selected backend achieves for it.',
+        parameters: [{ name: 'argv', description: 'the exact argv the caller is about to spawn (program plus arguments), NOT a shell string — a shell-shaped consumer passes `[\'bash\', \'-c\', command]`.' }, { name: 'policy', description: 'the complete file and network policy this execution runs under, carried per call (see {@link SandboxPolicy}).' }],
+        returns: 'the argv to spawn instead, plus the enforcement completeness the selected backend achieves for that concrete policy.',
       },
     ],
   },
@@ -3676,8 +3676,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SandboxMode = \'read-only\' | \'workspace-write\' | \'danger-full-access\';',
   },
   {
+    name: 'SandboxNetwork',
+    declaration: 'export type SandboxNetwork = \'inherit\' | \'deny\';',
+  },
+  {
     name: 'SandboxPolicy',
-    declaration: 'export interface SandboxPolicy extends SandboxExecutionPolicy {\n    mode: ConfinedSandboxMode;\n}',
+    declaration: 'export interface SandboxPolicy extends SandboxExecutionPolicy {\n    mode: ConfinedSandboxMode;\n    network: SandboxNetwork;\n}',
   },
   {
     name: 'SandboxPolicyRequest',
@@ -4105,7 +4109,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SubagentCapabilities',
-    declaration: 'export interface SubagentCapabilities {\n    readonly outputSchema: boolean;\n    readonly depthLimit: boolean;\n    readonly toolFilter: boolean;\n    readonly toolGuard?: boolean;\n    readonly persona: boolean;\n}',
+    declaration: 'export interface SubagentCapabilities {\n    readonly outputSchema: boolean;\n    readonly depthLimit: boolean;\n    readonly toolFilter: boolean;\n    readonly toolGuard?: boolean;\n    readonly persona: boolean;\n    readonly toolContribution?: boolean;\n}',
+  },
+  {
+    name: 'SubagentChildToolContribution',
+    declaration: 'export type SubagentChildToolContribution = (childCtx: Context) => () => void;',
   },
   {
     name: 'SubagentDescendantListEntry',
@@ -4161,7 +4169,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SubagentStartRequest',
-    declaration: 'export interface SubagentStartRequest {\n    readonly label?: string;\n    readonly prompt: ContentBlock[];\n    readonly parent: Agent;\n    readonly signal: AbortSignal;\n    readonly agentOptions?: AgentOptions;\n    readonly outputSchema?: ObjectJsonSchema;\n    readonly maxDepth?: number;\n    readonly toolFilter?: ToolRestriction;\n    readonly toolGuard?: ToolGuard;\n    readonly persona?: string;\n}',
+    declaration: 'export interface SubagentStartRequest {\n    readonly label?: string;\n    readonly prompt: ContentBlock[];\n    readonly parent: Agent;\n    readonly signal: AbortSignal;\n    readonly agentOptions?: AgentOptions;\n    readonly outputSchema?: ObjectJsonSchema;\n    readonly maxDepth?: number;\n    readonly toolFilter?: ToolRestriction;\n    readonly toolGuard?: ToolGuard;\n    readonly toolContribution?: SubagentChildToolContribution;\n    readonly persona?: string;\n}',
   },
   {
     name: 'SubagentStopReason',
@@ -4649,7 +4657,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkflowStartRequest',
-    declaration: 'export interface WorkflowStartRequest {\n    script: string;\n    meta: WorkflowMeta;\n    args?: unknown;\n    subagentProvider?: string;\n    maxTotalAgents?: number;\n    childToolFilter?: ToolRestriction;\n    childToolGuard?: ToolGuard;\n    childPersona?: string;\n    parent: Agent;\n    signal?: AbortSignal;\n}',
+    declaration: 'export interface WorkflowStartRequest {\n    script: string;\n    meta: WorkflowMeta;\n    args?: unknown;\n    subagentProvider?: string;\n    maxTotalAgents?: number;\n    childToolFilter?: ToolRestriction;\n    childToolGuard?: ToolGuard;\n    childToolContribution?: SubagentChildToolContribution;\n    childPersona?: string;\n    parent: Agent;\n    signal?: AbortSignal;\n}',
   },
   {
     name: 'WorkflowStopReason',

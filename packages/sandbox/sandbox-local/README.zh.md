@@ -8,7 +8,7 @@
 
 不受支持的平台和不可用 runner 会以 `SANDBOX_UNAVAILABLE` 拒绝执行；执行绝不会静默回退为不受限制。每次包装都携带结构化 runner 失败规则，使消费方能够区分损坏的沙箱与命令失败。[沙箱 Agent Note](../../../.agents/notes/implemented/feature/2026-07-06-sandbox.md) 负责说明选择依据与 profile 差异。
 
-策略逐调用传入；提供方只存储机制与缓存的 runner 结论。每次包装都会报告强制执行完整度，以及后端专用的拒绝签名和 runner 失败规则。Landlock 只有在退出码为 125，且仅排除完全匹配的部分强制执行通知后仍存在一行 `landlock-run:` 致命诊断时，才判定 runner 失败；携带该通知的子进程即使以 1、2 或 125 退出，也仍按子进程结果处理。Bubblewrap 和 Seatbelt 仍仅依据签名，因为两者的公开约定均未保留 launcher 失败状态。消费方会直接 spawn 返回的 argv，因此 runner 缺失或不可执行属于带外 spawn 失败，而成功启动的子进程以 126 或 127 退出时仍按普通结果处理。`runnerCommand` 会跳过探测，并要求为自定义 runner 自身的致命方言提供一个或多个非空、单行、不区分大小写的 `runnerFailureSignatures` 条目。由于其机制未知，它会同时携带两种 Linux 拒绝方言。`probeTimeoutMs` 限定功能探测的时长。[沙箱 Agent Note](../../../.agents/notes/implemented/feature/2026-07-06-sandbox.md) 负责说明选择与失败语义。
+策略逐调用传入；提供方只存储机制与缓存的 runner 结论。每次包装都会报告具体文件与网络策略的强制执行完整度，以及后端专用的拒绝签名和 runner 失败规则。Bubblewrap 添加 `--unshare-net`，它会隔离子进程的 IP 命名空间，但通过只读宿主挂载暴露的 Unix 域套接字仍可访问，因此 `network: deny` 报告 `partial`。Seatbelt 添加 `(deny network*)` 并报告完整网络拒绝。Landlock 与 Windows ACL runner 无法强制执行网络拒绝，因此其拒绝策略即使文件强制执行本来完整，也会报告 `partial`。Landlock 只有在退出码为 125，且仅排除完全匹配的部分强制执行通知后仍存在一行 `landlock-run:` 致命诊断时，才判定 runner 失败；携带该通知的子进程即使以 1、2 或 125 退出，也仍按子进程结果处理。Bubblewrap 和 Seatbelt 仍仅依据签名，因为两者的公开约定均未保留 launcher 失败状态。消费方会直接 spawn 返回的 argv，因此 runner 缺失或不可执行属于带外 spawn 失败，而成功启动的子进程以 126 或 127 退出时仍按普通结果处理。`runnerCommand` 会跳过探测、接收与 bwrap 兼容的 profile，并要求为自定义 runner 的致命方言提供一个或多个非空、单行、不区分大小写的 `runnerFailureSignatures` 条目。其 `network: deny` 结果默认是部分强制执行；`runnerNetworkDenyEnforcement: full` 是操作方的显式断言，表示 runner 在追加的 `--unshare-net` profile 之外实施完整网络拒绝。`probeTimeoutMs` 限定功能探测的时长。[沙箱 Agent Note](../../../.agents/notes/implemented/feature/2026-07-06-sandbox.md) 负责说明选择与失败语义。
 
 Seatbelt profile 默认允许，但带 `(deny file-write*)` 和写入 allow-list，因此恰好约束相应模式承诺的文件操作：`read-only` 只授予 `/dev/null` 字面路径；`workspace-write` 另加工作区根目录、`/tmp` 和逐用户 darwin 临时目录（`os.tmpdir()`，即平台供 mkstemp 家族工具使用的真实临时区域）。每个根目录都经过规范化，因为 Seatbelt 匹配解析后的路径（`/tmp` 就是 `/private/tmp`）。Apple 将 `sandbox-exec` CLI（命令行界面）标为 deprecated，但所有 macOS 系统仍会提供它；若情况发生变化，功能探测会使执行被拒绝。
 
@@ -35,6 +35,8 @@ Windows 档为每个工作区保留一个确定性写入 SID 和常驻 ACE，但
 
 - **Windows ACL 只能实现部分强制执行**：受限令牌必须保留 Everyone 以完成进程初始化，因此授予 Everyone 写访问的外部对象仍可写；NTFS 硬链接也会使工作区路径与外部路径指向同一个文件对象。提供方报告 `enforcement: 'partial'`，而不会把该边界夸大为完整强制执行。
 - **Landlock 可能只实现部分强制执行**：较旧且受支持的内核 ABI 只能限制自身公开的访问类别，因此报告 `enforcement: 'partial'`，不会夸大为完整强制执行。
+- **Bubblewrap 不会拒绝所有网络操作**：`--unshare-net` 会隔离 IP 网络，但通过挂载暴露的宿主 Unix 域套接字仍可访问；请求 `network: deny` 时会报告部分强制执行。
+- **Landlock 与 Windows ACL 无法拒绝网络**：请求 `network: deny` 时会报告部分强制执行；要求完整拒绝的消费方必须拒绝该结果。
 - **Seatbelt 依赖已弃用的 `sandbox-exec`**：macOS 仍会提供它，但若 Apple 移除该私有策略引擎，该提供方无法替换或探测。
 - **runner 选择在提供方生命周期内缓存**：安装、移除或修复 runner 后，必须重载插件才能改变选择。
-- **`runnerCommand` 是操作方断言**：配置的自定义 runner 会跳过功能探测，并假定它诚实实现与 bwrap 兼容的 profile；如果它本身是 Bash 脚本，其解释器启动发生在该脚本施加约束之前。
+- **`runnerCommand` 是操作方断言**：配置的自定义 runner 会跳过功能探测。其网络拒绝强制执行默认是部分；选择 `runnerNetworkDenyEnforcement: full` 即断言它在追加的 bwrap 兼容 profile 之外增加了拒绝所有网络操作的更强机制。如果 runner 本身是 Bash 脚本，其解释器启动发生在该脚本施加约束之前。

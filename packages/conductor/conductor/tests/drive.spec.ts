@@ -1,15 +1,31 @@
 import { describe, expect, it } from 'vitest'
-import { ConductorRunId, drive } from '../src/index.ts'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import {
+  ConductorRunId,
+  QualityCommandId,
+  QualityEvidenceId,
+  drive,
+  executionBaselineHash,
+} from '../src/index.ts'
 import type {
   ConductorDispatcher,
   ConductorRun,
   ConductorStage,
   DecisionRecord,
   SpecialistEnvelope,
+  QualityCommandBinding,
+  QualityExecutionRecord,
 } from '../src/index.ts'
+
+const QUALITY_BINDING: QualityCommandBinding = {
+  id: QualityCommandId('unit-check'),
+  definitionHash: 'a'.repeat(64),
+  requiredGates: ['D', 'E'],
+}
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
+    recordFormatVersion: 1,
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -17,17 +33,34 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     allowedPaths: ['packages/conductor'],
     excludedPaths: [],
     sourceBaseline: null,
-    authority: { owner: 'user', permittedActions: ['read'] },
+    authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: ['feature works'],
     budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
+    baselineHistory: [],
     baseline: null,
+    executionAuthorization: null,
     currentStage: 'detective',
     history: [],
     specialistReports: [],
+    qualityExecutions: [],
     status: 'running',
     ...overrides,
   }
+}
+
+function authorize(
+  _run: Parameters<ConductorDispatcher['authorizeExecution']>[0],
+  baseline: Parameters<ConductorDispatcher['authorizeExecution']>[1],
+) {
+  return Promise.resolve({
+    executionBaselineHash: executionBaselineHash(baseline),
+    effectProfile: {
+      filesystem: 'workspace-write' as const,
+      quality: baseline.qualityCommands.length === 0 ? 'none' as const : 'catalog' as const,
+      external: 'none' as const,
+    },
+  })
 }
 
 function makeEnvelope(stage: ConductorStage, overrides: Partial<SpecialistEnvelope> = {}): SpecialistEnvelope {
@@ -44,12 +77,14 @@ function makeEnvelope(stage: ConductorStage, overrides: Partial<SpecialistEnvelo
     blockers: [],
     artifacts: [],
     change_requests: [],
+    quality_evidence_ids: [],
     recommended_transition: { target: 'conductor', rationale: 'evaluate' },
     confidence: 'high',
     ...stage === 'devils-advocate' ? {
       execution_baseline: {
         scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
         allowedPaths: ['packages/conductor'], excludedPaths: [], rollbackReference: 'HEAD',
+        qualityCommands: [],
       },
     } : {},
     ...overrides,
@@ -70,6 +105,7 @@ function makeDecision(decision: 'go' | 'no-go' = 'go'): DecisionRecord {
 
 function dispatcherFor(envelope: unknown, decision: unknown = makeDecision()): ConductorDispatcher {
   return {
+    authorizeExecution: authorize,
     async dispatchSpecialist() { return envelope as SpecialistEnvelope },
     async dispatchArbiter() { return decision as DecisionRecord },
   }
@@ -78,6 +114,7 @@ function dispatcherFor(envelope: unknown, decision: unknown = makeDecision()): C
 describe('dsh-conductor drive', () => {
   it('drives through every gate to a GO decision and closeout', async () => {
     const dispatcher: ConductorDispatcher = {
+      authorizeExecution: authorize,
       async dispatchSpecialist(stage) { return makeEnvelope(stage) },
       async dispatchArbiter() { return makeDecision('go') },
     }
@@ -97,6 +134,7 @@ describe('dsh-conductor drive', () => {
 
   it('does not turn a ready self-report into a gate pass without evidence', async () => {
     const dispatcher: ConductorDispatcher = {
+      authorizeExecution: authorize,
       async dispatchSpecialist(stage) { return makeEnvelope(stage, { evidence: [] }) },
       async dispatchArbiter() { return makeDecision('go') },
     }
@@ -111,6 +149,7 @@ describe('dsh-conductor drive', () => {
 
   it('rejects a ready Detective that did not establish the missing source baseline', async () => {
     const dispatcher: ConductorDispatcher = {
+      authorizeExecution: authorize,
       async dispatchSpecialist(stage) {
         const envelope = makeEnvelope(stage)
         if (stage !== 'detective') return envelope
@@ -126,12 +165,14 @@ describe('dsh-conductor drive', () => {
 
   it('rejects a Gate C baseline that widens the owner-authorized paths', async () => {
     const dispatcher: ConductorDispatcher = {
+      authorizeExecution: authorize,
       async dispatchSpecialist(stage) {
         if (stage !== 'devils-advocate') return makeEnvelope(stage)
         return makeEnvelope(stage, {
           execution_baseline: {
             scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
             allowedPaths: ['.'], excludedPaths: [], rollbackReference: 'HEAD',
+            qualityCommands: [],
           },
         })
       },
@@ -142,10 +183,58 @@ describe('dsh-conductor drive', () => {
     if (outcome.kind === 'blocked') expect(outcome.blocker).toMatch(/owner-authorized run paths/)
   })
 
+  it('blocks before Headsman when the host rejects Gate C execution authorization', async () => {
+    const dispatched: ConductorStage[] = []
+    const dispatcher: ConductorDispatcher = {
+      async authorizeExecution() { return null },
+      async dispatchSpecialist(stage) {
+        dispatched.push(stage)
+        return makeEnvelope(stage)
+      },
+      async dispatchArbiter() { return makeDecision('go') },
+    }
+    const outcome = await drive(makeRun(), dispatcher)
+    expect(outcome.kind).toBe('blocked')
+    expect(dispatched).toEqual(['detective', 'strategist', 'devils-advocate'])
+    expect(outcome.run.baseline).toBeNull()
+    expect(outcome.run.executionAuthorization).toBeNull()
+    expect(outcome.run.history.at(-1)).toMatchObject({ gate: 'C', decision: 'escalate' })
+  })
+
+  it('turns unavailable or mismatched Gate C authorization into a controlled blocker', async () => {
+    for (const authorizeExecution of [
+      () => Promise.reject(new Error('approval service offline')),
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- plugin dispatchers may reject with a non-Error value.
+      () => Promise.reject('approval transport unavailable'),
+      () => Promise.resolve({
+        executionBaselineHash: 'f'.repeat(64),
+        effectProfile: { filesystem: 'workspace-write' as const, quality: 'none' as const, external: 'none' as const },
+      }),
+      async (_run: ConductorRun, baseline: Parameters<ConductorDispatcher['authorizeExecution']>[1]) => ({
+        executionBaselineHash: executionBaselineHash(baseline),
+        effectProfile: { filesystem: 'read-only' as const, quality: 'none' as const, external: 'none' as const },
+      }),
+      async (_run: ConductorRun, baseline: Parameters<ConductorDispatcher['authorizeExecution']>[1]) => ({
+        executionBaselineHash: executionBaselineHash(baseline),
+        effectProfile: { filesystem: 'workspace-write' as const, quality: 'catalog' as const, external: 'none' as const },
+      }),
+    ]) {
+      const outcome = await drive(makeRun(), {
+        authorizeExecution,
+        async dispatchSpecialist(stage) { return makeEnvelope(stage) },
+        async dispatchArbiter() { return makeDecision('go') },
+      })
+      expect(outcome.kind).toBe('blocked')
+      expect(outcome.run.history.at(-1)).toMatchObject({ gate: 'C', decision: 'escalate' })
+      expect(outcome.run.baseline).toBeNull()
+    }
+  })
+
   it('routes an auditor rework back to headsman and continues', async () => {
     let auditorCalls = 0
     const dispatched: ConductorStage[] = []
     const dispatcher: ConductorDispatcher = {
+      authorizeExecution: authorize,
       async dispatchSpecialist(stage) {
         dispatched.push(stage)
         if (stage === 'auditor') {
@@ -168,6 +257,7 @@ describe('dsh-conductor drive', () => {
   it('routes a scope rework from the auditor to detective', async () => {
     const dispatched: ConductorStage[] = []
     const dispatcher: ConductorDispatcher = {
+      authorizeExecution: authorize,
       async dispatchSpecialist(stage) {
         dispatched.push(stage)
         if (stage === 'auditor') {
@@ -187,6 +277,7 @@ describe('dsh-conductor drive', () => {
 
   it('parks a blocked specialist result for the owner', async () => {
     const dispatcher: ConductorDispatcher = {
+      authorizeExecution: authorize,
       async dispatchSpecialist(stage) {
         if (stage === 'detective') return makeEnvelope(stage, { status: 'blocked', blockers: ['missing mandate'] })
         return makeEnvelope(stage)
@@ -203,6 +294,7 @@ describe('dsh-conductor drive', () => {
 
   it('rejects a malformed envelope as a blocker, not a pass', async () => {
     const dispatcher: ConductorDispatcher = {
+      authorizeExecution: authorize,
       async dispatchSpecialist() {
         return {
           run_id: 'wrong-id', stage: 'detective', status: 'ready', summary: '',
@@ -222,6 +314,7 @@ describe('dsh-conductor drive', () => {
 
   it('escalates an authority change request from a specialist', async () => {
     const dispatcher: ConductorDispatcher = {
+      authorizeExecution: authorize,
       async dispatchSpecialist(stage) {
         if (stage === 'headsman') {
           return makeEnvelope(stage, {
@@ -240,6 +333,7 @@ describe('dsh-conductor drive', () => {
 
   it('escalates an arbiter NO-GO to the owner', async () => {
     const dispatcher: ConductorDispatcher = {
+      authorizeExecution: authorize,
       async dispatchSpecialist(stage) { return makeEnvelope(stage) },
       async dispatchArbiter() { return makeDecision('no-go') },
     }
@@ -253,6 +347,7 @@ describe('dsh-conductor drive', () => {
 
   it('rejects an Arbiter GO whose basis is blank', async () => {
     const dispatcher: ConductorDispatcher = {
+      authorizeExecution: authorize,
       async dispatchSpecialist(stage) { return makeEnvelope(stage) },
       async dispatchArbiter() { return { ...makeDecision('go'), basis: [''] } },
     }
@@ -266,6 +361,7 @@ describe('dsh-conductor drive', () => {
 
   it('rejects an Arbiter GO whose reviewed evidence is blank', async () => {
     const dispatcher: ConductorDispatcher = {
+      authorizeExecution: authorize,
       async dispatchSpecialist(stage) { return makeEnvelope(stage) },
       async dispatchArbiter() { return { ...makeDecision('go'), evidence_reviewed: [''] } },
     }
@@ -279,6 +375,7 @@ describe('dsh-conductor drive', () => {
 
   it('escalates once the rework budget is exhausted', async () => {
     const dispatcher: ConductorDispatcher = {
+      authorizeExecution: authorize,
       async dispatchSpecialist(stage) {
         if (stage === 'auditor') return makeEnvelope(stage, { status: 'rework' })
         return makeEnvelope(stage)
@@ -294,6 +391,196 @@ describe('dsh-conductor drive', () => {
     }
   })
 
+  it('requires fresh host-owned Gate D quality evidence for every required binding', async () => {
+    const baseline = {
+      scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
+      allowedPaths: ['packages/conductor'], excludedPaths: [], rollbackReference: 'HEAD',
+      qualityCommands: [QUALITY_BINDING],
+    }
+    const run = makeRun({
+      currentStage: 'headsman',
+      sourceBaseline: 'HEAD',
+      baseline,
+      baselineHistory: [baseline],
+      executionAuthorization: {
+        executionBaselineHash: executionBaselineHash(baseline),
+        effectProfile: { filesystem: 'workspace-write', quality: 'catalog', external: 'none' },
+      },
+    })
+    const envelope = makeEnvelope('headsman', { quality_evidence_ids: [] })
+    const outcome = await drive(run, {
+      authorizeExecution: authorize,
+      async dispatchSpecialist() {
+        return { envelope, qualityExecutions: [], requiredQualityCommands: [QUALITY_BINDING] }
+      },
+      async dispatchArbiter() { return makeDecision() },
+    })
+    expect(outcome.kind).toBe('blocked')
+    if (outcome.kind === 'blocked') expect(outcome.blocker).toMatch(/fresh passing quality evidence/)
+  })
+
+  it('checkpoints completed quality evidence before rejecting a malformed specialist envelope', async () => {
+    const baseline = {
+      scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
+      allowedPaths: ['packages/conductor'], excludedPaths: [], rollbackReference: 'HEAD',
+      qualityCommands: [QUALITY_BINDING],
+    }
+    const evidenceId = QualityEvidenceId('quality-before-malformed-envelope')
+    const record: QualityExecutionRecord = {
+      evidenceId,
+      runId: ConductorRunId('CON-2026-0001'),
+      childSessionId: SessionId('child-malformed'),
+      commandId: QUALITY_BINDING.id,
+      definitionHash: QUALITY_BINDING.definitionHash,
+      executionBaselineHash: executionBaselineHash(baseline),
+      gate: 'D',
+      cycle: 1,
+      policyStage: 'headsman',
+      executorStage: 'headsman',
+      outcome: 'passed',
+      exitCode: 0,
+      signal: null,
+      startedAt: '2026-10-10T00:00:00.000Z',
+      finishedAt: '2026-10-10T00:00:01.000Z',
+      stdoutSha256: 'b'.repeat(64),
+      stderrSha256: 'c'.repeat(64),
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    }
+    const checkpoints: ConductorRun[] = []
+    const outcome = await drive(makeRun({
+      currentStage: 'headsman', sourceBaseline: 'HEAD', baseline,
+      baselineHistory: [baseline],
+      executionAuthorization: {
+        executionBaselineHash: executionBaselineHash(baseline),
+        effectProfile: { filesystem: 'workspace-write', quality: 'catalog', external: 'none' },
+      },
+    }), {
+      authorizeExecution: authorize,
+      async dispatchSpecialist() {
+        return {
+          envelope: { ...makeEnvelope('headsman'), stage: 'auditor' },
+          qualityExecutions: [record],
+          requiredQualityCommands: [QUALITY_BINDING],
+        }
+      },
+      async dispatchArbiter() { return makeDecision() },
+    }, async (run) => { checkpoints.push(structuredClone(run)) })
+    expect(outcome.kind).toBe('blocked')
+    expect(outcome.run.qualityExecutions).toEqual([record])
+    expect(checkpoints.at(-1)?.qualityExecutions).toEqual([record])
+  })
+
+  it('retains host records but rejects unknown and duplicate dispatch-local evidence ids before report persistence', async () => {
+    const baseline = {
+      scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
+      allowedPaths: ['packages/conductor'], excludedPaths: [], rollbackReference: 'HEAD',
+      qualityCommands: [QUALITY_BINDING],
+    }
+    const evidenceId = QualityEvidenceId('dispatch-evidence')
+    const record: QualityExecutionRecord = {
+      evidenceId,
+      runId: ConductorRunId('CON-2026-0001'),
+      childSessionId: SessionId('dispatch-child'),
+      commandId: QUALITY_BINDING.id,
+      definitionHash: QUALITY_BINDING.definitionHash,
+      executionBaselineHash: executionBaselineHash(baseline),
+      gate: 'D', cycle: 1, policyStage: 'headsman', executorStage: 'headsman', outcome: 'passed',
+      exitCode: 0, signal: null,
+      startedAt: '2026-10-10T00:00:00.000Z', finishedAt: '2026-10-10T00:00:01.000Z',
+      stdoutSha256: 'b'.repeat(64), stderrSha256: 'c'.repeat(64),
+      stdoutTruncated: false, stderrTruncated: false,
+    }
+    for (const { cited, records, previous } of [
+      { cited: ['unknown'], records: [record], previous: [] },
+      { cited: [evidenceId, evidenceId], records: [record], previous: [] },
+      { cited: [evidenceId], records: [record, record], previous: [] },
+      { cited: [evidenceId], records: [record], previous: [record] },
+    ]) {
+      const outcome = await drive(makeRun({
+        currentStage: 'headsman', sourceBaseline: 'HEAD', baseline, baselineHistory: [baseline],
+        qualityExecutions: previous,
+        executionAuthorization: {
+          executionBaselineHash: executionBaselineHash(baseline),
+          effectProfile: { filesystem: 'workspace-write', quality: 'catalog', external: 'none' },
+        },
+      }), {
+        authorizeExecution: authorize,
+        async dispatchSpecialist() {
+          return {
+            envelope: makeEnvelope('headsman', { quality_evidence_ids: cited }),
+            qualityExecutions: records,
+            requiredQualityCommands: [QUALITY_BINDING],
+          }
+        },
+        async dispatchArbiter() { return makeDecision() },
+      })
+      expect(outcome.kind).toBe('blocked')
+      expect(outcome.run.qualityExecutions).toEqual([...previous, ...records])
+      expect(outcome.run.specialistReports).toEqual([])
+    }
+  })
+
+  it('accepts matching Gate D evidence but cannot reuse it for Gate E', async () => {
+    const baseline = {
+      scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
+      allowedPaths: ['packages/conductor'], excludedPaths: [], rollbackReference: 'HEAD',
+      qualityCommands: [QUALITY_BINDING],
+    }
+    const evidenceId = QualityEvidenceId('quality-d')
+    const record: QualityExecutionRecord = {
+      evidenceId,
+      runId: ConductorRunId('CON-2026-0001'),
+      childSessionId: SessionId('child-d'),
+      commandId: QUALITY_BINDING.id,
+      definitionHash: QUALITY_BINDING.definitionHash,
+      executionBaselineHash: executionBaselineHash(baseline),
+      gate: 'D',
+      cycle: 1,
+      policyStage: 'headsman',
+      executorStage: 'headsman',
+      outcome: 'passed',
+      exitCode: 0,
+      signal: null,
+      startedAt: '2026-10-10T00:00:00.000Z',
+      finishedAt: '2026-10-10T00:00:01.000Z',
+      stdoutSha256: 'b'.repeat(64),
+      stderrSha256: 'c'.repeat(64),
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    }
+    const run = makeRun({
+      currentStage: 'headsman', sourceBaseline: 'HEAD', baseline,
+      baselineHistory: [baseline],
+      executionAuthorization: {
+        executionBaselineHash: executionBaselineHash(baseline),
+        effectProfile: { filesystem: 'workspace-write', quality: 'catalog', external: 'none' },
+      },
+    })
+    const outcome = await drive(run, {
+      authorizeExecution: authorize,
+      async dispatchSpecialist(stage) {
+        if (stage === 'headsman') {
+          return {
+            envelope: makeEnvelope(stage, { quality_evidence_ids: [evidenceId] }),
+            qualityExecutions: [record],
+            requiredQualityCommands: [QUALITY_BINDING],
+          }
+        }
+        if (stage === 'auditor') {
+          return {
+            envelope: makeEnvelope(stage, { quality_evidence_ids: [evidenceId] }),
+            qualityExecutions: [],
+            requiredQualityCommands: [QUALITY_BINDING],
+          }
+        }
+        return makeEnvelope(stage)
+      },
+      async dispatchArbiter() { return makeDecision() },
+    })
+    expect(outcome.kind).toBe('blocked')
+    if (outcome.kind === 'blocked') expect(outcome.blocker).toContain('current dispatch evidence')
+  })
   it('rejects non-dispatchable stages and write-capable stages without Gate C', async () => {
     for (const stage of ['intake', 'ralph', 'closeout'] as const) {
       await expect(drive(makeRun({ currentStage: stage }), dispatcherFor(makeEnvelope('detective'))))
@@ -352,6 +639,13 @@ describe('dsh-conductor drive', () => {
       [{ ...valid, allowedPaths: [1] }, /allowedPaths/],
       [{ ...valid, excludedPaths: [' '] }, /excludedPaths/],
       [{ ...valid, excludedPaths: ['private'] }, /excludedPaths.*owner-declared/],
+      [{ ...valid, qualityCommands: null }, /qualityCommands must be an array/],
+      [{ ...valid, qualityCommands: [null] }, /must contain bindings/],
+      [{ ...valid, qualityCommands: [[]] }, /must contain bindings/],
+      [{ ...valid, qualityCommands: ['unit-check'] }, /must contain bindings/],
+      [{ ...valid, qualityCommands: [{ ...QUALITY_BINDING, id: ' ' }] }, /normalized id/],
+      [{ ...valid, qualityCommands: [{ ...QUALITY_BINDING, definitionHash: 'bad' }] }, /SHA-256/],
+      [{ ...valid, qualityCommands: [QUALITY_BINDING, QUALITY_BINDING] }, /must be unique/],
     ]
     for (const [execution_baseline, message] of malformed) {
       const outcome = await drive(
@@ -418,6 +712,7 @@ describe('dsh-conductor drive', () => {
     for (const [stage, change_requests, expected] of cases) {
       let firstDispatch = true
       const dispatcher: ConductorDispatcher = {
+        authorizeExecution: authorize,
         async dispatchSpecialist(dispatchedStage) {
           if (firstDispatch) {
             firstDispatch = false

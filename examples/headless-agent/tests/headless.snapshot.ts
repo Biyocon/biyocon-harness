@@ -13,7 +13,11 @@ import {
   type HarvestedLog,
   type NormalizeContext,
 } from '@deepseek-ai/dsh-acp-snapshot'
-import { LOADER_SMOKE_TEST_TIMEOUT_MS, runLoaderSmoke } from '@deepseek-ai/dsh-loader-smoke'
+import {
+  LOADER_SMOKE_TEST_TIMEOUT_MS,
+  runLoaderSmoke as runExampleLoaderSmoke,
+  type LoaderSmokeOptions,
+} from '@deepseek-ai/dsh-loader-smoke'
 import {
   decompressZstdFrame,
   scanZstdFrames,
@@ -46,7 +50,10 @@ const invalidCredentialScenarioDir = join(snapshotsDir, 'invalid-credential')
 const ralphScenarioDir = join(snapshotsDir, 'ralph-loop')
 const ralphConfigPath = fileURLToPath(new URL('../ralph.cordis.snapshot.yml', import.meta.url))
 const conductorScenarioDir = join(snapshotsDir, 'conductor-closeout-authorization')
+const conductorQualityScenarioDir = join(snapshotsDir, 'conductor-quality-command')
 const conductorConfigPath = fileURLToPath(new URL('../conductor.cordis.snapshot.yml', import.meta.url))
+const conductorAgentsHome = fileURLToPath(new URL('../../../.agents', import.meta.url))
+const conductorRoleDir = fileURLToPath(new URL('../../../.agents/conductor/roles', import.meta.url))
 const settlementScenarioDir = join(snapshotsDir, 'subagent-settlement')
 const settlementConfigPath = fileURLToPath(new URL('../subagent-settlement.cordis.snapshot.yml', import.meta.url))
 const startupFailureConfigPath = fileURLToPath(new URL('./fixtures/startup-activation-error/cordis.yml', import.meta.url))
@@ -61,6 +68,17 @@ const headlessSessionExpected = join(snapshotsDir, 'headless-profile', 'session.
 const headlessFailureExpected = join(snapshotsDir, 'headless-profile', 'stderr.expected.txt')
 const cliMockLlmPluginPath = fileURLToPath(new URL('./fixtures/cli-mock-llm.ts', import.meta.url))
 const refreshing = process.env.DSH_SNAPSHOT === 'refresh'
+
+/** Stop workspace-instruction discovery at each snapshot's temporary root. */
+async function runLoaderSmoke(options: LoaderSmokeOptions) {
+  return runExampleLoaderSmoke({
+    ...options,
+    prepare: async (cwd) => {
+      await mkdir(join(cwd, '.git'))
+      await options.prepare?.(cwd)
+    },
+  })
+}
 
 interface JsonObject {
   [key: string]: unknown
@@ -155,6 +173,21 @@ function normalizeHeadlessStream(rawStdout: string, cwd: string): string {
     ? { ...record, event: normalizedEvents[index] }
     : record)
   return normalizeStdout(`${normalizedRecords.map(record => JSON.stringify(record)).join('\n')}\n`, context)
+}
+
+function normalizeConductorStream(rawStdout: string, cwd: string): string {
+  let normalized = normalizeHeadlessStream(rawStdout, cwd)
+  for (const encodedCwd of [
+    cwd.replaceAll('\\', '\\\\\\\\'),
+    cwd.replaceAll('\\', '\\\\'),
+    cwd,
+  ]) {
+    normalized = normalized.replaceAll(encodedCwd, '{{cwd}}')
+  }
+  return normalized
+    .replace(/CON-\d{4}-\d{4}/g, '{{runId}}')
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, '{{evidenceId}}')
+    .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g, '{{isoTime}}')
 }
 
 /** Zero durable goal timestamps inside both metadata records and rendered XML JSON. */
@@ -784,12 +817,12 @@ describe('headless stream-json snapshots', () => {
     expect(normalized).toBe(await readFile(streamExpected, 'utf8'))
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
-  it('rejects Conductor closeout authorization without an existing run', async () => {
+  it('rejects model-controlled Conductor closeout authority', async () => {
     const prompt = await scenarioPrompt(conductorScenarioDir, 'conductor-closeout-authorization')
     const streamExpected = join(conductorScenarioDir, 'stream-json.expected.jsonl')
     let runCwd = ''
     const result = await runLoaderSmoke({
-      label: 'Conductor closeout authorization headless stream-json snapshot',
+      label: 'Conductor model-controlled closeout headless stream-json snapshot',
       tempDirPrefix: 'headless-snapshot-conductor-closeout-',
       binScript,
       libBinScript: binScript,
@@ -800,12 +833,11 @@ describe('headless stream-json snapshots', () => {
         DSH_SNAPSHOT: 'replay',
         DSH_SNAPSHOT_FILE: join(conductorScenarioDir, 'session.jsonl'),
         DSH_SNAPSHOT_OVERRIDE: join(conductorScenarioDir, 'replay.override.json'),
+        DSH_AGENTS_HOME: conductorAgentsHome,
+        DSH_CONDUCTOR_ROLE_DIR: conductorRoleDir,
         NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
       },
-      prepare: async (cwd) => {
-        runCwd = cwd
-        await mkdir(join(cwd, '.git'))
-      },
+      prepare: (cwd) => { runCwd = cwd },
       inspect: async (cwd) => {
         const logs = await persistedLogs(cwd)
         expect(logs).toHaveLength(1)
@@ -813,13 +845,130 @@ describe('headless stream-json snapshots', () => {
         const call = records.find(record => record.type === 'tool/call')
         expect((call?.data as JsonObject | undefined)?.name).toBe('conductor')
         const toolResult = records.find(record => record.type === 'tool/result')
-        expect(JSON.stringify(toolResult)).toContain('closeoutAuthorization requires an existing runId')
+        const resultText = JSON.stringify(toolResult)
+        expect(resultText).toContain('Conductor closeout authorization is host-only')
+        expect(resultText).toContain('not accepted by the model-facing tool')
         expect(records.some(record => record.type === 'conductor/checkpoint')).toBe(false)
       },
     })
 
     expect(result.stderr).toBe('')
     const normalized = normalizeHeadlessStream(result.stdout, runCwd)
+    if (refreshing) await writeFile(streamExpected, normalized)
+    expect(normalized).toBe(await readFile(streamExpected, 'utf8'))
+  }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+
+  it.each([
+    { executor: 'Headsman', ralph: false },
+    { executor: 'Ralph', ralph: true },
+  ])('replays Conductor quality commands through the assembled headless app with $executor', async ({ ralph }) => {
+    const prompt = await scenarioPrompt(conductorQualityScenarioDir, 'conductor-quality-command')
+    const streamExpected = join(conductorQualityScenarioDir, ralph ? 'ralph-stream-json.expected.jsonl' : 'stream-json.expected.jsonl')
+    const childFiles = (ralph
+      ? ['1', '2', '3', 'ralph', 'headsman-after-ralph', '5', '6', '7']
+      : ['1', '2', '3', '4', '5', '6', '7'])
+      .map(name => join(conductorQualityScenarioDir, `session.${name}.jsonl`))
+    let runCwd = ''
+    const result = await runLoaderSmoke({
+      label: 'Conductor quality-command headless stream-json snapshot',
+      tempDirPrefix: 'headless-snapshot-conductor-quality-',
+      binScript,
+      libBinScript: binScript,
+      configPath: conductorConfigPath,
+      binArgs: [conductorConfigPath, prompt],
+      tsconfigPath,
+      env: {
+        DSH_SNAPSHOT: 'replay',
+        DSH_SNAPSHOT_FILE: join(conductorQualityScenarioDir, 'session.jsonl'),
+        DSH_SNAPSHOT_OVERRIDE: join(conductorQualityScenarioDir, 'replay.override.json'),
+        DSH_SNAPSHOT_CHILD_FILES: childFiles.join(delimiter),
+        DSH_CONDUCTOR_RALPH_ROUNDS: ralph ? '1' : '0',
+        DSH_AGENTS_HOME: conductorAgentsHome,
+        DSH_CONDUCTOR_ROLE_DIR: conductorRoleDir,
+        NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
+      },
+      prepare: (cwd) => { runCwd = cwd },
+      inspect: async (cwd) => {
+        const logs = await persistedLogs(cwd)
+        if (logs.length !== childFiles.length + 1) {
+          const diagnostics = logs.flatMap(log => parseJsonl(log.content)
+            .filter(record => record.type === 'tool/result' || record.type === 'conductor/checkpoint'))
+          throw new Error(`Conductor quality snapshot persisted ${logs.length} logs; diagnostics: ${JSON.stringify(diagnostics)}`)
+        }
+        const parent = logs.find(log => typeof log.header.parentSession !== 'string')
+        if (parent === undefined) throw new Error('Conductor quality snapshot did not persist its parent session')
+        const children = logs.filter(log => typeof log.header.parentSession === 'string')
+        expect(children).toHaveLength(childFiles.length)
+
+        const promptText = (log: PersistedLog): string => parseJsonl(log.content)
+          .filter(record => record.type === 'user/message')
+          .flatMap((record) => {
+            const content = (record.data as JsonObject | undefined)?.content
+            if (!Array.isArray(content)) return []
+            return (content as JsonObject[]).flatMap(block => typeof block.text === 'string' ? [block.text] : [])
+          })
+          .join('\n')
+        const stageLog = (stage: string): PersistedLog => {
+          const match = children.find(child => promptText(child).includes(`"stage": "${stage}",\n  "objective"`))
+          if (match === undefined) throw new Error(`missing Conductor ${stage} child log`)
+          return match
+        }
+
+        const devilsAdvocatePrompt = promptText(stageLog('devils-advocate'))
+        expect(devilsAdvocatePrompt).toContain('"quality_command_catalog"')
+        expect(devilsAdvocatePrompt).toContain('"id": "snapshot-check"')
+        expect(devilsAdvocatePrompt).toContain('Run the deterministic snapshot quality check.')
+
+        const ralphLog = children.find(child => promptText(child).includes('Ralph round: 1 of 1.'))
+        if (ralph) {
+          if (ralphLog === undefined) throw new Error('missing fresh Ralph quality worker')
+          const workerPrompt = promptText(ralphLog)
+          expect(workerPrompt).toContain('"id": "snapshot-check"')
+          expect(workerPrompt).toContain('"execution_baseline"')
+          expect(workerPrompt).toContain('"rollbackReference": "HEAD"')
+          expect(workerPrompt).toContain('Run the deterministic snapshot quality check.')
+          const promptExpected = join(conductorQualityScenarioDir, 'ralph-prompt.expected.txt')
+          const normalizedPrompt = workerPrompt.replace(/CON-\d{4}-\d{4}/g, '{{runId}}') + '\n'
+          if (refreshing) await writeFile(promptExpected, normalizedPrompt)
+          expect(normalizedPrompt).toBe(await readFile(promptExpected, 'utf8'))
+          expect(parseJsonl(stageLog('headsman').content)
+            .filter(record => record.type === 'tool/call')
+            .map(record => (record.data as JsonObject | undefined)?.name)).toEqual(['structured_output'])
+        }
+
+        for (const log of [ralphLog ?? stageLog('headsman'), stageLog('auditor')]) {
+          const records = parseJsonl(log.content)
+          const requestHeaders = records.filter(record => record.type === 'request/header')
+          expect(JSON.stringify(requestHeaders)).toContain('conductor_quality_check')
+          const calls = records.filter(record => record.type === 'tool/call')
+          expect(calls.map(record => (record.data as JsonObject | undefined)?.name))
+            .toContain('conductor_quality_check')
+          const results = records.filter(record => record.type === 'tool/result')
+          expect(JSON.stringify(results)).toContain('QUALITY_OK')
+        }
+
+        const parentRecords = parseJsonl(parent.content)
+        const checkpoints = parentRecords.filter(record => record.type === 'conductor/checkpoint')
+        expect(checkpoints).toHaveLength(8)
+        const finalCheckpoint = checkpoints.at(-1)
+        const recordText = (finalCheckpoint?.data as JsonObject | undefined)?.record
+        if (typeof recordText !== 'string') throw new Error('missing final Conductor quality checkpoint record')
+        const record = JSON.parse(recordText) as {
+          status: string
+          qualityExecutions: { gate: string; policyStage: string; executorStage: string; outcome: string; childSessionId: string }[]
+        }
+        expect(record.status).toBe('awaiting_authorization')
+        expect(record.qualityExecutions).toMatchObject([
+          { gate: 'D', policyStage: 'headsman', executorStage: ralph ? 'ralph' : 'headsman', outcome: 'passed' },
+          { gate: 'E', policyStage: 'auditor', executorStage: 'auditor', outcome: 'passed' },
+        ])
+        expect(record.qualityExecutions[0]?.childSessionId)
+          .not.toBe(record.qualityExecutions[1]?.childSessionId)
+      },
+    })
+
+    expect(result.stderr).toBe('')
+    const normalized = normalizeConductorStream(result.stdout, runCwd)
     if (refreshing) await writeFile(streamExpected, normalized)
     expect(normalized).toBe(await readFile(streamExpected, 'utf8'))
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)

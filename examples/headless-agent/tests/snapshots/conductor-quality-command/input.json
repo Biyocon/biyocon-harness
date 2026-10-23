@@ -1,0 +1,8 @@
+{
+  "steps": [
+    {
+      "op": "prompt",
+      "text": "Run the Conductor quality-command snapshot through Gate G."
+    }
+  ]
+}

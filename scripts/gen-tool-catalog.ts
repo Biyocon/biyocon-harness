@@ -23,6 +23,8 @@ import LocalBashExecutor from '@deepseek-ai/dsh-bash-local'
 import * as BashEnvPlugin from '@deepseek-ai/dsh-shell-env'
 import { PwshLocalExecutor } from '@deepseek-ai/dsh-pwsh-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
+import { SandboxProvider } from '@deepseek-ai/dsh-sandbox'
+import type { ConfinedArgv, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentLimits, ImageAttachmentRef, SaveImageAttachment, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
@@ -89,6 +91,18 @@ class CatalogAttachmentStore extends AttachmentStore {
   }
 }
 
+/** Schema-harvest sandbox marker; tool execution is unreachable in this generator. */
+class CatalogSandboxProvider extends SandboxProvider {
+  override confine(argv: readonly string[], _policy: SandboxPolicy): ConfinedArgv {
+    return {
+      argv: [...argv],
+      enforcement: 'full',
+      denialSignatures: [],
+      runnerFailureRules: [],
+    }
+  }
+}
+
 const root = resolve(import.meta.dirname, '..')
 const OUT = 'docs/tool-catalog.md'
 
@@ -101,7 +115,14 @@ const OUT = 'docs/tool-catalog.md'
 function registerCatalogSubagentProvider(ctx: Context, name: string): void {
   const provider: SubagentProvider = {
     name,
-    capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, toolGuard: true, persona: true },
+    capabilities: {
+      outputSchema: true,
+      depthLimit: true,
+      toolFilter: true,
+      toolGuard: true,
+      persona: true,
+      toolContribution: true,
+    },
     inheritsParentContext: false,
     start: () => Promise.reject(new Error('tool-catalog provider cannot start a child')),
     // Declared so consumers configured for continuable background mode mount.
@@ -410,13 +431,15 @@ const TOOL_PACKAGES: ToolPackage[] = [
     pkg: '@deepseek-ai/dsh-tool-conductor',
     dir: 'tool-conductor',
     source: 'packages/conductor/tool-conductor/src/index.ts',
-    requires: ['ctx.tools', 'ctx.subagents', 'ctx.skills', 'ctx.sessions', 'ctx.workflowEngine', 'a calling Agent (exec.agent parents every specialist)'],
+    requires: ['ctx.tools', 'ctx.subagents', 'ctx.skills', 'ctx.sessions', 'ctx.workflowEngine', 'ctx.sandbox', 'ctx.subprocess', 'a calling Agent (exec.agent parents every specialist)'],
     writes: ['tool/call', 'tool/result', 'conductor/checkpoint', 'workflow and child session events through the chosen provider'],
     async mount(ctx) {
       await ctx.plugin(SubagentRuntime)
       registerCatalogSubagentProvider(ctx, 'mock')
       await ctx.plugin(SkillRegistry)
       await ctx.plugin(SessionStore)
+      await ctx.plugin(CatalogSandboxProvider)
+      await ctx.plugin(LocalSubprocessRuntime)
       await ctx.plugin(VmWorkflowEngine, { provider: 'mock' })
       await ctx.plugin(ToolConductor, { subagentProvider: 'mock' })
     },

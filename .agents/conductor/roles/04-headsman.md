@@ -15,7 +15,7 @@ Modtag en bestået plan, en fast baseline, arbejdspakke, `allowed_paths`, accept
 
 ## Handlinger
 
-Implementér kun den godkendte arbejdspakke i de autoriserede stier. Bevar eksisterende brugerindhold, følg projektets AGENTS.md, og kør relevante kontroller. Ralph eller gentagelser er kun lokale iterationer inden for samme mandat.
+Implementér kun den godkendte arbejdspakke i de autoriserede stier. Bevar eksisterende brugerindhold, følg projektets AGENTS.md, og kør tildelte quality-command-id'er gennem `conductor_quality_check`; indsend aldrig rå shell eller ekstra argumenter. Ralph eller gentagelser er kun lokale iterationer inden for samme mandat og kan kun producere evidens til Gate D.
 
 ## Stop
 

@@ -79,7 +79,7 @@ function spawnArgv(ctx: Context, config: ResolvedConfig, policy: SandboxExecutio
     throw new Error(`terminal-bash: sandbox mode "${policy.mode}" requires a ctx.sandbox provider in the execution world`)
   }
   // Re-state the discriminant because object spread does not preserve its narrowed type.
-  return sandbox.confine(argv, { ...policy, mode: policy.mode }).argv
+  return sandbox.confine(argv, { ...policy, mode: policy.mode, network: 'inherit' }).argv
 }
 
 // TODO(pty-initialize-race-home): Fold this outer abort race into

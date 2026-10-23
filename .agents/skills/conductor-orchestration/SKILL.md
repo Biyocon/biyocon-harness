@@ -24,6 +24,7 @@ GO giver aldrig i sig selv lov til commit, push, merge, publicering eller sletni
 Før Detective køres, opret eller genoptag ét run med:
 
 ```yaml
+record_format_version: 1
 run_id: CON-YYYY-NNNN
 objective: <det ønskede resultat>
 scope: []
@@ -31,8 +32,7 @@ input_artifacts: []
 allowed_paths: []
 excluded_paths: []
 authority:
-  owner: <menneske eller Emperor>
-  permitted_actions: [read]
+  owner: <attribution; ikke bevis for myndighed>
 constraints: []
 acceptance_criteria: []
 budget:
@@ -40,9 +40,12 @@ budget:
   max_ralph_rounds: 0
 source_baseline: null
 execution_baseline: null
+baseline_history: []
+execution_authorization: null
 current_stage: detective
 history: []
 specialist_reports: []
+quality_executions: []
 ```
 
 Brug et eksisterende `run_id`, hvis der findes et uafsluttet run med samme mål. Genoptag kun fra sidste dokumenterede, gyldige gate; opfind ikke usete mellemresultater.
@@ -50,7 +53,7 @@ Brug et eksisterende `run_id`, hvis der findes et uafsluttet run med samme mål.
 Afklar før dispatch:
 
 1. Hvad er det konkrete mål, omfang og den ønskede leverance?
-2. Hvilke ændringer og eksterne handlinger er autoriseret?
+2. Hvilke ændringer skal den senere host-godkendte execution baseline tillade?
 3. Hvilken evidens kan vise hvert acceptkriterium?
 4. Hvilke specialister er nødvendige ud over kernestrømmen?
 5. Hvad stopper eller eskalerer arbejdet?
@@ -88,8 +91,8 @@ source_baseline: <version eller null>
 execution_baseline: <Gate-C record eller null>
 allowed_paths: []
 excluded_paths: []
-allowed_actions: <stage allowlist intersected with authority, for eksempel [read, write]>
-prohibited_actions: [commit, push, merge, release, publish, deploy, shell, <alle handlinger afvist af stage eller authority>]
+allowed_actions: <stage allowlist intersected med den host-godkendte execution-effektprofil>
+prohibited_actions: [commit, push, merge, release, publish, deploy, shell, <alle handlinger uden for effektprofilen>]
 acceptance_criteria: []
 constraints: []
 questions_to_resolve: []
@@ -101,7 +104,9 @@ Brug fresh spawn med eksplicit handoff til uafhængige reviews. Brug fork kun, n
 
 ## Baseline og ændringskontrol
 
-Efter Gate C opretter Conductor en immutable execution baseline med scope-, plan- og acceptance-versioner, ejerautoriserede stier, eksklusioner og rollback-reference. Gate C må ikke udvide runnets `allowed_paths` eller fjerne `excluded_paths`.
+Efter Gate C opretter Conductor en immutable execution baseline med scope-, plan- og acceptance-versioner, foreslåede stier, eksklusioner, rollback-reference og deployment-resolverede quality-command bindings. En specialist vælger kun opaque command-id'er fra Conductorens katalog; hosten binder de valgte definition hashes og godkender baseline-hash, kanoniske stier og effektprofil gennem approval-seamen. `authority.owner` er kun attribution. Afvist, annulleret eller utilgængelig approval starter ingen write-capable child eller quality subprocess. Quality execution anvender eksakt argv med `external: none`, netværksforbud og fuld sandbox-håndhævelse.
+
+Scope- eller plan-rework deaktiverer den aktive baseline og dens execution-autorisation. Baselinehistorik, gate records og quality evidence bevares til audit, men gammel evidens kan aldrig opfylde en ny baseline eller gate-cycle.
 
 Hvis Headsman opdager et materielt afvigelsesbehov, stopper arbejdet ved grænsen og returnerer change request til Conductor. Conductor kan godkende en klart autoriseret, lille ændring eller route den til Strategist og Devil's Advocate. Udvid aldrig scope stiltiende.
 
@@ -122,10 +127,10 @@ next_stage: integrator
 state_update: <kort, konkret ændring>
 ```
 
-Et `pass` kræver relevant, frisk evidens mod acceptkriterierne. Manglende evidens er ikke et pass. Brug `rework` for en kendt, afgrænset rettelse; `escalate` når mål, risiko eller myndighed kræver en ejerbeslutning; brug `abort` ved stopbetingelse eller når videre arbejde ikke længere er forsvarligt.
+Et `pass` kræver relevant, frisk evidens mod acceptkriterierne. For Gate D og E betyder det en bestået `QualityExecutionRecord` for hver command binding, produceret i den aktuelle dispatch og cycle og citeret via unikke `quality_evidence_ids`; Gate E accepterer kun den friske Auditors egne records. Ukendte, historiske, fremmede eller duplikerede ids afvises før specialistreporten persisteres. Manglende evidens er ikke et pass. Brug `rework` for en kendt, afgrænset rettelse; `escalate` når mål, risiko eller myndighed kræver en ejerbeslutning; brug `abort` ved stopbetingelse eller når videre arbejde ikke længere er forsvarligt.
 
 ## Traceability og afslutning
 
 Knyt alle væsentlige elementer til `run_id`: mandat, krav, plan, challenge, baseline, changeset, testresultat, delivery package og Arbiter-beslutning. Henvis til konkrete artefakter og kommandooutput frem for fritekstpåstande.
 
-Efter Gate G anvendes `conductor-closeout`. Et run er først afsluttet, når outcome og den krævede efterfølgende verifikation er dokumenteret.
+Efter Gate G anvendes `conductor-closeout` gennem en host-ejet kanal. Det modelvendte Conductor-tool accepterer ikke closeout-autorisation som modelargument. Et run er først afsluttet, når outcome og den krævede efterfølgende verifikation er dokumenteret.

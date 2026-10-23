@@ -8,7 +8,7 @@ import { ConductorRunId, createRun, serializeRun } from '../src/index.ts'
 function record(runId = ConductorRunId('CON-2026-0001')): string {
   return serializeRun(createRun(runId, {
     objective: 'validate durable checkpoints',
-    authority: { owner: 'user', permittedActions: ['read'] },
+    authority: { owner: 'user' },
   }))
 }
 

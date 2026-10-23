@@ -282,10 +282,17 @@ describe('dsh-subagent-spawn-in-process', () => {
     await parentHandle.dispose()
   })
 
-  it('advertises every start-time capability (depthLimit, outputSchema, toolFilter, toolGuard, persona)', async () => {
+  it('advertises every start-time capability', async () => {
     const { ctx } = await setup([])
     const provider = ctx.subagents.getProvider('spawn')!
-    expect(provider.capabilities).toEqual({ outputSchema: true, depthLimit: true, toolFilter: true, toolGuard: true, persona: true })
+    expect(provider.capabilities).toEqual({
+      outputSchema: true,
+      depthLimit: true,
+      toolFilter: true,
+      toolGuard: true,
+      persona: true,
+      toolContribution: true,
+    })
   })
 
   it('unregisters the provider when its fiber is disposed (HMR safety)', async () => {
@@ -458,6 +465,27 @@ describe('dsh-subagent-spawn-in-process', () => {
       expect(JSON.stringify(toolResult.data)).toContain('outside denied')
       expect(executions).toBe(0)
       await run.dispose()
+    })
+
+    it('installs a contributed tool only in the fresh child scope', async () => {
+      const { ctx, parent, adapter } = await setup([
+        toolCallResponse('c1', 'child_quality_check', {}),
+        textResponse('done'),
+      ])
+      const run = await start(ctx, 'spawn', {
+        prompt: [{ type: 'text', text: 'run the check' }],
+        parent,
+        toolFilter: { allow: [] },
+        toolContribution: childCtx => childCtx.tools.register(defineContentToolFixture({
+          name: 'child_quality_check', description: 'child only', parameters: {},
+          execute: () => Promise.resolve([{ type: 'text', text: 'passed' }]),
+        })),
+      })
+      expect((await run.result).stopReason).toBe('completed')
+      expect((adapter.requests[0]!.tools ?? []).map(tool => tool.name)).toContain('child_quality_check')
+      expect(ctx.tools.get('child_quality_check')).toBeUndefined()
+      await run.dispose()
+      expect(ctx.tools.get('child_quality_check')).toBeUndefined()
     })
 
     it('an unknown toolFilter name fails the spawn loudly with no orphaned child', async () => {

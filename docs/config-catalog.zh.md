@@ -1472,14 +1472,24 @@ export interface Config {
 export interface Config {
   /**
    * Override the runner argv; bwrap-compatible profile arguments are appended. A
-   * non-empty override asserts full enforcement and skips built-in selection and
-   * probing. A runner that starts but refuses its profile must be identifiable by
+   * non-empty override asserts full file enforcement and skips built-in selection
+   * and probing; network-denial enforcement is configured separately. A runner
+   * that starts but refuses its profile must be identifiable by
    * {@link runnerFailureSignatures}. Consumers classify a spawn rejection only after
    * confirming the workdir is usable. `ENOENT` or `EACCES` identifies the runner when
    * `error.path` equals argv[0] and `error.syscall` is `spawn` or `spawn <runner>`, or
    * when `error.path` is absent and `error.syscall` is exactly `spawn <runner>`.
    */
   runnerCommand?: string[]
+  /**
+   * Enforcement the configured runner claims for `network: deny`. The appended
+   * bwrap-compatible `--unshare-net` profile isolates IP networking but does not
+   * block host Unix-domain sockets exposed through read-only mounts, so the
+   * default is `partial`. Set `full` only when the configured runner adds a
+   * stronger mechanism that denies every network operation beyond that profile.
+   * Rejected without {@link runnerCommand}.
+   */
+  runnerNetworkDenyEnforcement?: SandboxEnforcement
   /**
    * Case-insensitive stderr substrings emitted when a configured
    * {@link runnerCommand} refuses its profile before executing the wrapped
@@ -1492,6 +1502,8 @@ export interface Config {
   probeTimeoutMs?: number
 }
 ```
+
+依赖：[`SandboxEnforcement`](../packages/sandbox/sandbox/src/index.ts)
 
 来源：[`packages/sandbox/sandbox-local/src/index.ts:44`](../packages/sandbox/sandbox-local/src/index.ts)
 
@@ -2378,7 +2390,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-tool-conductor`
 
-需要：`tools` · `subagents` · `skills` · `sessions` · `workflowEngine`
+需要：`tools` · `subagents` · `skills` · `sessions` · `workflowEngine` · `sandbox` · `subprocess`
 
 ```ts config-catalog
 /** Deployment policy for the Conductor tool. */
@@ -2391,10 +2403,38 @@ export interface Config {
   maxRalphRounds?: number
   /** Maximum serialized characters in one Ralph handoff (default 16384). */
   maxRalphHandoffChars?: number
+  /** Deployment-owned exact-argv command catalog; empty by default. */
+  qualityCommands?: QualityCommandConfig[]
+}
+
+/** Configured exact-argv quality command. */
+export interface QualityCommandConfig {
+  /** Opaque normalized id exposed to specialists. */
+  id: string
+  /** Command purpose text safe to include in a model prompt. */
+  modelSafeDescription: string
+  /** Exact executable and argument vector; no shell parsing or argument expansion is performed. */
+  argv: string[]
+  /** Workspace-relative working directory. */
+  cwd: string
+  /** Workspace-relative writable root required by workspace-write mode. */
+  writeRoot?: string
+  /** Specialist policy stages permitted to execute the command. */
+  allowedStages: QualityPolicyStage[]
+  /** Required filesystem confinement mode. */
+  sandboxMode: 'read-only' | 'workspace-write'
+  /** Maximum execution time in milliseconds. */
+  timeoutMs: number
+  /** Maximum collected bytes for each output stream. */
+  maxOutputBytes: number
+  /** Termination grace period in milliseconds. */
+  graceMs: number
 }
 ```
 
-来源：[`packages/conductor/tool-conductor/src/index.ts:52`](../packages/conductor/tool-conductor/src/index.ts)
+依赖：[`QualityPolicyStage`](../packages/conductor/conductor/src/index.ts)
+
+来源：[`packages/conductor/tool-conductor/src/index.ts:67`](../packages/conductor/tool-conductor/src/index.ts)
 
 <a id="deepseek-aidsh-tool-fs"></a>
 
