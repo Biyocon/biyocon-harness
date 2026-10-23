@@ -2,8 +2,40 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
+import { launchWebScaffold } from './scaffold.ts'
 
 const DIST_ROOT = fileURLToPath(new URL('../dist', import.meta.url))
+
+it('serves built PNG assets through the shipped web composition', async () => {
+  const scaffold = await launchWebScaffold()
+  try {
+    const metadata: string[] = []
+    for (const filename of [
+      'favicon.png',
+      'apple-touch-icon.png',
+      'biyocon-brandmark.png',
+      'biyocon-wordmark.png',
+      'biyocon-brandmark-192.png',
+      'biyocon-brandmark-512.png',
+    ]) {
+      const get = await fetch(`${scaffold.baseUrl}/${filename}`)
+      expect(Buffer.from(await get.arrayBuffer())).toEqual(await readFile(join(DIST_ROOT, filename)))
+      const head = await fetch(`${scaffold.baseUrl}/${filename}`, { method: 'HEAD' })
+      expect((await head.arrayBuffer()).byteLength).toBe(0)
+      metadata.push(`${filename}: GET ${get.status} ${get.headers.get('content-type')}; HEAD ${head.status} ${head.headers.get('content-type')}`)
+    }
+    expect(metadata.join('\n')).toMatchInlineSnapshot(`
+      "favicon.png: GET 200 image/png; HEAD 200 image/png
+      apple-touch-icon.png: GET 200 image/png; HEAD 200 image/png
+      biyocon-brandmark.png: GET 200 image/png; HEAD 200 image/png
+      biyocon-wordmark.png: GET 200 image/png; HEAD 200 image/png
+      biyocon-brandmark-192.png: GET 200 image/png; HEAD 200 image/png
+      biyocon-brandmark-512.png: GET 200 image/png; HEAD 200 image/png"
+    `)
+  } finally {
+    await scaffold.close()
+  }
+})
 
 it('ships install metadata with the built web application', async () => {
   const index = await readFile(join(DIST_ROOT, 'index.html'), 'utf8')

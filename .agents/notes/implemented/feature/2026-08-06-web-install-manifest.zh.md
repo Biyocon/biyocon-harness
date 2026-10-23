@@ -16,11 +16,11 @@ Web 入口链接 `/manifest.webmanifest`，Vite 会将其从 `apps/web/public/` 
 
 manifest 有意不包含 `lang`、`theme_color` 或 `background_color`。产品界面支持双语，并不由 manifest 中的单一语言定义；任一静态颜色值都可能与应用解析后的一套调色板不一致。因此，主题元数据仍放在安装 manifest 之外。
 
-该功能不添加 service worker、缓存策略或离线回退。manifest 只提供安装元数据；是否具备安装资格、是否提供安装入口仍由浏览器策略决定。实际交付的 [`dsh-host-frontend-static`](../../../../packages/host/frontend-static/README.md) 回退将 `.webmanifest` 识别为 `application/manifest+json`，因此同一资产经实际交付的 HTTP 组合提供时同样有效，而不只在 Vite 输出目录中有效。
+该功能不添加 service worker、缓存策略或离线回退。manifest 只提供安装元数据；是否具备安装资格、是否提供安装入口仍由浏览器策略决定。实际交付的 [`dsh-host-frontend-static`](../../../../packages/host/frontend-static/README.md) 回退将 `.webmanifest` 识别为 `application/manifest+json`，将 `.png` 识别为 `image/png`，因此 manifest 及其图标经实际交付的 HTTP 组合提供时也具有其声明的媒体类型，而不只在 Vite 输出目录中如此。
 
 ## 验证
 
-Web 构建产物测试解析输出的 manifest，并固定完整的元数据对象，包括面向用户显示的名称、简称、两个 PNG 图标、根路径身份、启动边界和显示模式，同时验证生产构建的 `index.html` 仍保留该链接。其他构建产物检查固定两个 manifest 图标（192 与 512 像素）、`favicon.png`（32 像素）与 `apple-touch-icon.png`（180 像素）的 PNG 签名、`IHDR` 文件头和正方形尺寸；这些检查不解码像素，也不验证资产来源。`dsh-host-frontend-static` 的真实 Loader 组合测试提供一个 `.webmanifest` fixture（测试前置数据），并固定其 `application/manifest+json` 媒体类型。
+Web 构建产物测试解析输出的 manifest，并固定完整的元数据对象，包括面向用户显示的名称、简称、两个 PNG 图标、根路径身份、启动边界和显示模式，同时验证生产构建的 `index.html` 仍保留该链接。其他构建产物检查固定两个 manifest 图标（192 与 512 像素）、`favicon.png`（32 像素）与 `apple-touch-icon.png`（180 像素）的 PNG 签名、`IHDR` 文件头和正方形尺寸；这些检查不解码像素，也不验证资产来源。真实 Loader HTTP 测试固定 manifest 的媒体类型和 PNG 的 GET／HEAD 元数据。Web 构建产物的 HTTP 快照使用实际交付的 base 与 Web 组合包，固定 favicon、触摸图标、品牌图标、文字标识及两个 manifest 图标的 `image/png` 类型，并要求 GET 响应体与构建文件逐字节相同、HEAD 响应体为空。
 
 ## 曾考虑的替代方案
 
