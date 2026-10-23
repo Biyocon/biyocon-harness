@@ -204,9 +204,19 @@ describe('dsh-conductor drive', () => {
   it('turns unavailable or mismatched Gate C authorization into a controlled blocker', async () => {
     for (const authorizeExecution of [
       () => Promise.reject(new Error('approval service offline')),
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- plugin dispatchers may reject with a non-Error value.
+      () => Promise.reject('approval transport unavailable'),
       () => Promise.resolve({
         executionBaselineHash: 'f'.repeat(64),
         effectProfile: { filesystem: 'workspace-write' as const, quality: 'none' as const, external: 'none' as const },
+      }),
+      async (_run: ConductorRun, baseline: Parameters<ConductorDispatcher['authorizeExecution']>[1]) => ({
+        executionBaselineHash: executionBaselineHash(baseline),
+        effectProfile: { filesystem: 'read-only' as const, quality: 'none' as const, external: 'none' as const },
+      }),
+      async (_run: ConductorRun, baseline: Parameters<ConductorDispatcher['authorizeExecution']>[1]) => ({
+        executionBaselineHash: executionBaselineHash(baseline),
+        effectProfile: { filesystem: 'workspace-write' as const, quality: 'catalog' as const, external: 'none' as const },
       }),
     ]) {
       const outcome = await drive(makeRun(), {
@@ -481,9 +491,15 @@ describe('dsh-conductor drive', () => {
       stdoutSha256: 'b'.repeat(64), stderrSha256: 'c'.repeat(64),
       stdoutTruncated: false, stderrTruncated: false,
     }
-    for (const qualityEvidenceIds of [['unknown'], [evidenceId, evidenceId]]) {
+    for (const { cited, records, previous } of [
+      { cited: ['unknown'], records: [record], previous: [] },
+      { cited: [evidenceId, evidenceId], records: [record], previous: [] },
+      { cited: [evidenceId], records: [record, record], previous: [] },
+      { cited: [evidenceId], records: [record], previous: [record] },
+    ]) {
       const outcome = await drive(makeRun({
         currentStage: 'headsman', sourceBaseline: 'HEAD', baseline, baselineHistory: [baseline],
+        qualityExecutions: previous,
         executionAuthorization: {
           executionBaselineHash: executionBaselineHash(baseline),
           effectProfile: { filesystem: 'workspace-write', quality: 'catalog', external: 'none' },
@@ -492,15 +508,15 @@ describe('dsh-conductor drive', () => {
         authorizeExecution: authorize,
         async dispatchSpecialist() {
           return {
-            envelope: makeEnvelope('headsman', { quality_evidence_ids: qualityEvidenceIds }),
-            qualityExecutions: [record],
+            envelope: makeEnvelope('headsman', { quality_evidence_ids: cited }),
+            qualityExecutions: records,
             requiredQualityCommands: [QUALITY_BINDING],
           }
         },
         async dispatchArbiter() { return makeDecision() },
       })
       expect(outcome.kind).toBe('blocked')
-      expect(outcome.run.qualityExecutions).toEqual([record])
+      expect(outcome.run.qualityExecutions).toEqual([...previous, ...records])
       expect(outcome.run.specialistReports).toEqual([])
     }
   })
@@ -623,6 +639,13 @@ describe('dsh-conductor drive', () => {
       [{ ...valid, allowedPaths: [1] }, /allowedPaths/],
       [{ ...valid, excludedPaths: [' '] }, /excludedPaths/],
       [{ ...valid, excludedPaths: ['private'] }, /excludedPaths.*owner-declared/],
+      [{ ...valid, qualityCommands: null }, /qualityCommands must be an array/],
+      [{ ...valid, qualityCommands: [null] }, /must contain bindings/],
+      [{ ...valid, qualityCommands: [[]] }, /must contain bindings/],
+      [{ ...valid, qualityCommands: ['unit-check'] }, /must contain bindings/],
+      [{ ...valid, qualityCommands: [{ ...QUALITY_BINDING, id: ' ' }] }, /normalized id/],
+      [{ ...valid, qualityCommands: [{ ...QUALITY_BINDING, definitionHash: 'bad' }] }, /SHA-256/],
+      [{ ...valid, qualityCommands: [QUALITY_BINDING, QUALITY_BINDING] }, /must be unique/],
     ]
     for (const [execution_baseline, message] of malformed) {
       const outcome = await drive(

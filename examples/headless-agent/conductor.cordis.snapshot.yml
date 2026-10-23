@@ -42,7 +42,7 @@
             config:
               subagentProvider: spawn
               maxReworkCycles: 3
-              maxRalphRounds: 0
+              maxRalphRounds: !!js Number(process.env.DSH_CONDUCTOR_RALPH_ROUNDS ?? 0)
               maxRalphHandoffChars: 16384
               qualityCommands:
                 - id: snapshot-check

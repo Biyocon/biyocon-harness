@@ -193,6 +193,116 @@ function specialistReport() {
 }
 
 describe('dsh-conductor persistence', () => {
+  it('rejects malformed baseline history, bindings, and host authorizations', () => {
+    const valid = makeQualityRun()
+    const baseline = valid.baseline!
+    const binding = baseline.qualityCommands[0]!
+    const newer = { ...baseline, planVersion: 'plan-new' }
+    const newHash = executionBaselineHash(newer)
+    const updated = {
+      ...valid, baseline: newer, baselineHistory: [baseline, newer],
+      executionAuthorization: { ...valid.executionAuthorization!, executionBaselineHash: newHash },
+    }
+    const invalid: Array<[unknown, RegExp]> = [
+      [{ ...valid, baselineHistory: null }, /baselineHistory must be an array/],
+      [{ ...valid, baseline: { ...baseline, qualityCommands: null } }, /qualityCommands must be an array/],
+      [{ ...valid, baseline: { ...baseline, qualityCommands: [{ ...binding, argv: ['unsafe'] }] } }, /unsupported field argv/],
+      [{ ...valid, baseline: { ...baseline, qualityCommands: [{ ...binding, definitionHash: 'bad' }] } }, /definitionHash must be SHA-256/],
+      [{ ...valid, baseline: { ...baseline, qualityCommands: [{ ...binding, requiredGates: null }] } }, /requiredGates/],
+      [{ ...valid, baseline: { ...baseline, qualityCommands: [{ ...binding, requiredGates: [] }] } }, /requiredGates/],
+      [{ ...valid, baseline: { ...baseline, qualityCommands: [{ ...binding, requiredGates: ['D', 'D'] }] } }, /requiredGates/],
+      [{ ...valid, baseline: newer }, /latest baselineHistory/],
+      [{ ...valid, baselineHistory: [baseline, newer] }, /latest baselineHistory/],
+      [{ ...valid, executionAuthorization: null }, /requires executionAuthorization/],
+      [{ ...valid, baseline: null }, /requires an active baseline/],
+      [{ ...valid, executionAuthorization: { ...valid.executionAuthorization, extra: true } }, /unsupported field extra/],
+      [{ ...valid, executionAuthorization: { ...valid.executionAuthorization, executionBaselineHash: 'f'.repeat(64) } }, /does not match active baseline/],
+      [{ ...valid, history: valid.history.map(record => ({ ...record, executionBaselineHash: 'bad' })) }, /unknown execution baseline/],
+      [{ ...valid, history: valid.history.map(record => ({ ...record, executionBaselineHash: 'f'.repeat(64) })) }, /unknown execution baseline/],
+      [{ ...makeRun(), history: [gateRecord({
+        gate: 'A', stage: 'detective', decision: 'pass', nextStage: 'strategist', executionBaselineHash: 'a'.repeat(64),
+      })] }, /cannot carry executionBaselineHash/],
+      [{ ...valid, history: [] }, /baselineHistory must exactly follow/],
+      [{ ...updated, history: [...valid.history, gateRecord({
+        gate: 'C', stage: 'devils-advocate', decision: 'pass', nextStage: 'headsman', executionBaselineHash: newHash,
+      }), valid.history[1]!] }, /does not use the latest Gate C baseline/],
+      [{ ...valid, baseline: null, executionAuthorization: null }, /active baseline does not match documented/],
+    ]
+    for (const effectProfile of [
+      { ...valid.executionAuthorization!.effectProfile, extra: true },
+      { ...valid.executionAuthorization!.effectProfile, filesystem: 'workspace-write' },
+      { ...valid.executionAuthorization!.effectProfile, quality: 'none' },
+      { ...valid.executionAuthorization!.effectProfile, external: 'publish' },
+    ]) {
+      invalid.push([{ ...valid, executionAuthorization: { ...valid.executionAuthorization, effectProfile } }, /invalid effect profile/])
+    }
+    for (const [record, message] of invalid) {
+      expect(() => parseRun(JSON.stringify(record))).toThrow(message)
+    }
+  })
+
+  it('validates every durable execution outcome field and its gate attempt', () => {
+    const valid = makeQualityRun()
+    const evidence = valid.qualityExecutions[0]!
+    const invalid: Array<[Record<string, unknown>, RegExp]> = [
+      [{ definitionHash: 'bad' }, /definitionHash must be SHA-256/],
+      [{ commandId: 'unknown' }, /does not match a baseline binding/],
+      [{ definitionHash: 'f'.repeat(64) }, /does not match a baseline binding/],
+      [{ gate: 'F' }, /gate is invalid/],
+      [{ cycle: 0 }, /cycle is invalid/],
+      [{ cycle: 1.5 }, /cycle is invalid/],
+      [{ cycle: 2 }, /no documented gate attempt/],
+      [{ policyStage: 'integrator' }, /policyStage is invalid/],
+      [{ executorStage: 'integrator' }, /executorStage is invalid/],
+      [{ policyStage: 'auditor' }, /stage does not match gate/],
+      [{ outcome: 'unknown' }, /outcome is invalid/],
+      [{ outcome: 'failed' }, /failure is invalid/],
+      [{ outcome: 'failed', failure: 'unknown' }, /failure is invalid/],
+      [{ failure: 'timeout' }, /passed with a failure/],
+      [{ exitCode: '' }, /exitCode is invalid/],
+      [{ signal: 1 }, /signal is invalid/],
+      [{ exitCode: 2 }, /passed without a clean exit/],
+      [{ signal: 'SIGTERM' }, /passed without a clean exit/],
+      [{ outcome: 'failed', failure: 'signal', signal: null }, /requires a signal/],
+      [{ outcome: 'failed', failure: 'signal', signal: '' }, /requires a signal/],
+      [{ stdoutSha256: 'bad' }, /stdoutSha256 must be SHA-256/],
+      [{ stderrSha256: 'bad' }, /stderrSha256 must be SHA-256/],
+      [{ stdoutTruncated: 1 }, /truncation flags/],
+      [{ stderrTruncated: 1 }, /truncation flags/],
+    ]
+    for (const [patch, message] of invalid) {
+      expect(() => parseRun(JSON.stringify({ ...valid, qualityExecutions: [{ ...evidence, ...patch }] }))).toThrow(message)
+    }
+    expect(() => parseRun(JSON.stringify({ ...valid, qualityExecutions: null }))).toThrow(/qualityExecutions must be an array/)
+    expect(() => parseRun(JSON.stringify({ ...valid, qualityExecutions: [evidence, evidence] }))).toThrow(/ids must not contain duplicates/)
+    expect(() => parseRun(JSON.stringify({
+      ...valid, history: [...valid.history, gateRecord({
+        gate: 'E', stage: 'auditor', decision: 'escalate', executionBaselineHash: executionBaselineHash(valid.baseline!),
+      })], qualityExecutions: [{ ...evidence, gate: 'E', policyStage: 'headsman' }],
+    }))).toThrow(/stage does not match gate/)
+  })
+
+  it('round-trips a failed gate attempt and plan rework without losing historical evidence', () => {
+    const valid = makeQualityRun()
+    const failed = {
+      ...valid, currentStage: 'headsman' as const, status: 'escalated' as const,
+      history: valid.history.map((record) => {
+        if (record.gate !== 'D') return record
+        const { nextStage: _nextStage, ...attempt } = record
+        return { ...attempt, decision: 'escalate' as const }
+      }),
+      qualityExecutions: valid.qualityExecutions.map(record => ({
+        ...record, outcome: 'failed' as const, failure: 'signal' as const, exitCode: null, signal: 'SIGTERM',
+      })),
+    }
+    expect(parseRun(serializeRun(failed))).toEqual(failed)
+    const reworked = recordGate(valid, {
+      decision: 'rework', defectClass: 'plan', nextStage: 'strategist',
+      basis: ['revise plan'], evidenceReviewed: ['review'], stateUpdate: 'replan',
+    })
+    expect(parseRun(serializeRun(reworked))).toEqual(reworked)
+  })
+
   it('round-trips a run through the JSON wire format unchanged', () => {
     const run = makeRun({
       currentStage: 'strategist',
@@ -394,7 +504,7 @@ describe('dsh-conductor persistence', () => {
       startedAt: '2026-10-10T00:00:02.000Z',
       finishedAt: '2026-10-10T00:00:03.000Z',
     }
-    expect(() => parseRun(serializeRun({
+    const verified: ConductorRun = {
       ...valid,
       currentStage: 'integrator',
       history: [
@@ -409,7 +519,10 @@ describe('dsh-conductor persistence', () => {
         { ...valid.specialistReports[0]!, stage: 'auditor', summary: 'independently verified', quality_evidence_ids: [evidenceId] },
       ],
       qualityExecutions: [...valid.qualityExecutions, gateEEvidence],
-    }))).toThrow(/Gate E pass lacks independent single-child Auditor evidence/)
+    }
+    expect(() => parseRun(serializeRun(verified))).toThrow(/Gate E pass lacks independent single-child Auditor evidence/)
+    verified.qualityExecutions[1] = { ...gateEEvidence, childSessionId: SessionId('independent-auditor') }
+    expect(parseRun(serializeRun(verified))).toEqual(verified)
   })
 
   it('rejects invalid durable gate applicability metadata', () => {

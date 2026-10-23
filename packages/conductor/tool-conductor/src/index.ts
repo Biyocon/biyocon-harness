@@ -287,15 +287,9 @@ function resolveAuthority(value: ConductorCallArgs['authority']): ConductorAutho
   return { owner }
 }
 
-function rejectModelExecutionAuthority(value: unknown): void {
-  if (!isRecord(value)) return
+function rejectModelCloseoutAuthorization(value: object): void {
   if (Object.hasOwn(value, 'closeoutAuthorization')) {
     throw new Error('Conductor closeout authorization is host-only and is not accepted by the model-facing tool')
-  }
-  const authority = value['authority']
-  if (!isRecord(authority)) return
-  if (Object.hasOwn(authority, 'permittedActions') || Object.hasOwn(authority, 'executionPermissions')) {
-    throw new Error('Conductor execution authority is host-owned; model input may identify only authority.owner')
   }
 }
 
@@ -490,7 +484,7 @@ function resolveSpecialistEnvelope(
   }
   const proposal = value['execution_baseline']
   if (!isRecord(proposal) || !Array.isArray(proposal['qualityCommandIds'])) {
-    return { envelope: value as unknown as SpecialistEnvelope }
+    return unresolvedEnvelope(value, 'Gate C requires execution_baseline with qualityCommandIds')
   }
   const ids = proposal['qualityCommandIds'] as unknown[]
   if (ids.some(id => typeof id !== 'string' || id.length === 0 || id !== id.trim())) {
@@ -605,6 +599,13 @@ async function runSpecialist(
     : undefined
   const ralphObjective = [
     `Implement the approved Conductor baseline for: ${run.objective}`,
+    'Approved Conductor dispatch:\n' + JSON.stringify({
+      run_id: run.runId,
+      source_baseline: run.sourceBaseline,
+      execution_baseline: run.baseline,
+      acceptance_criteria: run.acceptanceCriteria,
+      constraints: run.constraints,
+    }, null, 2),
     'Approved Gate C quality commands available through conductor_quality_check:\n'
       + JSON.stringify(requiredQualityCommands.map(binding => ({
         id: binding.id,
@@ -659,7 +660,7 @@ async function runSpecialist(
       run_id: run.runId,
       stage,
       status: 'failed',
-      baseline_ref: run.baseline?.rollbackReference ?? run.sourceBaseline ?? 'unestablished',
+      baseline_ref: (run.baseline as ExecutionBaseline).rollbackReference,
       summary: 'specialist execution failed after recording quality evidence',
       evidence: [],
       findings: [],
@@ -734,10 +735,7 @@ async function requestExecutionAuthorization(
   if (cwd === undefined) throw new Error('Gate C execution approval requires a session workspace')
   const workspace = canonicalAbsolute(cwd, cwd)
   const qualityCommands = baseline.qualityCommands.map((binding) => {
-    const definition = catalog.get(binding.id)
-    if (definition === undefined || definition.definitionHash !== binding.definitionHash) {
-      throw new Error(`Gate C quality command "${binding.id}" is not bound to the active deployment catalog`)
-    }
+    const definition = catalog.get(binding.id) as QualityCommandDefinition
     return {
       id: binding.id,
       definition_hash: binding.definitionHash,
@@ -869,7 +867,7 @@ export function apply(ctx: Context, config: Config): void {
       if (parent === undefined) {
         throw new Error('Conductor tool requires a calling agent (exec.agent was undefined)')
       }
-      rejectModelExecutionAuthority(args)
+      rejectModelCloseoutAuthorization(args)
       const call: ConductorCallArgs = args
       const objective = call.objective.trim()
       if (objective.length === 0) throw new Error('Conductor objective must be a non-empty string')

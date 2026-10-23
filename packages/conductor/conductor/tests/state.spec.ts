@@ -180,6 +180,20 @@ describe('dsh-conductor gate engine', () => {
       ...PASS, executionBaselineHash: hash,
     })).toThrow(/host-authorized/)
     expect(() => recordGate(run, { ...PASS, executionBaselineHash: 'f'.repeat(64) })).toThrow(/baseline hash/)
+    expect(() => recordGate({ ...run, executionAuthorization: {
+      ...run.executionAuthorization!, executionBaselineHash: 'f'.repeat(64),
+    } }, { ...PASS, executionBaselineHash: hash })).toThrow(/authorization does not match/)
+    for (const effectProfile of [
+      { filesystem: 'workspace-write', quality: 'none', external: 'none' },
+      { filesystem: 'read-only', quality: 'catalog', external: 'none' },
+    ] as const) {
+      expect(() => recordGate({ ...run, executionAuthorization: {
+        executionBaselineHash: hash, effectProfile,
+      } }, { ...PASS, executionBaselineHash: hash })).toThrow(/required execution effects/)
+    }
+    expect(() => recordGate({ ...run, currentStage: 'headsman' }, {
+      ...PASS, executionBaselineHash: 'f'.repeat(64),
+    })).toThrow(/does not match the active baseline/)
     expect(recordGate(run, { ...PASS, executionBaselineHash: hash }).history[0]).toMatchObject({
       gate: 'C', decision: 'pass', executionBaselineHash: hash,
     })

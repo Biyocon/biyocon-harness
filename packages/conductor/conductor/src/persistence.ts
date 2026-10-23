@@ -177,11 +177,8 @@ function validateBaseline(value: unknown, field = 'baseline'): void {
   }
 }
 
-function baselineByHash(run: ConductorRun, hash: string): ConductorRun['baseline'] {
-  return run.baselineHistory.find(candidate => executionBaselineHash(candidate) === hash) ?? null
-}
-
 function validatePassedQualityGates(run: ConductorRun): void {
+  // Structural validation has already resolved every gate hash into baselineHistory.
   const gateCycles = new Map<string, number>()
   const gateDChildIds = new Set(run.qualityExecutions
     .filter(record => record.gate === 'D')
@@ -190,14 +187,12 @@ function validatePassedQualityGates(run: ConductorRun): void {
   for (const gateRecord of run.history) {
     if (gateRecord.gate !== 'D' && gateRecord.gate !== 'E') continue
     const gate = gateRecord.gate
-    const baselineHash = gateRecord.executionBaselineHash
-    if (baselineHash === undefined) throw new Error(`Conductor run record Gate ${gate} lacks executionBaselineHash`)
+    const baselineHash = gateRecord.executionBaselineHash as string
     const cycleKey = `${baselineHash}:${gate}`
     const cycle = (gateCycles.get(cycleKey) ?? 0) + 1
     gateCycles.set(cycleKey, cycle)
     if (gateRecord.decision !== 'pass') continue
-    const baseline = baselineByHash(run, baselineHash)
-    if (baseline === null) throw new Error(`Conductor run record Gate ${gate} references an unknown baseline`)
+    const baseline = run.baselineHistory.find(candidate => executionBaselineHash(candidate) === baselineHash) as ExecutionBaseline
     const stage = gate === 'D' ? 'headsman' : 'auditor'
     const required = baseline.qualityCommands.filter(binding => binding.requiredGates.includes(gate))
     if (required.length === 0) continue

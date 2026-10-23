@@ -1,4 +1,7 @@
 import { PassThrough } from 'node:stream'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
@@ -24,6 +27,8 @@ import type {
 } from '@deepseek-ai/dsh-subprocess'
 import { describe, expect, it } from 'vitest'
 import { qualityToolContribution } from '../src/quality-executor.ts'
+import type { QualityToolScope } from '../src/quality-executor.ts'
+import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { resolveQualityCatalog } from '../src/quality-catalog.ts'
 import type { QualityCommandConfig } from '../src/quality-catalog.ts'
 
@@ -56,13 +61,16 @@ class RecordingSubprocess extends SubprocessRuntime {
   spawnError: Error | undefined
   doneError: Error | undefined
   rejectOnAbort = false
+  completeOnAbort = false
+  omitOutput = false
+  lossy = false
   waitForExitCalls = 0
   resolveExecutable(command: string): Promise<string> { return Promise.resolve(command) }
   spawn(spec: SubprocessSpawnSpec): SubprocessHandle {
     if (spec.signal?.aborted === true) throw new Error(`aborted before spawn: ${String(spec.signal.reason ?? 'aborted')}`)
     if (this.spawnError !== undefined) throw this.spawnError
     this.lastSpec = spec
-    const read = (text: string): SubprocessOutputRead => ({ text, nextOffset: text.length, lossy: false })
+    const read = (text: string): SubprocessOutputRead => ({ text, nextOffset: text.length, lossy: this.lossy })
     const done = this.doneError !== undefined
       ? Promise.reject(this.doneError)
       : this.rejectOnAbort
@@ -74,13 +82,17 @@ class RecordingSubprocess extends SubprocessRuntime {
             reject(reason instanceof Error ? reason : new Error(String(reason)))
           }, { once: true })
         })
-        : Promise.resolve({ exitCode: this.exitCode, signal: this.signal })
+        : this.completeOnAbort
+          ? new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+            spec.signal!.addEventListener('abort', () => { resolve({ exitCode: 0, signal: null }) }, { once: true })
+          })
+          : Promise.resolve({ exitCode: this.exitCode, signal: this.signal })
     return {
       pid: 1,
       stdin: undefined,
       stdout: undefined,
       stderr: undefined,
-      collected: {
+      collected: this.omitOutput ? {} : {
         stdout: { readFrom: () => read(this.stdout) },
         stderr: { readFrom: () => read(this.stderr) },
       },
@@ -113,7 +125,7 @@ function spawnFailure(code: 'EACCES' | 'ENOENT', program = 'sandbox-runner'): Er
   })
 }
 
-async function setup(commandOverrides: Partial<QualityCommandConfig> = {}) {
+async function setup(commandOverrides: Partial<QualityCommandConfig> = {}, cwd = process.cwd()) {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })
@@ -122,7 +134,7 @@ async function setup(commandOverrides: Partial<QualityCommandConfig> = {}) {
   const agent = ctx.agentLoop.create(
     SessionId('quality-parent'),
     { provider: 'unused', model: 'unused' },
-    { cwd: process.cwd() },
+    { cwd },
   )
   const catalog = resolveQualityCatalog([{
     id: 'unit-check',
@@ -168,23 +180,28 @@ async function setup(commandOverrides: Partial<QualityCommandConfig> = {}) {
     },
   }
   const records: QualityExecutionRecord[] = []
-  const dispose = qualityToolContribution({
+  const requiredBindings = [binding]
+  const scope: QualityToolScope = {
     run,
     policyStage: 'headsman',
     executorStage: 'headsman',
     gate: 'D',
     cycle: 1,
     catalog,
-    requiredBindings: [binding],
+    requiredBindings,
     records,
     sandbox: ctx.sandbox,
     subprocess: ctx.subprocess,
-  })(agent.ctx)
+  }
+  const dispose = qualityToolContribution(scope)(agent.ctx)
   return {
     ctx,
     agent,
     run,
     records,
+    binding,
+    requiredBindings,
+    scope,
     dispose,
     sandbox: ctx.sandbox as RecordingSandbox,
     subprocess: ctx.subprocess as RecordingSubprocess,
@@ -192,6 +209,145 @@ async function setup(commandOverrides: Partial<QualityCommandConfig> = {}) {
 }
 
 describe('Conductor quality executor', () => {
+  it('rejects unknown, unbound, and stage-inapplicable command ids before confinement', async () => {
+    for (const variant of ['unknown', 'unbound', 'stage'] as const) {
+      const { ctx, agent, run, requiredBindings, dispose, sandbox } = await setup()
+      if (variant === 'unbound') run.baseline!.qualityCommands = []
+      if (variant === 'stage') requiredBindings.length = 0
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal, callId: CallId(`quality-${variant}`),
+        name: 'conductor_quality_check', arguments: { command_id: variant === 'unknown' ? 'unknown' : 'unit-check' }, agent,
+      })
+      expect(result.isError).toBe(true)
+      expect(sandbox.lastPolicy).toBeUndefined()
+      dispose()
+    }
+  })
+
+  it('requires a child agent and its workspace before confinement', async () => {
+    const { ctx, agent, dispose, sandbox } = await setup()
+    const noWorkspace = ctx.agentLoop.create(SessionId('quality-no-workspace'), { provider: 'unused', model: 'unused' })
+    for (const target of [undefined, noWorkspace]) {
+      const exec = {
+        signal: new AbortController().signal, callId: CallId('quality-missing-context'),
+        name: 'conductor_quality_check', arguments: { command_id: 'unit-check' },
+        ...target === undefined ? {} : { agent: target },
+      } as ToolRunContext
+      await expect(ctx.tools.get('conductor_quality_check', agent)!.execute({ command_id: 'unit-check' }, exec))
+        .rejects.toThrow(target === undefined ? /requires a child agent/ : /requires a session workspace/)
+      expect(sandbox.lastPolicy).toBeUndefined()
+    }
+    dispose()
+  })
+
+  it('requires a baseline before installing the child tool and matching effects before spawning', async () => {
+    const { ctx, agent, run, scope, dispose, sandbox } = await setup()
+    expect(() => qualityToolContribution({ ...scope, run: { ...run, baseline: null } })).toThrow(/Gate C baseline/)
+    for (const effectProfile of [
+      { filesystem: 'workspace-write', quality: 'catalog', external: 'none' },
+      { filesystem: 'read-only', quality: 'none', external: 'none' },
+    ] as const) {
+      run.executionAuthorization = { executionBaselineHash: executionBaselineHash(run.baseline!), effectProfile }
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal, callId: CallId('quality-wrong-effects'),
+        name: 'conductor_quality_check', arguments: { command_id: 'unit-check' }, agent,
+      })
+      expect(result.isError).toBe(true)
+      expect((result.content[0] as { text: string }).text).toMatch(/host-authorized effect profile/)
+      expect(sandbox.lastPolicy).toBeUndefined()
+    }
+    dispose()
+  })
+
+  it('enforces canonical write roots, including both directions of excluded-path overlap', async () => {
+    for (const variant of ['allowed', 'outside', 'excluded-child', 'excluded-parent'] as const) {
+      const { ctx, agent, run, dispose, sandbox, subprocess } = await setup({
+        sandboxMode: 'workspace-write', writeRoot: 'packages/conductor', allowedStages: ['headsman'],
+      })
+      const baseline = run.baseline!
+      baseline.allowedPaths = [variant === 'outside' ? 'packages/core' : 'packages/conductor']
+      baseline.excludedPaths = variant === 'excluded-child' ? ['packages/conductor/private']
+        : variant === 'excluded-parent' ? ['packages'] : ['docs']
+      run.executionAuthorization = {
+        executionBaselineHash: executionBaselineHash(baseline), effectProfile: executionEffectProfile(baseline),
+      }
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal, callId: CallId(`quality-write-${variant}`),
+        name: 'conductor_quality_check', arguments: { command_id: 'unit-check' }, agent,
+      })
+      expect(result.isError, JSON.stringify(result)).toBe(variant !== 'allowed')
+      expect(subprocess.lastSpec !== undefined).toBe(variant === 'allowed')
+      if (variant === 'allowed') expect(sandbox.lastPolicy).toMatchObject({ mode: 'workspace-write', network: 'deny' })
+      dispose()
+    }
+  })
+
+  it('rejects a configured cwd that escapes through a workspace symlink', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'quality-cwd-'))
+    try {
+      const workspace = join(root, 'workspace')
+      const outside = join(root, 'outside')
+      mkdirSync(workspace)
+      mkdirSync(outside)
+      symlinkSync(outside, join(workspace, 'alias'), process.platform === 'win32' ? 'junction' : 'dir')
+      const { ctx, agent, dispose, subprocess } = await setup({ cwd: 'alias' }, workspace)
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal, callId: CallId('quality-cwd-escape'),
+        name: 'conductor_quality_check', arguments: { command_id: 'unit-check' }, agent,
+      })
+      expect(result.isError).toBe(true)
+      expect(subprocess.lastSpec).toBeUndefined()
+      dispose()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('preserves absent or truncated process output as separate execution facts', async () => {
+    for (const omitOutput of [true, false]) {
+      const { ctx, agent, records, dispose, subprocess } = await setup()
+      subprocess.omitOutput = omitOutput
+      subprocess.lossy = true
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal, callId: CallId('quality-output'),
+        name: 'conductor_quality_check', arguments: { command_id: 'unit-check' }, agent,
+      })
+      expect(result.value).toMatchObject({ stdout: omitOutput ? '' : 'checks passed', stdoutTruncated: !omitOutput })
+      expect(records[0]).toMatchObject({ outcome: 'passed', stdoutTruncated: !omitOutput, stderrTruncated: !omitOutput })
+      dispose()
+    }
+  })
+
+  it('reports cancellation or timeout even when the terminated process exits zero', async () => {
+    for (const timedOut of [true, false]) {
+      const { ctx, agent, records, dispose, sandbox, subprocess } = await setup({ timeoutMs: timedOut ? 5 : 1000 })
+      const controller = new AbortController()
+      subprocess.completeOnAbort = true
+      if (!timedOut) sandbox.onConfine = () => { queueMicrotask(() => { controller.abort(new Error('cancelled')) }) }
+      const result = await ctx.tools.execute({
+        signal: controller.signal, callId: CallId('quality-zero-after-abort'),
+        name: 'conductor_quality_check', arguments: { command_id: 'unit-check' }, agent,
+      })
+      expect(result.isError).toBe(!timedOut)
+      expect(records[0]).toMatchObject({ outcome: 'failed', failure: timedOut ? 'timeout' : 'cancelled', exitCode: 0 })
+      dispose()
+    }
+  })
+
+  it('bounds multibyte diagnostics without emitting invalid UTF-8', async () => {
+    for (const maxOutputBytes of [1, 4]) {
+      const { ctx, agent, dispose, sandbox } = await setup({ maxOutputBytes })
+      sandbox.confineError = new Error('')
+      sandbox.confineError.toString = () => '€€'
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal, callId: CallId('quality-utf8'),
+        name: 'conductor_quality_check', arguments: { command_id: 'unit-check' }, agent,
+      })
+      expect(result.value).toMatchObject({ stderr: maxOutputBytes === 1 ? '' : '€', stderrTruncated: true })
+      dispose()
+    }
+  })
+
   it('runs only catalog argv under full confinement and emits host-owned evidence', async () => {
     const { ctx, agent, records, dispose, subprocess } = await setup()
     const result = await ctx.tools.execute({

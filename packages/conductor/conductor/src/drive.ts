@@ -126,10 +126,10 @@ export async function drive(
       throw new Error(`Conductor stage "${stage}" owns no gate`)
     }
 
-    const dispatched = await dispatcher.dispatchSpecialist(stage, current)
+    const dispatched: unknown = await dispatcher.dispatchSpecialist(stage, current)
     const dispatch: SpecialistDispatchResult = typeof dispatched === 'object' && dispatched !== null && 'envelope' in dispatched
-      ? dispatched
-      : { envelope: dispatched, qualityExecutions: [], requiredQualityCommands: [] }
+      ? dispatched as SpecialistDispatchResult
+      : { envelope: dispatched as SpecialistEnvelope, qualityExecutions: [], requiredQualityCommands: [] }
     const envelope = dispatch.envelope
     const qualityExecutions = [...current.qualityExecutions, ...structuredClone(dispatch.qualityExecutions)]
     const malformed = dispatch.boundaryProblem ?? envelopeProblem(envelope, stage, current)
@@ -484,10 +484,10 @@ function gatePassProblem(
     }
   }
   if ((run.currentStage === 'headsman' || run.currentStage === 'auditor') && requiredQualityCommands.length > 0) {
-    if (run.baseline === null) return `quality evidence at ${run.currentStage} requires the Gate C baseline`
+    const baseline = run.baseline as ExecutionBaseline
     const gate = run.currentStage === 'headsman' ? 'D' : 'E'
     const cycle = nextQualityCycle(run, gate)
-    const baselineHash = executionBaselineHash(run.baseline)
+    const baselineHash = executionBaselineHash(baseline)
     const cited = new Set(envelope.quality_evidence_ids)
     for (const binding of requiredQualityCommands) {
       const record = run.qualityExecutions.find(item => cited.has(item.evidenceId)

@@ -846,11 +846,16 @@ describe('headless stream-json snapshots', () => {
     expect(normalized).toBe(await readFile(streamExpected, 'utf8'))
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
-  it('replays Conductor quality commands through the assembled headless app', async () => {
+  it.each([
+    { executor: 'Headsman', ralph: false },
+    { executor: 'Ralph', ralph: true },
+  ])('replays Conductor quality commands through the assembled headless app with $executor', async ({ ralph }) => {
     const prompt = await scenarioPrompt(conductorQualityScenarioDir, 'conductor-quality-command')
-    const streamExpected = join(conductorQualityScenarioDir, 'stream-json.expected.jsonl')
-    const childFiles = Array.from({ length: 7 }, (_, index) =>
-      join(conductorQualityScenarioDir, `session.${index + 1}.jsonl`))
+    const streamExpected = join(conductorQualityScenarioDir, ralph ? 'ralph-stream-json.expected.jsonl' : 'stream-json.expected.jsonl')
+    const childFiles = (ralph
+      ? ['1', '2', '3', 'ralph', 'headsman-after-ralph', '5', '6', '7']
+      : ['1', '2', '3', '4', '5', '6', '7'])
+      .map(name => join(conductorQualityScenarioDir, `session.${name}.jsonl`))
     let runCwd = ''
     const result = await runLoaderSmoke({
       label: 'Conductor quality-command headless stream-json snapshot',
@@ -865,14 +870,18 @@ describe('headless stream-json snapshots', () => {
         DSH_SNAPSHOT_FILE: join(conductorQualityScenarioDir, 'session.jsonl'),
         DSH_SNAPSHOT_OVERRIDE: join(conductorQualityScenarioDir, 'replay.override.json'),
         DSH_SNAPSHOT_CHILD_FILES: childFiles.join(delimiter),
+        DSH_CONDUCTOR_RALPH_ROUNDS: ralph ? '1' : '0',
         DSH_AGENTS_HOME: conductorAgentsHome,
         DSH_CONDUCTOR_ROLE_DIR: conductorRoleDir,
         NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
       },
-      prepare: (cwd) => { runCwd = cwd },
+      prepare: async (cwd) => {
+        runCwd = cwd
+        await mkdir(join(cwd, '.git'))
+      },
       inspect: async (cwd) => {
         const logs = await persistedLogs(cwd)
-        if (logs.length !== 8) {
+        if (logs.length !== childFiles.length + 1) {
           const diagnostics = logs.flatMap(log => parseJsonl(log.content)
             .filter(record => record.type === 'tool/result' || record.type === 'conductor/checkpoint'))
           throw new Error(`Conductor quality snapshot persisted ${logs.length} logs; diagnostics: ${JSON.stringify(diagnostics)}`)
@@ -880,7 +889,7 @@ describe('headless stream-json snapshots', () => {
         const parent = logs.find(log => typeof log.header.parentSession !== 'string')
         if (parent === undefined) throw new Error('Conductor quality snapshot did not persist its parent session')
         const children = logs.filter(log => typeof log.header.parentSession === 'string')
-        expect(children).toHaveLength(7)
+        expect(children).toHaveLength(childFiles.length)
 
         const promptText = (log: PersistedLog): string => parseJsonl(log.content)
           .filter(record => record.type === 'user/message')
@@ -901,8 +910,25 @@ describe('headless stream-json snapshots', () => {
         expect(devilsAdvocatePrompt).toContain('"id": "snapshot-check"')
         expect(devilsAdvocatePrompt).toContain('Run the deterministic snapshot quality check.')
 
-        for (const stage of ['headsman', 'auditor']) {
-          const records = parseJsonl(stageLog(stage).content)
+        const ralphLog = children.find(child => promptText(child).includes('Ralph round: 1 of 1.'))
+        if (ralph) {
+          if (ralphLog === undefined) throw new Error('missing fresh Ralph quality worker')
+          const workerPrompt = promptText(ralphLog)
+          expect(workerPrompt).toContain('"id": "snapshot-check"')
+          expect(workerPrompt).toContain('"execution_baseline"')
+          expect(workerPrompt).toContain('"rollbackReference": "HEAD"')
+          expect(workerPrompt).toContain('Run the deterministic snapshot quality check.')
+          const promptExpected = join(conductorQualityScenarioDir, 'ralph-prompt.expected.txt')
+          const normalizedPrompt = workerPrompt.replace(/CON-\d{4}-\d{4}/g, '{{runId}}') + '\n'
+          if (refreshing) await writeFile(promptExpected, normalizedPrompt)
+          expect(normalizedPrompt).toBe(await readFile(promptExpected, 'utf8'))
+          expect(parseJsonl(stageLog('headsman').content)
+            .filter(record => record.type === 'tool/call')
+            .map(record => (record.data as JsonObject | undefined)?.name)).toEqual(['structured_output'])
+        }
+
+        for (const log of [ralphLog ?? stageLog('headsman'), stageLog('auditor')]) {
+          const records = parseJsonl(log.content)
           const requestHeaders = records.filter(record => record.type === 'request/header')
           expect(JSON.stringify(requestHeaders)).toContain('conductor_quality_check')
           const calls = records.filter(record => record.type === 'tool/call')
@@ -924,7 +950,7 @@ describe('headless stream-json snapshots', () => {
         }
         expect(record.status).toBe('awaiting_authorization')
         expect(record.qualityExecutions).toMatchObject([
-          { gate: 'D', policyStage: 'headsman', executorStage: 'headsman', outcome: 'passed' },
+          { gate: 'D', policyStage: 'headsman', executorStage: ralph ? 'ralph' : 'headsman', outcome: 'passed' },
           { gate: 'E', policyStage: 'auditor', executorStage: 'auditor', outcome: 'passed' },
         ])
         expect(record.qualityExecutions[0]?.childSessionId)

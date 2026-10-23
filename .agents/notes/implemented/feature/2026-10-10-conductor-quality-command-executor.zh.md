@@ -12,11 +12,11 @@ Conductor runtime 移除了所有专家的通用 shell 访问，但 Headsman 和
 
 ## 决策
 
-`dsh-tool-conductor` 拥有默认空的部署 quality-command catalog。每个定义包含不透明 id、模型安全描述、精确 argv、允许的 Headsman 或 Auditor stage、规范化的 workspace 相对 cwd、可选 write root、显式 filesystem effect、固定的 `network: deny` 与 `external: none` effect、timeout、输出上限和终止宽限期。无效路径和 effect 关系会在插件加载时失败。Gate C 只选择 id；host 解析已选择的定义，并把各自的 hash 记录在 execution baseline 中。未选择的 catalog 条目发生变化不会使 run 失效。
+`dsh-tool-conductor` 拥有默认空的部署 quality-command catalog。每个定义包含不透明 id、模型安全描述、精确 argv、允许的 Headsman 或 Auditor stage、规范化的 workspace 相对 cwd、可选 write root、显式 filesystem effect、固定的 `network: deny` 与 `external: none` effect、timeout、输出上限和终止宽限期。无效路径和 effect 关系会在插件加载时失败。Gate C 只选择 id；host 解析已选择的定义，并把各自的 hash 记录在 execution baseline 中。缺失、格式错误、重复或未知的 command-id 选择会生成 durable blocker，且被拒绝的 report 不会持久化。未选择的 catalog 条目发生变化不会使 run 失效。
 
 Gate C 生成结构有效的 baseline 后，现有 approval service 拥有 effectful authorization。Approval 标识精确 baseline hash、规范化的 allowed 与 excluded path、已选择的 command id 与 definition hash，以及派生的 filesystem、quality 和 external effect。Approval 被拒绝、取消或不可用时，不会启动 write-capable child 或 quality subprocess。`authority.owner` 只用于 attribution，面向模型的工具既不接受 execution permission，也不接受 closeout authorization。Arbiter GO 后，core `closeRun` API 仍可供 host-owned channel 使用；面向模型的工具让 run 保持 `awaiting_authorization`。
 
-spawn-in-process provider 只向 fresh child 注入私有 `conductor_quality_check`。Workflow 与 Ralph 将 callback 作为 host policy 传递，不会把它序列化给 worker program。Fork、ACP 和其他进程外 provider 不声明支持，并在启动 child 前失败。
+spawn-in-process provider 只向 fresh child 注入私有 `conductor_quality_check`。Workflow 与 Ralph 将 callback 作为 host policy 传递，不会把它序列化给 worker program。每个 Ralph Round 的已记录目标都包含已批准的 baseline、验收标准、约束，以及绑定的 Gate-D command id 和模型安全描述。Fork、ACP 和其他进程外 provider 不声明支持，并在启动 child 前失败。
 
 私有工具只接受 `{ command_id }`。它解析 Gate-C binding，不接受模型提供的 shell string，调用精确 argv，请求 filesystem confinement 与网络禁止，要求 sandbox backend 对该具体 policy 报告 full enforcement，并以有界方式收集输出且不创建 spill file。持久化的 `QualityExecutionRecord` 包含 identity、stage、gate、cycle、baseline 与 definition hash、时间、退出事实、outcome 以及 stdout/stderr digest，但不包含命令文本或输出正文。有界诊断可返回当前专家，但不会写入 record。
 
@@ -44,7 +44,7 @@ Quality evidence id 在 specialist report 持久化之前完成校验。每个 i
 - Persistence 拒绝未知字段、过期 record version、跨 run 引用、baseline-history drift、无效时间和无效 evidence relation。Scope 与 plan rework 可以 serialize、parse 并 resume，同时保留历史 evidence。
 - 未知、历史、外部和重复的 quality evidence id 会在 specialist-report persistence 前被拒绝。失败 dispatch 中由 host 生成的 record 仍保留用于审计。
 - Gate D 接受 Ralph 生成的 fresh Headsman evidence；Gate E 要求独立的 fresh Auditor dispatch，且不能复用 Gate-D 或旧 baseline evidence。
-- Assembled keyless scenario 覆盖 host approval、已选择 binding hash、独立的 Gate-D 与 Gate-E execution、durable baseline lineage 以及最终的 `awaiting_authorization` 状态。
+- Assembled keyless scenario 覆盖 host approval、已选择 binding hash、Headsman 直接执行或 fresh Ralph execution、独立的 Gate-E execution、durable baseline lineage 以及最终的 `awaiting_authorization` 状态。Ralph 变体固定 worker 对模型可见的 baseline 与 command id，并要求 Headsman 引用该 worker 由 host 生成的 evidence，而不重新运行命令。
 
 ## 后果
 

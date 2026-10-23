@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { resolve } from 'node:path'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { resolveQualityCatalog } from '../src/quality-catalog.ts'
 import type { QualityCommandConfig } from '../src/quality-catalog.ts'
@@ -19,6 +20,26 @@ function command(overrides: Partial<QualityCommandConfig> = {}): QualityCommandC
 }
 
 describe('Conductor quality catalog', () => {
+  it.each([
+    [{ id: ' ' }, /id/],
+    [{ modelSafeDescription: '' }, /modelSafeDescription/],
+    [{ argv: [] }, /argv/],
+    [{ argv: null }, /argv/],
+    [{ argv: [1] }, /argv/],
+    [{ argv: ['node', ''] }, /argv/],
+    [{ allowedStages: [] }, /allowedStages/],
+    [{ allowedStages: null }, /allowedStages/],
+    [{ allowedStages: ['headsman', 'headsman'] }, /allowedStages/],
+    [{ sandboxMode: 'unsafe' }, /sandboxMode/],
+    [{ cwd: resolve('.') }, /workspace-relative/],
+    [{ writeRoot: '.' }, /read-only command cannot set writeRoot/],
+    [{ timeoutMs: 0 }, /timeoutMs/],
+    [{ graceMs: 1.5 }, /graceMs/],
+    [{ maxOutputBytes: -1 }, /maxOutputBytes/],
+  ])('rejects invalid deployment configuration %j', (overrides, message) => {
+    expect(() => resolveQualityCatalog([command(overrides as Partial<QualityCommandConfig>)])).toThrow(message)
+  })
+
   it('freezes a deterministic definition hash over the normalized command', () => {
     const first = resolveQualityCatalog([command()])
     const second = resolveQualityCatalog([command()])

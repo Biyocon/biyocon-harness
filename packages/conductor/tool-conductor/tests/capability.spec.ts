@@ -111,6 +111,7 @@ describe('dsh-tool-conductor capability policies', () => {
       qualityCommands: [],
     }
     const guard = toolGuardForStage('headsman', baseline, null)
+    expect(guard({ name: 'read', arguments: {} } as ToolExecution)).toBeUndefined()
     expect(guard({ name: 'write', arguments: { file_path: 'sandbox/output.txt' } } as ToolExecution))
       .toMatch(/lacks matching host authorization/)
     const stale = { ...WRITE_AUTHORIZATION, executionBaselineHash: 'f'.repeat(64) }

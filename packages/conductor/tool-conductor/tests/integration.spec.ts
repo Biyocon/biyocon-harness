@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
@@ -407,6 +407,9 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       (options: GenerateOptions) => {
         expect(promptText(options)).toContain('"id": "unit-check"')
         expect(promptText(options)).toContain('Run the focused unit check.')
+        expect(promptText(options)).toContain('"execution_baseline"')
+        expect(promptText(options)).toContain('"rollbackReference": "HEAD"')
+        expect(promptText(options)).toContain('"requiredGates"')
         return toolCallResponse('ralph-quality', 'conductor_quality_check', { command_id: 'unit-check' })
       },
       () => toolCallResponse('ralph-report', STRUCTURED_OUTPUT_TOOL, {
@@ -611,7 +614,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     })
   }, realSpawnTimeoutMs)
 
-  it('durably checkpoints quality evidence when the specialist fails after execution', async () => {
+  it.each(['transport', 'dispose'] as const)('durably checkpoints quality evidence after specialist %s failure', async (failure) => {
     const script: ((options: GenerateOptions) => ReturnType<typeof toolCallResponse>)[] = [
       ...(['detective', 'strategist'] as const).map(stage => (options: GenerateOptions) =>
         toolCallResponse(stage, STRUCTURED_OUTPUT_TOOL, readyEnvelope(extractRunId(options), stage))),
@@ -628,7 +631,11 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
         nextSteps: [],
         blocker: '',
       }),
-      () => { throw new Error('simulated specialist transport failure') },
+      (options: GenerateOptions) => {
+        if (failure === 'transport') throw new Error('simulated specialist transport failure')
+        return toolCallResponse('headsman', STRUCTURED_OUTPUT_TOOL,
+          readyEnvelope(extractRunId(options), 'headsman', [extractQualityEvidenceId(options)]))
+      },
     ]
     const ctx = new Context()
     const adapter = new MockAdapter(script)
@@ -670,6 +677,17 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       }))
     }
     ctx.llm.registerAdapter(['mock'], adapter)
+    if (failure === 'dispose') {
+      const start = ctx.workflowEngine.start.bind(ctx.workflowEngine)
+      vi.spyOn(ctx.workflowEngine, 'start').mockImplementation((request) => {
+        const workflow = start(request)
+        if ((request.args as { label?: string }).label !== 'conductor-headsman') return workflow
+        return { ...workflow, dispose: async () => {
+          await workflow.dispose()
+          throw new Error('simulated workflow disposal failure')
+        } }
+      })
+    }
     const parent = ctx.agentLoop.create(
       SessionId('conductor-quality-failure-parent'),
       { provider: 'mock', model: 'mock' },

@@ -376,7 +376,9 @@ describe('dsh-subagent-dsh-sdk provider', () => {
       outputSchema: false,
       depthLimit: false,
       toolFilter: false,
+      toolGuard: false,
       persona: false,
+      toolContribution: false,
     })
     await fiber.dispose()
     expect(ctx.subagents.getProvider('sdk-hmr')).toBeUndefined()

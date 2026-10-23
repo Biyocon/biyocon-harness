@@ -8,6 +8,7 @@ import {
 } from '@deepseek-ai/dsh-conductor'
 import type {
   ConductorRun,
+  ExecutionBaseline,
   QualityCommandBinding,
   QualityExecutionFailure,
   QualityExecutionRecord,
@@ -101,18 +102,17 @@ function classifySpawnFailure(
 
 function failureResult(
   scope: QualityToolScope,
+  baseline: ExecutionBaseline,
   definition: QualityCommandDefinition,
   childSessionId: QualityExecutionRecord['childSessionId'],
   startedAt: string,
   failure: QualityExecutionFailure,
-  output: { stdout?: string; stderr?: string; stdoutTruncated?: boolean; stderrTruncated?: boolean } = {},
+  output: { stdout?: string; stderr: string; stdoutTruncated?: boolean; stderrTruncated?: boolean },
   process: { exitCode?: number | null; signal?: string | null } = {},
 ): QualityToolResult {
-  const baseline = scope.run.baseline
-  if (baseline === null) throw new Error('quality execution requires the Gate C baseline')
   const evidenceId = QualityEvidenceId(randomUUID())
   const stdout = output.stdout ?? ''
-  const stderr = output.stderr ?? ''
+  const stderr = output.stderr
   const record: QualityExecutionRecord = {
     evidenceId,
     runId: scope.run.runId,
@@ -151,8 +151,11 @@ function failureResult(
  * Build the trusted installer for one stage-scoped quality tool.
  * @param scope - host-owned run, policy, service, and record state.
  * @returns a child-only installer for the private quality tool.
+ * @throws when the dispatch has no Gate-C execution baseline.
  */
 export function qualityToolContribution(scope: QualityToolScope): SubagentChildToolContribution {
+  const baseline = scope.run.baseline
+  if (baseline === null) throw new Error('quality command requires the Gate C baseline')
   return childCtx => childCtx.tools.register(defineTool({
     name: 'conductor_quality_check',
     description: 'Run one approved baseline quality command by command_id. Raw commands and arguments are not accepted.',
@@ -164,10 +167,9 @@ export function qualityToolContribution(scope: QualityToolScope): SubagentChildT
         throw new Error('conductor_quality_check accepts only command_id')
       }
       const commandId = args.command_id
-      if (typeof commandId !== 'string') throw new Error('conductor_quality_check requires command_id')
       const definition = scope.catalog.get(commandId)
       if (definition === undefined) throw new Error(`unknown Conductor quality command "${commandId}"`)
-      const binding = scope.run.baseline?.qualityCommands.find(value => value.id === commandId)
+      const binding = baseline.qualityCommands.find(value => value.id === commandId)
       if (binding === undefined) throw new Error(`quality command "${commandId}" is not in the Gate C baseline`)
       if (binding.definitionHash !== definition.definitionHash) {
         throw new Error(`quality command "${commandId}" definition changed after Gate C`)
@@ -175,13 +177,12 @@ export function qualityToolContribution(scope: QualityToolScope): SubagentChildT
       if (!scope.requiredBindings.some(value => value.id === binding.id && value.definitionHash === binding.definitionHash)) {
         throw new Error(`quality command "${commandId}" is not allowed for ${scope.policyStage}`)
       }
-      if (scope.run.baseline === null) throw new Error('quality command requires the Gate C baseline')
-      const baselineHash = executionBaselineHash(scope.run.baseline)
+      const baselineHash = executionBaselineHash(baseline)
       const authorization = scope.run.executionAuthorization
       if (authorization === null || authorization.executionBaselineHash !== baselineHash) {
         throw new Error('quality command requires matching host authorization for the active Gate C baseline')
       }
-      const requiredProfile = executionEffectProfile(scope.run.baseline)
+      const requiredProfile = executionEffectProfile(baseline)
       if (authorization.effectProfile.filesystem !== requiredProfile.filesystem
         || authorization.effectProfile.quality !== requiredProfile.quality) {
         throw new Error('quality command is outside the host-authorized effect profile')
@@ -199,13 +200,12 @@ export function qualityToolContribution(scope: QualityToolScope): SubagentChildT
       if (!containsPath(workspace, cwd)) throw new Error(`quality command "${commandId}" cwd escapes the workspace`)
       let workspaceRoot = workspace
       if (definition.effectProfile.filesystem === 'workspace-write') {
-        if (definition.writeRoot === undefined) throw new Error(`quality command "${commandId}" lacks writeRoot`)
-        const writeRoot = canonicalAbsolute(workspace, definition.writeRoot)
-        const allowed = scope.run.baseline.allowedPaths
+        const writeRoot = canonicalAbsolute(workspace, definition.writeRoot as string)
+        const allowed = baseline.allowedPaths
           .map(path => canonicalAbsolute(workspace, path))
           .some(path => containsPath(path, writeRoot))
         if (!allowed) throw new Error(`quality command "${commandId}" writeRoot is outside allowed_paths`)
-        const overlapsExclusion = scope.run.baseline.excludedPaths
+        const overlapsExclusion = baseline.excludedPaths
           .map(path => canonicalAbsolute(workspace, path))
           .some(path => containsPath(writeRoot, path) || containsPath(path, writeRoot))
         if (overlapsExclusion) throw new Error(`quality command "${commandId}" writeRoot overlaps excluded_paths`)
@@ -224,18 +224,26 @@ export function qualityToolContribution(scope: QualityToolScope): SubagentChildT
         })
       } catch (error) {
         const detail = boundedError(error, definition.maxOutputBytes)
-        return failureResult(scope, definition, childSessionId, startedAt, 'sandbox-unavailable', {
+        return failureResult(scope, baseline, definition, childSessionId, startedAt, 'sandbox-unavailable', {
           stderr: detail.text,
           stderrTruncated: detail.truncated,
         })
       }
       if (confined.enforcement !== 'full') {
-        return failureResult(scope, definition, childSessionId, startedAt, 'sandbox-unavailable', {
+        return failureResult(scope, baseline, definition, childSessionId, startedAt, 'sandbox-unavailable', {
           stderr: 'sandbox backend provides partial enforcement; full enforcement is required',
         })
       }
 
       using commandDeadline = deadline(exec.signal, definition.timeoutMs, TIMEOUT_CODE)
+      const recordSpawnFailure = (error: unknown): QualityToolResult => {
+        const failure = classifySpawnFailure(commandDeadline.signal, error, confined.argv[0], cwd)
+        const detail = boundedError(error, definition.maxOutputBytes)
+        return failureResult(scope, baseline, definition, childSessionId, startedAt, failure, {
+          stderr: detail.text,
+          stderrTruncated: detail.truncated,
+        })
+      }
       let handle
       try {
         handle = scope.subprocess.spawn({
@@ -250,12 +258,7 @@ export function qualityToolContribution(scope: QualityToolScope): SubagentChildT
           signal: commandDeadline.signal,
         })
       } catch (error) {
-        const failure = classifySpawnFailure(commandDeadline.signal, error, confined.argv[0], cwd)
-        const detail = boundedError(error, definition.maxOutputBytes)
-        return failureResult(scope, definition, childSessionId, startedAt, failure, {
-          stderr: detail.text,
-          stderrTruncated: detail.truncated,
-        })
+        return recordSpawnFailure(error)
       }
 
       let outcome
@@ -263,12 +266,7 @@ export function qualityToolContribution(scope: QualityToolScope): SubagentChildT
         outcome = await handle.done
       } catch (error) {
         await handle.waitForExit()
-        const failure = classifySpawnFailure(commandDeadline.signal, error, confined.argv[0], cwd)
-        const detail = boundedError(error, definition.maxOutputBytes)
-        return failureResult(scope, definition, childSessionId, startedAt, failure, {
-          stderr: detail.text,
-          stderrTruncated: detail.truncated,
-        })
+        return recordSpawnFailure(error)
       }
       await handle.waitForExit()
       const stdoutRead = handle.collected.stdout?.readFrom(0)
@@ -290,7 +288,7 @@ export function qualityToolContribution(scope: QualityToolScope): SubagentChildT
               : outcome.exitCode !== 0 ? 'nonzero-exit'
                 : undefined
       if (failure !== undefined) {
-        return failureResult(scope, definition, childSessionId, startedAt, failure, output, outcome)
+        return failureResult(scope, baseline, definition, childSessionId, startedAt, failure, output, outcome)
       }
       const evidenceId = QualityEvidenceId(randomUUID())
       scope.records.push({
@@ -299,7 +297,7 @@ export function qualityToolContribution(scope: QualityToolScope): SubagentChildT
         childSessionId,
         commandId: definition.id,
         definitionHash: definition.definitionHash,
-        executionBaselineHash: executionBaselineHash(scope.run.baseline),
+        executionBaselineHash: executionBaselineHash(baseline),
         gate: scope.gate,
         cycle: scope.cycle,
         policyStage: scope.policyStage,

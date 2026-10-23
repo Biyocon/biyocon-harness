@@ -6,7 +6,7 @@
 
 import type { ShellRunResult } from '@deepseek-ai/dsh-shell'
 import { matchesSandboxSignature } from '@deepseek-ai/dsh-sandbox'
-export { classifyRunnerFailure, isRunnerSpawnFailure } from '@deepseek-ai/dsh-sandbox'
+export { classifyRunnerFailure, isRunnerSpawnFailure, matchesSandboxSignature as matchesSignature } from '@deepseek-ai/dsh-sandbox'
 
 /**
  * Classify a failed run against the selected backend's denial dialect.
@@ -16,15 +16,4 @@ export { classifyRunnerFailure, isRunnerSpawnFailure } from '@deepseek-ai/dsh-sa
  */
 export function classifyDenial(result: ShellRunResult, signatures: readonly string[]): boolean {
   return matchesSandboxSignature(result.exitCode, result.stderr.text, signatures)
-}
-
-/**
- * Match a non-zero exit against case-insensitive stderr signatures.
- * @param exitCode - process exit code; null means signal termination.
- * @param stderr - collected stderr text.
- * @param signatures - substrings identifying the selected backend's dialect.
- * @returns whether this is a non-zero exit whose stderr matches a signature.
- */
-export function matchesSignature(exitCode: number | null, stderr: string, signatures: readonly string[]): boolean {
-  return matchesSandboxSignature(exitCode, stderr, signatures)
 }
