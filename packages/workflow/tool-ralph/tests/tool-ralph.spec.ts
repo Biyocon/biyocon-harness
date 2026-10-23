@@ -370,6 +370,43 @@ describe('dsh-tool-ralph', () => {
     expect(() => { toolRalph.apply(new Context(), { maxResultChars: 0 }) }).toThrow('positive safe integer')
   })
 
+  it('validates trusted-consumer handoff limits and forwards every optional child policy', async () => {
+    const { ctx, engine, parent } = await setup()
+    const base = {
+      objective: 'Complete the bounded task.',
+      maxRounds: 1,
+      maxHandoffChars: 200,
+      maxResultChars: 100,
+      subagentProvider: 'fresh',
+      parent,
+      signal: testToolSignal,
+    }
+    await expect(toolRalph.runRalphWorkflow(ctx, { ...base, maxHandoffChars: 0 }))
+      .rejects.toThrow(/maxHandoffChars/)
+    await expect(toolRalph.runRalphWorkflow(ctx, { ...base, maxResultChars: 0 }))
+      .rejects.toThrow(/maxResultChars/)
+
+    const guard = () => undefined
+    const pending = toolRalph.runRalphWorkflow(ctx, {
+      ...base,
+      childToolFilter: { allow: ['read'] },
+      childToolGuard: guard,
+      childPersona: 'bounded worker',
+    })
+    await vi.waitFor(() => { expect(engine.requests).toHaveLength(1) })
+    expect(engine.requests[0]).toMatchObject({
+      childToolFilter: { allow: ['read'] },
+      childToolGuard: guard,
+      childPersona: 'bounded worker',
+    })
+    engine.settle({
+      value: { status: 'complete', roundsStarted: 1, report: COMPLETE },
+      stopReason: 'completed',
+      agentsStarted: 1,
+    })
+    await expect(pending).resolves.toMatchObject({ result: { status: 'complete' } })
+  })
+
   it('turns malformed fixed-workflow terminal values and reports into errors', async () => {
     const cases: { value: unknown; message: string; config?: toolRalph.Config }[] = [
       { value: null, message: 'malformed terminal result' },

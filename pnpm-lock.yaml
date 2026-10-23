@@ -476,6 +476,12 @@ importers:
       '@deepseek-ai/dsh-compaction-tool-result-pruner':
         specifier: workspace:*
         version: link:../packages/compaction/compaction-tool-result-pruner
+      '@deepseek-ai/dsh-conductor':
+        specifier: workspace:^
+        version: link:../packages/conductor/conductor
+      '@deepseek-ai/dsh-conductor-presets':
+        specifier: workspace:^
+        version: link:../packages/conductor/conductor-presets
       '@deepseek-ai/dsh-cordis-host-runner':
         specifier: workspace:*
         version: link:../packages/extensions/cordis-host-runner
@@ -668,6 +674,9 @@ importers:
       '@deepseek-ai/dsh-tool-call-timeout-policy':
         specifier: workspace:*
         version: link:../packages/guard/timeout-policy
+      '@deepseek-ai/dsh-tool-conductor':
+        specifier: workspace:^
+        version: link:../packages/conductor/tool-conductor
       '@deepseek-ai/dsh-tool-cordis':
         specifier: workspace:*
         version: link:../packages/extensions/tool-cordis

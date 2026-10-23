@@ -9,9 +9,9 @@ import type { TypertContext } from '@deepseek-ai/dsh-typert-protocol'
 import type { MaybeSnapshotSelectorHook, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotRegistry } from './slots.ts'
 import { SessionRuntime } from './sessions/service.ts'
-import type { SessionListState } from './sessions/service.ts'
+import type { SessionListState } from './contract/sessions.ts'
 import { WorkspaceRuntime } from './workspaces/service.ts'
-import type { ConversationSnapshot } from './sessions/conversation.ts'
+import type { ConversationSnapshot } from './contract/session-snapshot.ts'
 import type { UseProjection } from './sessions/projection-store.ts'
 import { ConversationEventRegistry } from './conversation/event-registry.ts'
 import { ConversationViewRegistry } from './conversation/view-registry.ts'
@@ -43,8 +43,8 @@ export type { SubagentDescendantSummary } from './sessions/subagent-lineage.ts'
 // materialization/projection implementation; no test-side mirror to drift).
 export { SessionProvideChannel } from './sessions/provide.ts'
 export type { SessionProvideChannelHost } from './sessions/provide.ts'
-export { createScope } from './agents/scope.ts'
-export type { AgentScopeHandle } from './agents/scope.ts'
+export { createScope } from './scope.ts'
+export type { AgentScopeHandle } from './contract/scope.ts'
 export { DirectoryBrowseError, WorkspaceCreateError, WorkspaceRuntime } from './workspaces/service.ts'
 export { resolveWorkspacePath } from './workspaces/path.ts'
 // Contract only: the scope implementation and its Host transport belong to
@@ -58,11 +58,10 @@ export type { AgentContext, ISessions } from './contract/sessions.ts'
 export type { IWorkspaces } from './contract/workspaces.ts'
 export type {
   SessionBinding, SessionListState, SessionProvideContribution, SessionProvideDescriptor, SessionSummary,
-} from './sessions/service.ts'
-export type { SessionListPhase, SessionSearchResultItem, SubagentCatalogSnapshot } from './sessions/manager.ts'
+  SessionListPhase, SessionSearchResultItem, SubagentCatalogSnapshot,
+} from './contract/sessions.ts'
 export type { SubagentAddress, JobView } from '@deepseek-ai/dsh-client-connection/client'
-export type { WorkspaceListPhase } from './workspaces/manager.ts'
-export type { WorkspaceListState } from './workspaces/service.ts'
+export type { WorkspaceListPhase, WorkspaceListState } from './contract/workspaces.ts'
 export type {
   DirectoryEntry, DirectoryListing, WorkspaceId, WorkspaceView,
 } from '@deepseek-ai/dsh-client-connection/client'
@@ -79,27 +78,27 @@ export type {
   LegacyConversationSlice, PartialAssistant, RunningToolCall,
   SteeringMessageNode, TodoItem, ToolCallBlock, ToolResultNode, TurnErrorNode, TurnMaxTokensNode,
   UnknownSurfaceNode, UserMessageNode,
-} from './sessions/conversation.ts'
+} from './contract/session-snapshot.ts'
 export {
   EMPTY_CHAT_SNAPSHOT, EMPTY_CONVERSATION_VIEWS, toAssistantBlock, toAssistantBlocks,
-} from './sessions/conversation.ts'
+} from './session-snapshot.ts'
 export { emptyAssistantBlock } from './sessions/partial.ts'
 export { isTokenDelta } from './sessions/assistant-timing.ts'
-export { contextForm, contextProvenance } from './sessions/context-provenance.ts'
+export { contextForm, contextProvenance } from './context-provenance.ts'
 export { displayFailureMessage } from './sessions/failure-display.ts'
 export type {
   ConversationContext, ConversationContextOriginKind,
 } from './sessions/conversation-context.ts'
 export type {
   ContextProvenanceView, ContextRole, KnownContextForm,
-} from './sessions/context-provenance.ts'
+} from './contract/context-provenance.ts'
 export type {
   ConversationPromptSnapshot, RequestInspectionSnapshot, RequestPromptChange, RequestView,
 } from './sessions/request-inspection.ts'
-export { PendingWait } from './sessions/pending.ts'
+export { PendingWait } from './pending.ts'
 export type {
   PendingInteraction, PendingInteractionStatus, PendingKind, PendingPayloads,
-} from './sessions/pending.ts'
+} from './contract/pending.ts'
 // Projection value store (push model; see the session-projection subsystem
 // page, docs/subsystems/session-projection.md): host-computed
 // whole values per key; domains ship projection support with zero client code.
@@ -146,7 +145,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface GlobalStandardProps {
     useSessions: SnapshotSelectorHook<SessionListState>
     /** Selector hook over real Workspaces and their independent baseline lifecycle. */
-    useWorkspaces: SnapshotSelectorHook<import('./workspaces/service.ts').WorkspaceListState>
+    useWorkspaces: SnapshotSelectorHook<import('./contract/workspaces.ts').WorkspaceListState>
   }
 }
 

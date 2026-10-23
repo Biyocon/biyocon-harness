@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { executionBaselineHash } from '@deepseek-ai/dsh-conductor'
 import type { ExecutionAuthorization, ExecutionBaseline } from '@deepseek-ai/dsh-conductor'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
@@ -21,6 +21,17 @@ const WRITE_AUTHORIZATION: ExecutionAuthorization = {
 function authorize(baseline: ExecutionBaseline): ExecutionAuthorization {
   return { ...WRITE_AUTHORIZATION, executionBaselineHash: executionBaselineHash(baseline) }
 }
+
+const filesystem = vi.hoisted(() => ({ rejectExistenceChecks: false }))
+
+vi.mock('node:fs', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs')>()
+  return {
+    ...original,
+    existsSync: (path: Parameters<typeof original.existsSync>[0]) =>
+      filesystem.rejectExistenceChecks ? false : original.existsSync(path),
+  }
+})
 
 describe('dsh-tool-conductor capability policies', () => {
   it('keeps read-only stages to the read/search tools', () => {
@@ -106,6 +117,68 @@ describe('dsh-tool-conductor capability policies', () => {
     expect(toolGuardForStage('headsman', baseline, stale)({
       name: 'write', arguments: { file_path: 'sandbox/output.txt' },
     } as ToolExecution)).toMatch(/lacks matching host authorization/)
+  })
+
+  it('requires baselines for write-capable stages and ignores reads for read-only stages', () => {
+    expect(() => toolGuardForStage('headsman', null, WRITE_AUTHORIZATION)).toThrow(/approved execution baseline/)
+    expect(() => toolGuardForStage('integrator', null, WRITE_AUTHORIZATION)).toThrow(/approved execution baseline/)
+    expect(toolGuardForStage('auditor', null, null)({ name: 'read', arguments: {} } as ToolExecution))
+      .toBeUndefined()
+  })
+
+  it('rejects malformed or unresolvable write targets and accepts absolute in-scope targets', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-conductor-targets-'))
+    try {
+      const baseline: ExecutionBaseline = {
+        scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
+        allowedPaths: [root], excludedPaths: [], rollbackReference: 'HEAD',
+        qualityCommands: [],
+      }
+      const guard = toolGuardForStage('headsman', baseline, authorize(baseline))
+      expect(guard({ name: 'write', arguments: null } as unknown as ToolExecution)).toMatch(/requires file_path/)
+      expect(guard({ name: 'write', arguments: { file_path: '' } } as ToolExecution)).toMatch(/requires file_path/)
+      expect(guard({ name: 'read', arguments: {} } as ToolExecution)).toBeUndefined()
+      expect(guard({ name: 'write', arguments: { file_path: join(root, 'new.md') } } as ToolExecution)).toBeUndefined()
+
+      const missingRoot = join(root, 'missing', 'file.md')
+      const missingBaseline: ExecutionBaseline = {
+        scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
+        allowedPaths: [missingRoot], excludedPaths: [], rollbackReference: 'HEAD',
+        qualityCommands: [],
+      }
+      const missingGuard = toolGuardForStage('headsman', missingBaseline, authorize(missingBaseline))
+      filesystem.rejectExistenceChecks = true
+      try {
+        expect(missingGuard({ name: 'write', arguments: { file_path: missingRoot } } as ToolExecution))
+          .toMatch(/could not be canonicalized/)
+      } finally {
+        filesystem.rejectExistenceChecks = false
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('normalizes path comparisons consistently on case-sensitive and case-insensitive hosts', () => {
+    const original = Object.getOwnPropertyDescriptor(process, 'platform')
+    if (original?.configurable !== true) return
+    const root = mkdtempSync(join(tmpdir(), 'dsh-conductor-case-'))
+    try {
+      for (const platform of ['win32', 'linux']) {
+        Object.defineProperty(process, 'platform', { ...original, value: platform })
+        const baseline: ExecutionBaseline = {
+          scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
+          allowedPaths: [root], excludedPaths: [], rollbackReference: 'HEAD',
+          qualityCommands: [],
+        }
+        const guard = toolGuardForStage('headsman', baseline, authorize(baseline))
+        expect(guard({ name: 'write', arguments: { file_path: join(root, 'case.md') } } as ToolExecution))
+          .toBeUndefined()
+      }
+    } finally {
+      Object.defineProperty(process, 'platform', original)
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('rejects stages that own no specialist capability policy', () => {

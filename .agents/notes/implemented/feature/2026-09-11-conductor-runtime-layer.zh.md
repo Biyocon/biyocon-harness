@@ -229,18 +229,24 @@ Conductor 现在增加一个高层 policy layer，而不修改通用 workflow sc
 
 每个 gate checkpoint 都会向父 Session 日志增加一个完整 run snapshot。恢复因此是确定性的且不依赖进程内存，代价是重复序列化 history，并对该 Session 的 Conductor checkpoint 做线性 fold。
 
+发布的 `@deepseek-ai/dsh-conductor` package 包含 bundle 生成的带哈希 `lib/persistence-*.js` runtime chunk。Workspace constraint 记录这一精确的 package 专用文件例外，因此 chunk 被重命名或 package closure 被扩大时，repository check 会失败。
+
 可写专家不获得 shell，并且 filesystem write/edit tool 使用规范路径 guard。这使 Conductor policy 在同进程 executor 中得到执行；如果部署以后增加另一种 mutation tool，则在向 Headsman 或 Integrator 暴露之前，必须把该工具及其参数提取加入 policy。
 
 Arbiter GO 与 closeout 被刻意分成两次调用。额外授权往返可防止 gate 决策直接变成 commit、push、merge 或 deployment 操作，外部 actor 仍负责实际操作，Conductor 只记录其证据。
 
 ## Verification
 
-- `pnpm run test -t conductor` — 71 个测试通过，覆盖状态机/gate 引擎、Session 日志持久化/恢复、路由/rework、run-id、drive、能力策略、Ralph 集成、preset 接线以及真实组合/closeout 测试。
+- 针对 `drive.ts`、`invariant.ts`、`persistence.ts`、`routing.ts`、`state.ts`、`tool-conductor/src/capability.ts`、`tool-conductor/src/index.ts` 和 `tool-ralph/src/index.ts` 的聚焦 V8 coverage 运行 104 个测试，statements、branches、functions 和 lines 均达到 100%。
 - `pnpm run typecheck` — 通过（host + client 聚合）。
-- `pnpm run test:snapshot -t Conductor` — keyless Conductor closeout-authorization snapshot 通过 assembled one-shot application。
+- `pnpm run build` 和 `pnpm run verify-built-package-invariants` — artifact plane 构建通过，全部 222 个 compiled companion 通过 plain-Node Loader 检查。
+- 在 `packages/conductor/conductor` 中运行 `npm pack --dry-run --json`，生成的 `lib/persistence-*.js` chunk 包含在 package 中。
+- `pnpm run test:snapshot -t Conductor` — keyless Conductor closeout-authorization snapshot 在场景本地项目根目录下通过 assembled one-shot application，因此用户级指令不会进入 golden。
+- Web preset snapshot 要求 Conductor 同时出现在选择器和设置 roster 中；选择测试在 Minimal 与 Standard 之间切换时等待实际的 `compact` 和 `plan` catalog 转换。
+- ACP PowerShell header snapshot 固定当前文件 sandbox 拒绝指引和规范的后台 job 术语。
 - 真实组合测试启动真实 spawn/workflow 栈，驱动 Detective → Strategist → Devil's Advocate → Headsman → Auditor → Integrator → Arbiter 作为全新的结构化输出子 agent，持久化 GO checkpoint，并记录显式授权的 record-only closeout。
-- `pnpm run doc-sync` 的 28 个 gate 中有 26 个通过，Conductor 表面是干净的。剩余失败来自无关且 untracked 的 connections note 中的断链和缺失 pairing record，以及无关且 untracked 的 `temp/` 树中缺失的双语配对。
-- `pnpm run lint` 完成 repository build 后，仅因无关且 untracked 的 `temp/oh-my-openagent-dev` 树缺少 `bun-types` 而失败；repository lint runner 对全部 36 个变更的 TypeScript 文件通过。
+- `pnpm run doc-sync` — 全部 28 个文档检查通过。
+- `pnpm run lint` — repository lint 检查通过。
 
 ## Risks
 

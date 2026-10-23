@@ -758,6 +758,7 @@ export function validateResumable(run: ConductorRun): void {
     expected = gate.nextStage ?? gate.stage
   }
   const last = run.history.at(-1)
+  /* v8 ignore next -- the non-empty history branch guarantees at(-1) returns the last gate record. */
   if (last === undefined) throw new Error(`Conductor run ${run.runId} has no gate history to resume from`)
   if (run.currentStage !== expected) {
     throw new Error(

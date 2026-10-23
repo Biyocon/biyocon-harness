@@ -90,11 +90,12 @@ async function deepseekDefaultsServer(): Promise<DeepSeekDefaultsServer> {
     request.on('end', () => {
       requests.push(JSON.parse(body) as JsonObject)
       response.writeHead(200, { 'content-type': 'text/event-stream' })
-      let keepAlives = 3
+      const keepAliveIntervalMs = 250
+      let keepAlives = 9
       const write = (): void => {
         if (keepAlives-- > 0) {
           response.write(': keep-alive\n\n')
-          setTimeout(write, 60)
+          setTimeout(write, keepAliveIntervalMs)
           return
         }
         response.end([
@@ -104,7 +105,7 @@ async function deepseekDefaultsServer(): Promise<DeepSeekDefaultsServer> {
           '',
         ].join('\n\n'))
       }
-      setTimeout(write, 60)
+      setTimeout(write, keepAliveIntervalMs)
     })
   })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -559,6 +560,7 @@ describe('headless stream-json snapshots', () => {
       })
 
       expect(result.stderr).toBe('')
+      expect(result.stdout).toContain('DEFAULTS_OK')
       expect(server.requests).toHaveLength(1)
       expect(server.requests[0]?.max_tokens).toBe(256_000)
       expect(server.requests[0]?.reasoning_effort).toBe('low')
@@ -820,7 +822,10 @@ describe('headless stream-json snapshots', () => {
         DSH_CONDUCTOR_ROLE_DIR: conductorRoleDir,
         NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
       },
-      prepare: (cwd) => { runCwd = cwd },
+      prepare: async (cwd) => {
+        runCwd = cwd
+        await mkdir(join(cwd, '.git'))
+      },
       inspect: async (cwd) => {
         const logs = await persistedLogs(cwd)
         expect(logs).toHaveLength(1)

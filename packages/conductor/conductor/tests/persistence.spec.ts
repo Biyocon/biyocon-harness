@@ -167,6 +167,31 @@ function makeQualityRun(): ConductorRun {
   })
 }
 
+function specialistReport() {
+  return {
+    run_id: 'CON-2026-0001',
+    stage: 'headsman',
+    baseline_ref: 'HEAD',
+    source_baseline: 'HEAD',
+    status: 'ready',
+    summary: 'implementation complete',
+    evidence: [{ kind: 'test', reference: 'focused tests', outcome: 'passed' }],
+    findings: [{ id: 'F-1', severity: 'low', description: 'minor', impact: 'none' }],
+    assumptions: ['baseline is current'],
+    blockers: [],
+    artifacts: ['report.md'],
+    change_requests: [{ target: 'plan', reason: 'clarify', impact: 'none' }],
+    execution_baseline: {
+      scopeVersion: 'scope-v1', planVersion: 'plan-v1', acceptanceVersion: 'accept-v1',
+      allowedPaths: [], excludedPaths: [], rollbackReference: 'HEAD',
+      qualityCommands: [],
+    },
+    quality_evidence_ids: [],
+    recommended_transition: { target: 'conductor', rationale: 'evaluate' },
+    confidence: 'high',
+  }
+}
+
 describe('dsh-conductor persistence', () => {
   it('round-trips a run through the JSON wire format unchanged', () => {
     const run = makeRun({
@@ -542,5 +567,152 @@ describe('dsh-conductor persistence', () => {
   it('throws when resuming an unknown run id', async () => {
     const store = new InMemoryConductorRunStore()
     await expect(resumeRun(store, ConductorRunId('CON-9999-9999'))).rejects.toThrow(/not found/)
+  })
+
+  it('round-trips a complete specialist report through every nested durable field', () => {
+    const run = makeRun({ specialistReports: [specialistReport() as never] })
+    expect(parseRun(serializeRun(run))).toEqual(run)
+  })
+
+  it('rejects malformed top-level fields, authority, budgets, and gate records', () => {
+    const invalid: Array<[unknown, RegExp]> = [
+      [{ ...makeRun(), runId: 'bad' }, /invalid runId/],
+      [{ ...makeRun(), objective: ' ' }, /objective/],
+      [{ ...makeRun(), scope: ['same', 'same'] }, /scope.*duplicates/],
+      [{ ...makeRun(), inputArtifacts: [1] }, /inputArtifacts/],
+      [{ ...makeRun(), allowedPaths: [''] }, /allowedPaths/],
+      [{ ...makeRun(), excludedPaths: ['x', 'x'] }, /excludedPaths.*duplicates/],
+      [{ ...makeRun(), sourceBaseline: '' }, /sourceBaseline/],
+      [{ ...makeRun(), authority: null }, /authority must be an object/],
+      [{ ...makeRun(), authority: { owner: '' } }, /authority.owner/],
+      [{ ...makeRun(), authority: { owner: 'user', permittedActions: ['read', 'read'] } }, /attribution-only/],
+      [{ ...makeRun(), constraints: [' '] }, /constraints/],
+      [{ ...makeRun(), budget: { maxReworkCycles: 0, maxRalphRounds: 0 } }, /maxReworkCycles/],
+      [{ ...makeRun(), budget: { maxReworkCycles: 1, maxRalphRounds: -1 } }, /maxRalphRounds/],
+      [{ ...makeRun(), baseline: [] }, /baseline must be an object/],
+      [{ ...makeRun(), baseline: {
+        scopeVersion: 1, planVersion: 'p', acceptanceVersion: 'a',
+        allowedPaths: [], excludedPaths: [], rollbackReference: 'HEAD',
+      } }, /baseline.scopeVersion/],
+      [{ ...makeRun(), history: null }, /history must be an array/],
+      [{ ...makeRun(), history: [null] }, /history entry must be an object/],
+      [{ ...makeRun(), history: [gateRecord({ gate: 'bogus' as never, stage: 'detective', decision: 'pass' })] }, /invalid gate/],
+      [{ ...makeRun(), history: [gateRecord({ gate: 'A', stage: 'bogus' as never, decision: 'pass' })] }, /invalid stage/],
+      [{ ...makeRun(), history: [gateRecord({
+        gate: 'A', stage: 'detective', decision: 'rework', defectClass: 'bogus' as never,
+      })] }, /invalid defectClass/],
+      [{ ...makeRun(), history: [gateRecord({ gate: 'A', stage: 'detective', decision: 'pass', nextStage: 'bogus' as never })] }, /invalid nextStage/],
+      [{ ...makeRun(), history: [{ ...gateRecord({ gate: 'A', stage: 'detective', decision: 'pass' }), basis: [1] }] }, /history.basis/],
+      [{ ...makeRun(), history: [{ ...gateRecord({ gate: 'A', stage: 'detective', decision: 'pass' }), evidenceReviewed: [1] }] }, /history.evidenceReviewed/],
+      [{ ...makeRun(), history: [{ ...gateRecord({ gate: 'A', stage: 'detective', decision: 'pass' }), stateUpdate: 1 }] }, /history.stateUpdate/],
+      [{ ...makeRun(), status: 'aborted', history: [gateRecord({
+        gate: 'A', stage: 'detective', decision: 'abort', nextStage: 'detective',
+      })] }, /abort cannot carry/],
+    ]
+    for (const [record, message] of invalid) {
+      expect(() => parseRun(JSON.stringify(record))).toThrow(message)
+    }
+  })
+
+  it('rejects every malformed specialist report collection and nested record', () => {
+    const valid = specialistReport()
+    const malformed: Array<[unknown, RegExp]> = [
+      [null, /specialistReports\[0\].*object/],
+      [{ ...valid, run_id: 'CON-2026-9999' }, /run_id must match/],
+      [{ ...valid, stage: 'arbiter' }, /stage is invalid/],
+      [{ ...valid, baseline_ref: 1 }, /baseline_ref/],
+      [{ ...valid, source_baseline: 1 }, /source_baseline/],
+      [{ ...valid, status: 'unknown' }, /status is invalid/],
+      [{ ...valid, summary: 1 }, /summary/],
+      [{ ...valid, evidence: null }, /evidence must be an array/],
+      [{ ...valid, evidence: [null] }, /evidence\[0\].*object/],
+      [{ ...valid, evidence: [{ kind: 'unknown', reference: 'r', outcome: 'o' }] }, /evidence kind/],
+      [{ ...valid, evidence: [{ kind: 'test', reference: 1, outcome: 'o' }] }, /evidence.reference/],
+      [{ ...valid, evidence: [{ kind: 'test', reference: 'r', outcome: 1 }] }, /evidence.outcome/],
+      [{ ...valid, findings: null }, /findings must be an array/],
+      [{ ...valid, findings: [null] }, /findings\[0\].*object/],
+      [{ ...valid, findings: [{ id: 1, severity: 'low', description: 'd', impact: 'i' }] }, /findings.id/],
+      [{ ...valid, findings: [{ id: 'F', severity: 'unknown', description: 'd', impact: 'i' }] }, /finding severity/],
+      [{ ...valid, findings: [{ id: 'F', severity: 'low', description: 1, impact: 'i' }] }, /findings.description/],
+      [{ ...valid, findings: [{ id: 'F', severity: 'low', description: 'd', impact: 1 }] }, /findings.impact/],
+      [{ ...valid, assumptions: [1] }, /assumptions/],
+      [{ ...valid, blockers: [1] }, /blockers/],
+      [{ ...valid, artifacts: [1] }, /artifacts/],
+      [{ ...valid, change_requests: null }, /change_requests must be an array/],
+      [{ ...valid, change_requests: [null] }, /change_requests\[0\].*object/],
+      [{ ...valid, change_requests: [{ target: 'unknown', reason: 'r', impact: 'i' }] }, /target is invalid/],
+      [{ ...valid, change_requests: [{ target: 'plan', reason: 1, impact: 'i' }] }, /change_requests.reason/],
+      [{ ...valid, change_requests: [{ target: 'plan', reason: 'r', impact: 1 }] }, /change_requests.impact/],
+      [{ ...valid, recommended_transition: null }, /recommended_transition.*object/],
+      [{ ...valid, recommended_transition: { target: 'strategist', rationale: 'r' } }, /return to conductor/],
+      [{ ...valid, recommended_transition: { target: 'conductor', rationale: 1 } }, /rationale/],
+      [{ ...valid, confidence: 'unknown' }, /confidence/],
+    ]
+    for (const [report, message] of malformed) {
+      expect(() => parseRun(JSON.stringify(makeRun({ specialistReports: [report as never] })))).toThrow(message)
+    }
+  })
+
+  it('rejects malformed decisions and closeout records at the durable boundary', () => {
+    const closed = makeClosedRun()
+    const decision = closed.decision!
+    const closeout = closed.closeout!
+    const invalid: Array<[ConductorRun, RegExp]> = [
+      [{ ...closed, decision: null as never }, /decision must be an object/],
+      [{ ...closed, decision: { ...decision, decision: 'unknown' as never } }, /invalid decision.decision/],
+      [{ ...closed, decision: { ...decision, conditions: [' '] } }, /decision.conditions/],
+      [{ ...closed, decision: { ...decision, basis: [] } }, /Arbiter GO/],
+      [{ ...closed, closeout: { ...closeout, arbiter_decision: 'no-go' as never } }, /arbiter_decision/],
+      [{ ...closed, closeout: { ...closeout, authorized_action: 'unknown' as never } }, /authorized_action/],
+      [{ ...closed, closeout: { ...closeout, follow_up: null as never } }, /follow_up must be an array/],
+      [{ ...closed, closeout: { ...closeout, follow_up: [null as never] } }, /follow_up\[0\].*object/],
+      [{ ...closed, closeout: { ...closeout, follow_up: [{ owner: '', due_condition: 'later' }] } }, /follow_up\[0\].owner/],
+      [{ ...closed, closeout: { ...closeout, follow_up: [{ owner: 'owner', due_condition: '' }] } }, /due_condition/],
+      [{ ...closed, closeout: { ...closeout, traceability: null as never } }, /traceability must be an object/],
+      [{ ...closed, closeout: { ...closeout, traceability: { ...closeout.traceability, mandate: [' '] } } }, /traceability.mandate/],
+      [{ ...closed, closeout: { ...closeout, status: 'running' as never } }, /closeout.status/],
+      [{ ...closed, closeout: { ...closeout, run_id: 'CON-2026-9999' } }, /closeout.run_id must match/],
+    ]
+    for (const [record, message] of invalid) {
+      expect(() => parseRun(serializeRun(record))).toThrow(message)
+    }
+  })
+
+  it('folds unrelated checkpoints, tombstones, and missing keys in the session store', async () => {
+    const session = Session.create(SessionId('conductor-checkpoint-fold'))
+    const store = new SessionConductorRunStore(session, () => Promise.resolve())
+    const run = makeRun()
+    session.append('conductor/checkpoint', { runId: ConductorRunId('CON-2026-9999'), record: serializeRun(run) })
+    expect(await store.load(run.runId)).toBeUndefined()
+    await store.save(run)
+    await store.delete(run.runId)
+    expect(await store.load(run.runId)).toBeUndefined()
+  })
+
+  it('accepts an untouched intake run as resumable', () => {
+    expect(() => { validateResumable(makeRun({ currentStage: 'intake' })) }).not.toThrow()
+  })
+
+  it('validates lifecycle status alternatives and a documented same-stage successor', () => {
+    expect(() => parseRun(JSON.stringify({
+      ...makeRun({ status: 'awaiting_authorization', currentStage: 'auditor' }),
+      decision: {
+        run_id: 'CON-2026-0001', decision: 'go', basis: ['verified'], evidence_reviewed: ['report'],
+        conditions: [], open_risks: [], required_follow_up: [],
+      },
+    }))).toThrow(/awaiting authorization requires/)
+
+    const escalated = makeRun({
+      status: 'escalated',
+      history: [gateRecord({ gate: 'A', stage: 'detective', decision: 'escalate' })],
+    })
+    expect(parseRun(serializeRun(escalated))).toEqual(escalated)
+
+    const sameStage = makeRun({
+      currentStage: 'detective',
+      status: 'rework',
+      history: [gateRecord({ gate: 'A', stage: 'detective', decision: 'rework' })],
+    })
+    expect(() => { validateResumable(sameStage) }).not.toThrow()
   })
 })

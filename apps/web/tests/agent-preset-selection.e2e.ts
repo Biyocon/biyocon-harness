@@ -11,7 +11,6 @@
 //
 // Zero model calls: no replay fixture mounts, so a stray stream fails loud.
 import { fileURLToPath } from 'node:url'
-import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
@@ -34,43 +33,29 @@ const HEADER_EXPECTED = join(SNAPSHOT_DIR, 'header.expected.md')
 const SHIPPED_PRESETS = fileURLToPath(new URL('../../cli/config/agent-presets', import.meta.url))
 const MODE = webSnapshotMode()
 const SEED_ID = 'agent-preset-selection-web-e2e'
-/** A project skill only a preset that mounts `skill-filesystem` can discover. */
-const SKILL_NAME = 'preset-catalog-demo'
-
-/**
- * Seed one project skill under the connected workspace.
- *
- * Local skill discovery is a PRESET row, so this file is visible through
- * `standard` and invisible through `minimal` — which makes the '/' menu's
- * skill group a statement about the session's composition.
- * @param workspaceCwd - the scaffold's temp project parent.
- */
-async function seedWorkspaceSkill(workspaceCwd: string): Promise<void> {
-  const directory = join(workspaceCwd, 'workspace', '.agents', 'skills', SKILL_NAME)
-  await mkdir(directory, { recursive: true })
-  await writeFile(join(directory, 'SKILL.md'), [
-    '---',
-    `name: ${SKILL_NAME}`,
-    'description: Prove the slash catalog follows the session composition',
-    '---',
-    '',
-    'Body.',
-    '',
-  ].join('\n'))
+/** Pick one uniquely named preset from the currently open selection menu. */
+async function selectPreset(page: Page, current: string, target: RegExp): Promise<void> {
+  await page.getByRole('button', { name: current, exact: true }).click()
+  const menu = page.getByRole('menu')
+  await menu.waitFor({ timeout: 10_000 })
+  const item = menu.getByRole('menuitem', { name: target })
+  expect(await item.count()).toBe(1)
+  await item.click()
 }
 
 /**
  * A settled one-turn session with no model content: this lane asserts chrome
  * around a conversation, not a conversation, and a recorded turn would tie
  * the golden to a provider's wording for no gain.
+ * @param workspaceCwd - the scaffold workspace root serialized into the seed.
  * @returns a tokenized session log ending on a closed turn.
  */
-function seedLog(): string {
+function seedLog(workspaceCwd: string): string {
   const time = 1784974100000
   const at = (index: number, event: Record<string, unknown>): string =>
     JSON.stringify({ ...event, seq: index, time: time + index })
   return [
-    JSON.stringify({ type: 'session', version: 0, id: '{{sessionId}}', createdAt: time, cwd: '{{cwd}}/workspace' }),
+    JSON.stringify({ type: 'session', version: 0, id: '{{sessionId}}', createdAt: time, cwd: join(workspaceCwd, 'workspace') }),
     at(0, { type: 'turn/start', data: { turn: 1, trigger: { kind: 'message', source: { kind: 'user', rpcId: 'seed' } } } }),
     at(1, {
       type: 'user/message',
@@ -178,9 +163,8 @@ describe('web e2e: agent-preset selection', () => {
     // A resumed session runs what it was created with; seeding one that
     // records `minimal` is what makes the header label a claim about the
     // session rather than an echo of the current default.
-    const seededId = await seedSession(scaffold, seedLog(), SEED_ID, 'minimal')
+    const seededId = await seedSession(scaffold, seedLog(scaffold.workspaceCwd), SEED_ID, 'minimal')
     await seedSubagent(scaffold, seededId)
-    await seedWorkspaceSkill(scaffold.workspaceCwd)
     browser = await chromium.launch()
     page = await newEnglishPage(browser)
     tripwire = watchConsole(page)
@@ -218,13 +202,13 @@ describe('web e2e: agent-preset selection', () => {
     // the id alone never said what a preset does.
     expect(snapshot).toContain('Minimal mode')
     expect(snapshot).toContain('Creator mode')
+    expect(snapshot).toContain('Conductor 模式')
     await page.keyboard.press('Escape')
   })
 
   it('applies the staged pick to the blank session, and the host honors it', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-agent-preset-stage'))
-    await page.getByRole('button', { name: 'Standard mode' }).click()
-    await page.getByRole('menuitem', { name: /Minimal mode/ }).click()
+    await selectPreset(page, 'Standard mode', /^Minimal mode(?:\s|$)/)
 
     // The chip stages; the blank session the workspace connect produced is
     // what the stage lands on. The host's own answer is what comes back.
@@ -237,12 +221,16 @@ describe('web e2e: agent-preset selection', () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-agent-preset-slash-catalog'))
     const composer = page.locator('textarea:enabled').last()
 
-    // `minimal` mounts neither the compaction group nor plan mode nor local
-    // skill discovery, so the catalog the composer warmed under the
-    // deployment default must not survive the switch.
+    // `minimal` mounts neither the compaction group nor plan mode, so the
+    // catalog from the deployment default must not survive the switch.
     await composer.fill('/')
-    await expect.poll(() => menuOptions(page), { timeout: 15_000 })
-      .not.toEqual(expect.arrayContaining([expect.stringContaining(SKILL_NAME)]))
+    await expect.poll(async () => {
+      const options = await menuOptions(page)
+      return {
+        compact: options.some(option => option.startsWith('compact')),
+        plan: options.some(option => option.startsWith('plan')),
+      }
+    }, { timeout: 15_000 }).toEqual({ compact: false, plan: false })
     const onMinimal = await menuOptions(page)
     expect(onMinimal.some(option => option.startsWith('compact'))).toBe(false)
     expect(onMinimal.some(option => option.startsWith('plan'))).toBe(false)
@@ -256,13 +244,15 @@ describe('web e2e: agent-preset selection', () => {
     // against its list row, so a row that never reprojected the first switch
     // answers "already standard" and sends nothing — and restores the catalog
     // instead of leaving the session reading the narrower composition.
-    await page.getByRole('button', { name: 'Minimal mode' }).click()
-    await page.getByRole('menuitem', { name: /^Standard mode/ }).first().click()
+    await selectPreset(page, 'Minimal mode', /^Standard mode(?:\s|$)/)
     await expect.poll(() => livePreset(scaffold.baseUrl), { timeout: 15_000 }).toBe('standard')
 
     await composer.fill('/')
     await expect.poll(() => menuOptions(page), { timeout: 15_000 })
-      .toEqual(expect.arrayContaining([expect.stringContaining(SKILL_NAME)]))
+      .toEqual(expect.arrayContaining([
+        expect.stringMatching(/^compact/),
+        expect.stringMatching(/^plan/),
+      ]))
     const onStandard = await menuOptions(page)
     expect(onStandard.some(option => option.startsWith('compact'))).toBe(true)
     expect(onStandard.some(option => option.startsWith('plan'))).toBe(true)

@@ -10,17 +10,17 @@ Web 构建产物已有文档标题和 favicon，却没有可供浏览器发现�
 
 ## 决策
 
-Web 入口链接 `/manifest.webmanifest`，Vite 会将其从 `apps/web/public/` 复制到生产构建产物。manifest 将产品命名为 `DeepSeek Harness`，为安装后的浏览器界面提供简称 `DSH`，并把 `id`、`start_url` 和 `scope` 固定为 `/`。它请求 `display: "fullscreen"`，使支持这一模式的浏览器能够把可用显示区域交给安装后的编辑器式界面，同时不改变普通标签页；浏览器可以应用用户覆盖设置，或回退到其他显示模式。其图标条目复用 `/favicon.svg`，将它作为尺寸为 `any`、用途为 `any` 的 SVG。
+Web 入口链接 `/manifest.webmanifest`，Vite 会将其从 `apps/web/public/` 复制到生产构建产物。manifest 将产品命名为 `Biyocon Harness`，为安装后的浏览器界面提供简称 `Biyocon`，并把 `id`、`start_url` 和 `scope` 固定为 `/`。它请求 `display: "fullscreen"`，使支持这一模式的浏览器能够把可用显示区域交给安装后的编辑器式界面，同时不改变普通标签页；浏览器可以应用用户覆盖设置，或回退到其他显示模式。它的两个图标条目分别链接 `/biyocon-brandmark-192.png` 和 `/biyocon-brandmark-512.png`，作为尺寸为 `192x192` 和 `512x512`、用途为 `any` 的 PNG 图标。
 
-这一选择沿用了 code-server 的全屏方案，但没有照搬其 `window-controls-overlay` 显示覆盖项。DSH 没有自定义标题栏，也没有围绕原生窗口控件安排布局，因此使用这类覆盖项会在未落实所需安全布局的情况下取代全屏模式。
+这一选择沿用了 code-server 的全屏方案，但没有照搬其 `window-controls-overlay` 显示覆盖项。Web UI 没有自定义标题栏，也没有围绕原生窗口控件安排布局，因此使用这类覆盖项会在未落实所需安全布局的情况下取代全屏模式。
 
 manifest 有意不包含 `lang`、`theme_color` 或 `background_color`。产品界面支持双语，并不由 manifest 中的单一语言定义；任一静态颜色值都可能与应用解析后的一套调色板不一致。因此，主题元数据仍放在安装 manifest 之外。
 
-该功能不添加 service worker、缓存策略或离线回退。manifest 只提供安装元数据；是否具备安装资格、是否提供安装入口仍由浏览器策略决定。实际交付的 [`dsh-host-frontend-static`](../../../../packages/host/frontend-static/README.md) 回退将 `.webmanifest` 识别为 `application/manifest+json`，因此同一资产经实际交付的 HTTP 组合提供时同样有效，而不只在 Vite 输出目录中有效。
+该功能不添加 service worker、缓存策略或离线回退。manifest 只提供安装元数据；是否具备安装资格、是否提供安装入口仍由浏览器策略决定。实际交付的 [`dsh-host-frontend-static`](../../../../packages/host/frontend-static/README.md) 回退将 `.webmanifest` 识别为 `application/manifest+json`，将 `.png` 识别为 `image/png`，因此 manifest 及其图标经实际交付的 HTTP 组合提供时也具有其声明的媒体类型，而不只在 Vite 输出目录中如此。
 
 ## 验证
 
-Web 构建产物测试解析输出的 manifest，并固定完整的元数据对象，包括面向用户显示的名称、简称、图标、根路径身份、启动边界和显示模式，同时验证生产构建的 `index.html` 仍保留该链接。`dsh-host-frontend-static` 的真实 Loader 组合测试提供一个 `.webmanifest` fixture（测试前置数据），并固定其 `application/manifest+json` 媒体类型。
+Web 构建产物测试解析输出的 manifest，并固定完整的元数据对象，包括面向用户显示的名称、简称、两个 PNG 图标、根路径身份、启动边界和显示模式，同时验证生产构建的 `index.html` 仍保留该链接。其他构建产物检查固定两个 manifest 图标（192 与 512 像素）、`favicon.png`（32 像素）与 `apple-touch-icon.png`（180 像素）的 PNG 签名、`IHDR` 文件头和正方形尺寸；这些检查不解码像素，也不验证资产来源。真实 Loader HTTP 测试固定 manifest 的媒体类型和 PNG 的 GET／HEAD 元数据。Web 构建产物的 HTTP 快照使用实际交付的 base 与 Web 组合包，固定 favicon、触摸图标、品牌图标、文字标识及两个 manifest 图标的 `image/png` 类型，并要求 GET 响应体与构建文件逐字节相同、HEAD 响应体为空。
 
 ## 曾考虑的替代方案
 
@@ -30,7 +30,7 @@ Web 构建产物测试解析输出的 manifest，并固定完整的元数据对�
 
 **选择一组静态背景色和主题色。** 不予采纳，因为应用会在运行时解析浅色和深色调色板，因此选择任一固定值，都是明知它与其中一种受支持状态不符。
 
-**立即交付光栅和可遮罩图标变体。** 在某个受支持的安装目标证明现有可缩放 favicon 无法满足其要求之前，不予采纳。新变体只是对 manifest 的增量扩展，并非公开当前身份的前提。
+**立即交付可遮罩图标变体。** 在某个受支持的安装目标证明已交付的光栅品牌图标无法满足其要求之前，不予采纳。新变体只是对 manifest 的增量扩展，并非公开当前身份的前提。
 
 **只断言构建产物中的根路径字段和显示字段。** 不予采纳，因为产品名称、简称或图标被删除或更改，同样属于已交付安装体验的回归。任何 manifest 元数据发生变化时，测试都有意要求显式改动。
 
