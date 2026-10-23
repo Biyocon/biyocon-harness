@@ -12,7 +12,7 @@ Approved Conductor dispatch:
     "planVersion": "plan-1",
     "acceptanceVersion": "acceptance-1",
     "allowedPaths": [
-      "packages/conductor"
+      "."
     ],
     "excludedPaths": [],
     "rollbackReference": "HEAD",

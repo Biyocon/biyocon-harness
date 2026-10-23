@@ -13,7 +13,11 @@ import {
   type HarvestedLog,
   type NormalizeContext,
 } from '@deepseek-ai/dsh-acp-snapshot'
-import { LOADER_SMOKE_TEST_TIMEOUT_MS, runLoaderSmoke } from '@deepseek-ai/dsh-loader-smoke'
+import {
+  LOADER_SMOKE_TEST_TIMEOUT_MS,
+  runLoaderSmoke as runExampleLoaderSmoke,
+  type LoaderSmokeOptions,
+} from '@deepseek-ai/dsh-loader-smoke'
 import {
   decompressZstdFrame,
   scanZstdFrames,
@@ -64,6 +68,17 @@ const headlessSessionExpected = join(snapshotsDir, 'headless-profile', 'session.
 const headlessFailureExpected = join(snapshotsDir, 'headless-profile', 'stderr.expected.txt')
 const cliMockLlmPluginPath = fileURLToPath(new URL('./fixtures/cli-mock-llm.ts', import.meta.url))
 const refreshing = process.env.DSH_SNAPSHOT === 'refresh'
+
+/** Stop workspace-instruction discovery at each snapshot's temporary root. */
+async function runLoaderSmoke(options: LoaderSmokeOptions) {
+  return runExampleLoaderSmoke({
+    ...options,
+    prepare: async (cwd) => {
+      await mkdir(join(cwd, '.git'))
+      await options.prepare?.(cwd)
+    },
+  })
+}
 
 interface JsonObject {
   [key: string]: unknown
@@ -822,10 +837,7 @@ describe('headless stream-json snapshots', () => {
         DSH_CONDUCTOR_ROLE_DIR: conductorRoleDir,
         NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
       },
-      prepare: async (cwd) => {
-        runCwd = cwd
-        await mkdir(join(cwd, '.git'))
-      },
+      prepare: (cwd) => { runCwd = cwd },
       inspect: async (cwd) => {
         const logs = await persistedLogs(cwd)
         expect(logs).toHaveLength(1)
@@ -875,10 +887,7 @@ describe('headless stream-json snapshots', () => {
         DSH_CONDUCTOR_ROLE_DIR: conductorRoleDir,
         NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
       },
-      prepare: async (cwd) => {
-        runCwd = cwd
-        await mkdir(join(cwd, '.git'))
-      },
+      prepare: (cwd) => { runCwd = cwd },
       inspect: async (cwd) => {
         const logs = await persistedLogs(cwd)
         if (logs.length !== childFiles.length + 1) {
