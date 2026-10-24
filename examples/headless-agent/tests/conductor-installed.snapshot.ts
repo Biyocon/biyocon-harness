@@ -1,17 +1,18 @@
 import { cp, copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
-import { dirname, join, relative } from 'node:path'
+import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { normalizeSessionLog, scrubRequestHeaders } from '@deepseek-ai/dsh-acp-snapshot'
 import { LOADER_SMOKE_TEST_TIMEOUT_MS, resolveExampleMode, runLoaderSmoke } from '@deepseek-ai/dsh-loader-smoke'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { generateConductorSkills } from '../../../apps/cli/scripts/generate-conductor-skills.ts'
+import { canonicalSessionFixture } from '../../../scripts/session-fixture-layout.ts'
 
 const root = fileURLToPath(new URL('../../../', import.meta.url))
 const configPath = join(root, 'examples/headless-agent/conductor-installed.cordis.snapshot.yml')
 const driver = join(root, 'examples/headless-agent/tests/fixtures/conductor-installed-driver.ts')
 const shipped = join(root, 'apps/cli/config/agent-presets/conductor')
-const expectedPath = fileURLToPath(new URL('./snapshots/conductor-installed/session.expected.jsonl', import.meta.url))
+const expectedDirectory = fileURLToPath(new URL('./snapshots/conductor-installed/', import.meta.url))
 
 describe('installed Conductor through the headless example', () => {
   beforeAll(async () => {
@@ -62,15 +63,18 @@ describe('installed Conductor through the headless example', () => {
           specialistReports: [{ stage: 'detective', status: 'blocked', summary: 'Detective read the external workspace.' }],
         })
         const context = { cwd, sessionIds: [parent.header.id, child.header.id] }
-        const snapshot = [parent, child].map(({ log }) => scrubRequestHeaders(normalizeSessionLog(log, context))
-          .replace(/CON-\d{4}-\d{4}/g, '{{runId}}')
-          .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g, '{{isoTime}}'))
-          .join('\n')
-        if (process.env.DSH_SNAPSHOT === 'refresh') {
-          await mkdir(dirname(expectedPath), { recursive: true })
-          await writeFile(expectedPath, snapshot)
+        for (const [name, { log }] of [['parent', parent], ['detective', child]] as const) {
+          const normalized = scrubRequestHeaders(normalizeSessionLog(log, context))
+            .replace(/CON-\d{4}-\d{4}/g, '{{runId}}')
+            .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g, '{{isoTime}}')
+          const snapshot = canonicalSessionFixture(normalized, name)!
+          const expectedPath = join(expectedDirectory, `${name}.expected.jsonl`)
+          if (process.env.DSH_SNAPSHOT === 'refresh') {
+            await mkdir(expectedDirectory, { recursive: true })
+            await writeFile(expectedPath, snapshot)
+          }
+          expect(snapshot, name).toBe(await readFile(expectedPath, 'utf8'))
         }
-        expect(snapshot).toBe(await readFile(expectedPath, 'utf8'))
       },
     })
     expect(result.stderr).toBe('')
