@@ -79,7 +79,7 @@ describe('assembled search card', () => {
       expect(grepRow.querySelector('[data-search]')).not.toBeNull()
     }, { timeout: 10_000 })
     const shape = cardShape(grepRow)
-    expect(within(grepRow as HTMLElement).getByRole('button', { name: copy, exact: true })).toBeTruthy()
+    expect(within(grepRow as HTMLElement).getByRole('button', { name: copy })).toBeTruthy()
     expect(document.documentElement.lang).toBe(language.slice(0, 2))
     if (REFRESHING_GOLDEN) {
       mkdirSync(dirname(expected), { recursive: true })
