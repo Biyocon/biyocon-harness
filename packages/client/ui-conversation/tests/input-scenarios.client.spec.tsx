@@ -18,11 +18,11 @@ import { InputTriggerService } from '@deepseek-ai/dsh-client-ui-input-trigger/cl
 import type { ClientSessionContext, CommandClaim, PickOutcome, SubmitOutcome } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { FakeApiClient, fakeRemote, ok } from '../../runtime/tests/fake-api.client.ts'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
+import { da as commonDa } from '@deepseek-ai/dsh-client-locale/src/locales/da.ts'
 import { SessionInputShell } from '../src/client/input/facade.ts'
 import { InputBar } from '../src/client/skeleton/InputBar.tsx'
 import type { InputBarProps } from '../src/client/skeleton/InputBar.tsx'
-import { zh } from '../src/client/locales.ts'
+import { da } from '../src/client/locales.ts'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
@@ -85,7 +85,7 @@ function commandSource(commands: FakeCommand[], execute: (line: string) => Promi
 }
 
 const COMMANDS: FakeCommand[] = [
-  { name: 'goal', description: '设定目标', input: { hint: '目标内容' } },
+  { name: 'goal', description: '设定目标', input: { hint: 'Målsætning' } },
   { name: 'compact', description: '压缩上下文' },
 ]
 
@@ -156,7 +156,7 @@ async function scopedBench(register?: (inputTriggers: InputTriggerService) => vo
     stop: vi.fn(),
     command: () => Promise.resolve(true),
     // Mirrors the real lookup chain (conversation namespace, then common).
-    t: makeTranslate(zh, commonZh),
+    t: makeTranslate(da, commonDa),
     variant: 'composer',
   }
   const view = render(<InputBar {...barProps} />)
@@ -190,8 +190,8 @@ describe('scenario A: menu-pick /goal, type args, enter submits', () => {
     expect(b.shell.snapshot.phase).toBe('claimed')
     expect(b.textarea.value).toBe('/goal ')
     expect(b.view.container.querySelector('[data-decoration="token"]')?.textContent).toBe('/goal ')
-    // The zh dictionary owns a hint.goal entry, which overrides the machine's raw hint (production behavior).
-    expect(b.view.container.querySelector('[data-decoration="hint"]')?.textContent).toBe('输入目标，智能体将持续执行')
+    // The da dictionary owns a hint.goal entry, which overrides the machine's raw hint (production behavior).
+    expect(b.view.container.querySelector('[data-decoration="hint"]')?.textContent).toBe('beskriv målet for en længerevarende opgave')
     // Continue typing args; hint drops; claim holds.
     b.type('/goal 发布 v1')
     expect(b.shell.snapshot.phase).toBe('claimed')
@@ -307,12 +307,12 @@ describe('scenario I: unknown /xyz + enter', () => {
         trigger: '/', name: 'command',
         candidates: () => Promise.resolve([]),
         onPick: () => undefined,
-        matchEnter: () => Promise.reject(new Error('目录预热失败')),
+        matchEnter: () => Promise.reject(new Error('目录预热Mislykkedes')),
       } as never)
     })
     act(() => { b.shell.setDraft('/plan 上线') })
     fireEvent.keyDown(b.textarea, { key: 'Enter' })
-    await vi.waitFor(() => { expect(b.view.getByText('目录预热失败')).toBeTruthy() })
+    await vi.waitFor(() => { expect(b.view.getByText('目录预热Mislykkedes')).toBeTruthy() })
     // Never a silent downgrade: draft retained, sink untouched.
     expect(b.textarea.value).toBe('/plan 上线')
     expect(b.sink).not.toHaveBeenCalled()

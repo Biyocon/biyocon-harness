@@ -27,22 +27,22 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** Simplified Chinese dictionary (the key-set source of truth). */
-export const zh: Record<TrajectoryKey, string> = {
-  'view.trajectory': '轨迹',
-  'toolbar.aria': '轨迹工具栏',
-  'toolbar.duration': 'Duration',
-  'toolbar.useActualDuration': 'Use actual duration',
-  'toolbar.useEqualWidth': 'Use equal-width operations',
-  'toolbar.actualTime': '实际时间',
-  'toolbar.turns': 'Turns',
-  'toolbar.expandTurns': 'Expand turns',
-  'toolbar.collapseTurns': 'Collapse turns',
-  'toolbar.calls': 'Calls',
-  'toolbar.expandCalls': 'Expand calls',
-  'toolbar.collapseCalls': 'Collapse calls',
-  'toolbar.search': '搜索轨迹',
-  'toolbar.searchPlaceholder': '搜索',
+/** Danish dictionary (the key-set source of truth). */
+export const da: Record<TrajectoryKey, string> = {
+  'view.trajectory': 'Forløb',
+  'toolbar.aria': 'Værktøjslinje til forløb',
+  'toolbar.duration': 'Varighed',
+  'toolbar.useActualDuration': 'Brug faktisk varighed',
+  'toolbar.useEqualWidth': 'Brug lige brede handlinger',
+  'toolbar.actualTime': 'Faktisk tid',
+  'toolbar.turns': 'Ture',
+  'toolbar.expandTurns': 'Fold ture ud',
+  'toolbar.collapseTurns': 'Fold ture sammen',
+  'toolbar.calls': 'Kald',
+  'toolbar.expandCalls': 'Fold kald ud',
+  'toolbar.collapseCalls': 'Fold kald sammen',
+  'toolbar.search': 'Søg i forløb',
+  'toolbar.searchPlaceholder': 'Søg',
 }
 
 /** English dictionary. */

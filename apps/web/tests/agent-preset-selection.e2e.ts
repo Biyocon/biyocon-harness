@@ -23,7 +23,7 @@ import {
   captureStableAria, compareOrRefreshGolden, launchWebScaffold, seedSession, watchConsole,
   webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { DA_BROWSER_LOCALE, connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/agent-preset-selection', import.meta.url))
 const HERO_EXPECTED = join(SNAPSHOT_DIR, 'hero.expected.md')
@@ -177,6 +177,28 @@ describe('web e2e: agent-preset selection', () => {
     await scaffold?.close()
   })
 
+  it('localizes the shipped Conductor card in Danish without Chinese application copy', async () => {
+    const daPage = await browser.newPage({ locale: DA_BROWSER_LOCALE })
+    const errors = watchConsole(daPage)
+    try {
+      await daPage.goto(scaffold.baseUrl, { waitUntil: 'load' })
+      await daPage.getByRole('button', { name: 'Indstillinger', exact: true }).click()
+      const dialog = daPage.getByRole('dialog', { name: 'Indstillinger' })
+      await dialog.getByRole('button', { name: 'Agent-presets', exact: true }).click()
+      await dialog.getByText('Conductor-tilstand', { exact: true }).waitFor()
+      expect(await dialog.textContent()).toContain('uafhængig revision')
+      expect(await dialog.textContent()).not.toMatch(/\p{Script=Han}/u)
+      await compareOrRefreshGolden(
+        join(SNAPSHOT_DIR, 'danish-presets.expected.md'),
+        await captureStableAria(daPage, '[role="dialog"]', scaffold.workspaceCwd), MODE,
+      )
+      expect(errors.pageErrors).toEqual([])
+      expect(errors.warnings).toEqual([])
+    } finally {
+      await daPage.close()
+    }
+  })
+
   it('offers the chip on the new-session screen, beside the workspace picker', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-agent-preset-hero'))
     await connectFreshWorkspace(page, scaffold.workspaceCwd)
@@ -202,7 +224,7 @@ describe('web e2e: agent-preset selection', () => {
     // the id alone never said what a preset does.
     expect(snapshot).toContain('Minimal mode')
     expect(snapshot).toContain('Creator mode')
-    expect(snapshot).toContain('Conductor 模式')
+    expect(snapshot).toContain('Conductor mode')
     await page.keyboard.press('Escape')
   })
 

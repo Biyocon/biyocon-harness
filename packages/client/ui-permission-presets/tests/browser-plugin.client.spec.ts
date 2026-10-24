@@ -126,7 +126,7 @@ describe('ui-permission browser plugin', () => {
     const again = await c.ui.options(proj, new AbortController().signal)
     expect(again.find(option => option.id === 'workspace-write')?.active).toBe(true)
     expect(again.find(option => option.id === 'read-only')?.detail).toBe('Reads only.')
-    // Kebab-case names title-case; non-kebab host-configured names pass through.
+    // Known IDs retain their English product labels.
     expect(again.map(option => option.label)).toEqual(['Read Only', 'Workspace Write', 'Full access'])
     expect(again.find(option => option.id === 'danger-full-access')?.confirmation).toEqual({
       title: 'Enable Full access?',
@@ -138,6 +138,12 @@ describe('ui-permission browser plugin', () => {
     b.values.set(sid('s1'), { ...SELECT, options: [{ value: 'plain', name: 'Ask Every Time' }] })
     const passthrough = await c.ui.options(proj, new AbortController().signal)
     expect(passthrough[0]?.label).toBe('Ask Every Time')
+    b.ctx.locale.setLocale('da')
+    b.values.set(sid('s1'), SELECT)
+    const danish = await c.ui.options(proj, new AbortController().signal)
+    expect(danish.map(option => option.label)).toEqual(['Skrivebeskyttet', 'Skriv i arbejdsområde', 'Fuld adgang'])
+    b.values.set(sid('s1'), { ...SELECT, options: [{ value: 'host-special', name: 'ask-every-time' }] })
+    expect((await c.ui.options(proj, new AbortController().signal))[0]?.label).toBe('Ask Every Time')
     // A projection that vanished between availability and open throws.
     expect(() => c.ui.options({ sessionId: sid('ghost') }, new AbortController().signal))
       .toThrow(/not available on this host/)

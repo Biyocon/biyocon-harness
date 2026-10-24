@@ -1,28 +1,28 @@
 /** `question` namespace dictionaries. */
 
-/** Simplified Chinese dictionary (the key-set source of truth). */
-export const zh = {
-  'error.incomplete': '请先完成这道问题。',
-  'error.unanswered': '请选择一个选项或填写自定义答案。',
-  'nav.prev': '上一题',
-  'nav.next': '下一题',
-  'nav.minimize': '收起问题卡片',
-  'nav.maximize': '展开问题卡片',
-  'nav.cancel': '放弃整组问题',
-  'option.recommended': '推荐',
-  'custom.placeholder': '输入你的答案',
-  'action.skip': '跳过本题',
-  'action.next': '下一题',
-  'plan.header': '计划待审',
-  'plan.approve': '确认执行',
-  'plan.decline': '拒绝',
-  'plan.discuss': '去聊天里说',
+/** Danish dictionary (the key-set source of truth). */
+export const da = {
+  'error.incomplete': 'Besvar venligst dette spørgsmål først.',
+  'error.unanswered': 'Vælg en mulighed, eller skriv dit eget svar.',
+  'nav.prev': 'Forrige spørgsmål',
+  'nav.next': 'Næste spørgsmål',
+  'nav.minimize': 'Fold spørgsmålskortet sammen',
+  'nav.maximize': 'Fold spørgsmålskortet ud',
+  'nav.cancel': 'Luk alle spørgsmål',
+  'option.recommended': 'Anbefalet',
+  'custom.placeholder': 'Skriv dit svar',
+  'action.skip': 'Spring dette spørgsmål over',
+  'action.next': 'Næste',
+  'plan.header': 'Plangennemgang',
+  'plan.approve': 'Godkend',
+  'plan.decline': 'Afvis',
+  'plan.discuss': 'Drøft planen',
 } satisfies Record<string, string>
 
 /** The question namespace key union. */
-export type QuestionKey = keyof typeof zh
+export type QuestionKey = keyof typeof da
 
-/** English dictionary, checked complete against the zh key set. */
+/** English dictionary, checked complete against the da key set. */
 export const en = {
   'error.incomplete': 'Please complete this question first.',
   'error.unanswered': 'Please select an option or enter a custom answer.',

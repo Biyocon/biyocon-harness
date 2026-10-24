@@ -3,19 +3,19 @@
 /** Dictionary namespace owned by this plugin. */
 export const NS = 'skill'
 
-/** Simplified Chinese dictionary (the key-set source of truth). */
-export const zh = {
-  'row.running': '正在加载 skill',
-  'row.failed': 'skill 加载失败',
-  'row.stopped': 'skill 加载已中止',
-  'row.instructions': '说明',
-  'menu.userOnly': '仅用户',
+/** Danish dictionary (the key-set source of truth). */
+export const da = {
+  'row.running': 'Indlæser færdighed',
+  'row.failed': 'Færdigheden kunne ikke indlæses',
+  'row.stopped': 'Indlæsning af færdighed stoppet',
+  'row.instructions': 'Instruktioner',
+  'menu.userOnly': 'kun bruger',
 } satisfies Record<string, string>
 
 /** The skill namespace key union. */
-export type SkillKey = keyof typeof zh
+export type SkillKey = keyof typeof da
 
-/** English dictionary, checked complete against the zh key set. */
+/** English dictionary, checked complete against the da key set. */
 export const en = {
   'row.running': 'Loading skill',
   'row.failed': 'Skill load failed',

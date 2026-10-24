@@ -453,7 +453,7 @@ describe('prompt and cancel errors', () => {
       parentAvailable: true,
     })
     await session.open()
-    const prompted = await session.prompt([{ type: 'text', text: '继续' }], 'queue')
+    const prompted = await session.prompt([{ type: 'text', text: 'Fortsæt' }], 'queue')
     const cancelled = await session.cancel()
 
     expect(prompted).toEqual({ ok: true, value: { accepted: true } })
@@ -464,7 +464,7 @@ describe('prompt and cancel errors', () => {
     expect(api.callsOf('subagent.prompt')).toEqual([
       {
         parentSessionId: PARENT, childSessionId: SID, mode: 'continuable',
-        content: [{ type: 'text', text: '继续' }],
+        content: [{ type: 'text', text: 'Fortsæt' }],
         clientTimeZone: new Intl.DateTimeFormat().resolvedOptions().timeZone,
       },
     ])
@@ -505,7 +505,7 @@ describe('prompt and cancel errors', () => {
       address: { parentSessionId: PARENT, childSessionId: SID, mode: 'one-shot' },
     })
     await session.open()
-    const prompted = await session.prompt([{ type: 'text', text: '继续' }], 'queue')
+    const prompted = await session.prompt([{ type: 'text', text: 'Fortsæt' }], 'queue')
     const cancelled = await session.cancel()
 
     expect(prompted).toMatchObject({ ok: false, error: { code: 'subagent-not-resumable' } })
@@ -546,7 +546,7 @@ describe('prompt and cancel errors', () => {
     const { api, session } = makeSession()
     session.handleBlank(true)
     api.onPrompt = () => Promise.resolve(err({ code: 'agent-busy', message: 'busy', details: { reason: 'x' } }))
-    const result = await session.prompt([{ type: 'text', text: '失败的' }], 'queue')
+    const result = await session.prompt([{ type: 'text', text: 'Mislykkedes的' }], 'queue')
     expect(result.ok).toBe(false)
     expect(session.getSnapshot().promptError).toMatchObject({ op: 'send', error: { code: 'agent-busy' } })
     // Failed first prompt: composer + error strip is the retry surface —
@@ -1000,7 +1000,7 @@ describe('reference stability (the memo contract)', () => {
     const settledKey = before.chat.order[0]!
     const settledNode = before.chat.nodes.get(settledKey)
     feed(ev.chunkStart(9, 1))
-    feed(ev.chunkText(10, 1, '与工具无关的流式'))
+    feed(ev.chunkText(10, 1, '与Værktøjer无关的流式'))
     const after = session.getSnapshot()
     expect(after).not.toBe(before)
     expect(after.runningCalls).toBe(before.runningCalls)

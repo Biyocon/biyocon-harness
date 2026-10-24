@@ -1,23 +1,29 @@
 /** `settings.permission` namespace dictionaries (the Permission row's copy). */
 
-/** Simplified Chinese dictionary (the key-set source of truth). */
-export const zh = {
-  'title': '权限',
-  'description': '选择新会话的默认权限模式',
-  'loading': '加载中',
-  'unavailable': '不可用',
-  'confirm.title': '确认启用 Full access？',
-  'confirm.description': '启用 Full access 后，新会话将减少确认步骤，并且可以直接执行更多操作，包括敏感操作、文件修改或外部命令。仅建议在你信任后续任务时使用。',
-  'confirm.acknowledge': '我已了解风险，并愿意继续',
-  'confirm.cancel': '取消',
-  'confirm.enable': '启用 Full access',
+/** Danish dictionary (the key-set source of truth). */
+export const da = {
+  'permission.preset.readOnly': 'Skrivebeskyttet',
+  'permission.preset.workspaceWrite': 'Skriv i arbejdsområde',
+  'permission.preset.fullAccess': 'Fuld adgang',
+  'title': 'Tilladelser',
+  'description': 'Vælg standardtilladelsen for nye sessioner',
+  'loading': 'Indlæser',
+  'unavailable': 'Utilgængelig',
+  'confirm.title': 'Aktivér fuld adgang?',
+  'confirm.description': 'Fuld adgang lader nye sessioner reducere antallet af bekræftelser og udføre flere handlinger direkte, herunder følsomme handlinger, filændringer og eksterne kommandoer. Brug det kun, når du har tillid til de efterfølgende opgaver.',
+  'confirm.acknowledge': 'Jeg forstår risikoen og vil fortsætte',
+  'confirm.cancel': 'Annuller',
+  'confirm.enable': 'Aktivér fuld adgang',
 } satisfies Record<string, string>
 
 /** The settings.permission namespace key union. */
-export type PermissionSettingsKey = keyof typeof zh
+export type PermissionSettingsKey = keyof typeof da
 
-/** English dictionary, checked complete against the zh key set. */
+/** English dictionary, checked complete against the da key set. */
 export const en = {
+  'permission.preset.readOnly': 'Read Only',
+  'permission.preset.workspaceWrite': 'Workspace Write',
+  'permission.preset.fullAccess': 'Full access',
   'title': 'Permission',
   'description': 'Choose the default permission mode for new sessions',
   'loading': 'Loading',
@@ -29,20 +35,26 @@ export const en = {
   'confirm.enable': 'Enable Full access',
 } satisfies Record<PermissionSettingsKey, string>
 
-/** Simplified Chinese dictionary for the current-session popup gate. */
-export const accessZh = {
-  'confirm.title': '确认启用 Full access？',
-  'confirm.description': '启用 Full access 后，agent 将减少确认步骤，并且可以直接执行更多操作，包括敏感操作、文件修改或外部命令。仅建议在你信任当前任务时使用。',
-  'confirm.acknowledge': '我已了解风险，并愿意继续',
-  'confirm.cancel': '取消',
-  'confirm.enable': '启用 Full access',
+/** Danish dictionary for the current-session popup gate. */
+export const accessDa = {
+  'permission.preset.readOnly': 'Skrivebeskyttet',
+  'permission.preset.workspaceWrite': 'Skriv i arbejdsområde',
+  'permission.preset.fullAccess': 'Fuld adgang',
+  'confirm.title': 'Aktivér fuld adgang?',
+  'confirm.description': 'Fuld adgang reducerer antallet af bekræftelser og lader agenten udføre flere handlinger direkte, herunder følsomme handlinger, filændringer og eksterne kommandoer. Brug det kun, når du har tillid til den aktuelle opgave.',
+  'confirm.acknowledge': 'Jeg forstår risikoen og vil fortsætte',
+  'confirm.cancel': 'Annuller',
+  'confirm.enable': 'Aktivér fuld adgang',
 } satisfies Record<string, string>
 
 /** Current-session popup-gate key union. */
-export type PermissionAccessKey = keyof typeof accessZh
+export type PermissionAccessKey = keyof typeof accessDa
 
 /** English dictionary for the current-session popup gate. */
 export const accessEn = {
+  'permission.preset.readOnly': 'Read Only',
+  'permission.preset.workspaceWrite': 'Workspace Write',
+  'permission.preset.fullAccess': 'Full access',
   'confirm.title': 'Enable Full access?',
   'confirm.description': 'Full access reduces confirmation steps and lets the agent perform more actions directly, including sensitive operations, file changes, or external commands. Only use it when you trust the current task.',
   'confirm.acknowledge': 'I understand the risks and want to continue',

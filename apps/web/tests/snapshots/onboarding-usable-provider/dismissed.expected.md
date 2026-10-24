@@ -1,31 +1,31 @@
-- dialog "设置":
+- dialog "Indstillinger":
   - navigation:
-    - text: 设置
-    - button "通用设置":
+    - text: Indstillinger
+    - button "Generelt":
       - img
-      - text: 通用设置
-    - button "模型":
+      - text: Generelt
+    - button "Modeller":
       - img
-      - text: 模型
-    - button "插件":
+      - text: Modeller
+    - button "Plugins":
       - img
-      - text: 插件
-    - button "Agent 预设":
+      - text: Plugins
+    - button "Agent-presets":
       - img
-      - text: Agent 预设
-  - button "打开配置文件"
-  - button "关闭":
+      - text: Agent-presets
+  - button "Åbn konfigurationsfil"
+  - button "Luk":
     - img
-    - text: 关闭
-  - heading "模型" [level=2]
-  - paragraph: 填入各提供方的 API 密钥即可使用其模型。
+    - text: Luk
+  - heading "Modeller" [level=2]
+  - paragraph: Angiv dine API-nøgler for at bruge modeller fra følgende udbydere.
   - list:
     - listitem:
       - text: DeepSeek
-      - img "API 密钥缺失"
-      - button "编辑 DeepSeek (deepseek-official)": 编辑
-  - text: 提供方
-  - combobox "提供方":
+      - img "API-nøgle mangler"
+      - button "Rediger DeepSeek (deepseek-official)": Rediger
+  - text: Udbyder
+  - combobox "Udbyder":
     - option "amazon-bedrock"
     - option "ant-ling"
     - option "anthropic"
@@ -62,9 +62,9 @@
     - option "xiaomi-token-plan-sgp"
     - option "zai"
     - option "zai-coding-cn"
-  - text: API 密钥
-  - textbox "API 密钥":
-    - /placeholder: 输入 API 密钥，或留空使用环境认证
-  - group: 自定义设置
-  - button "取消"
-  - button "保存"
+  - text: API-nøgle
+  - textbox "API-nøgle":
+    - /placeholder: Angiv en API-nøgle, eller lad feltet være tomt for at bruge godkendelse via miljøvariabler
+  - group: Tilpassede indstillinger
+  - button "Annuller"
+  - button "Anvend"

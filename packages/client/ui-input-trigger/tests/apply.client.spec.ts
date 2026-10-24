@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * apply wiring on a real cordis Context + SlotRegistry: InputTriggerService mounts
  * as ctx.inputTriggers once its sessions dependency is up; the MenuView overlay
@@ -14,8 +15,8 @@ import { apply, inject, InputTriggerService } from '@deepseek-ai/dsh-client-ui-i
 import type { MenuViewInjected } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 
 // The service reads its initial locale from the browser; these specs assert
-// the shipped Chinese copy, so they state the browser they assume.
-usePinnedBrowserLanguages('zh-CN')
+// the shipped Danish copy, so they state the browser they assume.
+usePinnedBrowserLanguages('da-DK')
 
 const sid = (k: string): SessionId => k as SessionId
 
@@ -50,7 +51,7 @@ describe('apply', () => {
     const { ctx, locale } = await bench()
     await ctx.plugin({ inject: [...inject], apply }).await()
     const t = locale.bind('slash.menu')
-    expect(t('command')).toBe('命令')
+    expect(t('command')).toBe('Kommandoer')
     locale.setLocale('en')
     expect(t('skill')).toBe('Skills')
     expect(t('subagent')).toBe('Subagents')

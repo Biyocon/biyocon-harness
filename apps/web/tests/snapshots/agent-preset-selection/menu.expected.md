@@ -5,4 +5,4 @@
   - menuitem "PTC mode All Standard mode capabilities, with tools exposed through the Code Mode SDK so the model can combine multi-step operations in one TypeScript program."
   - menuitem "Minimal mode Two-tool coding agent with persistent bash and str_replace_editor."
   - menuitem "Creator mode Built for creating custom agent presets, with all Standard mode capabilities plus runtime inspection, plugin experiments, and preset-authoring guidance."
-  - menuitem "Conductor 模式 通过持久 gate、受限的全新专家、独立审计和显式 closeout 授权执行多角色工作。"
+  - menuitem "Conductor mode Multi-role work with durable gates, bounded fresh specialists, independent audits, and explicit closeout authorization."
