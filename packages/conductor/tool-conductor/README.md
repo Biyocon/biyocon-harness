@@ -12,6 +12,8 @@ When `maxRalphRounds` is positive, Headsman calls the shared Ralph workflow runn
 
 ## Known Limitations and Deferred Work
 
+Skill lookup selects the parent agent's scope key, so its preset's installed role and protocol providers remain visible independently of the task workspace. The shipped preset validates these resources before mounting; a custom composition must provide its own complete skill catalog.
+
 - The selected subagent provider must support structured output, tool filtering, trusted tool guards, trusted child tool contributions, and per-child personas; unsupported providers fail at tool load.
 - Quality execution fails closed when the host has no sandbox backend that fully enforces the command's filesystem mode and network denial.
 - `workspace-write` grants the command's configured write root; backend-owned temporary files needed to launch the confined process are outside that product write root.

@@ -26,6 +26,8 @@ These files are static repository assets. No runtime loads the manifest, resolve
 
 ## Consequences
 
+The CLI's [installed-skills projection](../bug-fix/2026-10-24-conductor-installed-skills.md) preserves these relative resources when packaging the role directory; it adds no runtime avatar rendering.
+
 The profile images are discoverable and small, but downscaling and lossy WebP encoding trade full-resolution detail for repository size. The manifest and role metadata duplicate a deliberate association, so tests pin their agreement, image format, dimensions, and size limits.
 
 A real filesystem-provider test checks parsed metadata, relative resources, and unchanged role bodies. No assembled application snapshot changes because model-visible instructions, tool output, and client rendering are unchanged. Visible avatars require a separate implementation decision.

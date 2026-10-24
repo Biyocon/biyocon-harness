@@ -250,6 +250,8 @@ Arbiter GO 与 closeout 被刻意分成两次调用。额外授权往返可防�
 
 ## Risks
 
+安装所拥有的 skill 发现与挂载验证由[安装 skills 决策](../bug-fix/2026-10-24-conductor-installed-skills.md)定义；运行时的门禁和授权决策独立于资源交付。
+
 - **Prompt engineering 风险**：runtime 可以强制执行工具限制和 schema，但模型仍然必须遵循角色指令。如果角色文件过于模糊，runtime 会产生格式正确但决策质量差的 envelope。缓解：保持角色文件简短精确；为代表性 Conductor run 添加 keyless snapshot 测试。
 - **Workflow 引擎范围蔓延**：Conductor 可能成为运行多 agent 工作的唯一方式，使通用 workflow 工具显得次要。缓解：保持 workflow 工具通用；Conductor 只是构建在其之上的一个高级产品。
 - **状态持久化复杂性**：session-log 事件是持久的，但查询它们以恢复并非无成本。缓解：store 按 `run_id` 从最新 checkpoint 向前扫描；如果 checkpoint 量变得显著，可以用 projection 替代该 fold。

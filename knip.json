@@ -38,6 +38,8 @@
         "headless-agent/tests/fixtures/cli-mock-llm.ts",
         "headless-agent/tests/fixtures/conductor-snapshot-approval.ts",
         "headless-agent/tests/fixtures/conductor-snapshot-sandbox.ts",
+        "headless-agent/tests/fixtures/conductor-installed-driver.ts",
+        "headless-agent/tests/fixtures/conductor-installed-mock.ts",
         "headless-agent/tests/fixtures/semantic-checkpoint-agent.ts",
         "headless-agent/tests/fixtures/subagent-diagnostic-agent.ts",
         "headless-agent/tests/fixtures/subagent-inheritance-agent.ts",

@@ -2,8 +2,31 @@
 
 English | [中文](README.zh.md)
 
-Conductor preset compositions define the scoped tool and role-file setup for Conductor sessions. The shipped composition is added with the Conductor preset task.
+Installs and validates Conductor's role and protocol skills for the [shipped app preset](../../../apps/cli/config/agent-presets/conductor/agent.cordis.yml). The package also exports the canonical role-directory name and stage-to-skill metadata used by [the Conductor tool](../tool-conductor/README.md).
+
+## Installation and configuration
+
+The CLI build copies [the canonical role directory](../../../.agents/conductor/roles/profiles.yml), its [shared protocol](../../../.agents/conductor/README.md) and linked templates, and the `conductor-*` bundles from [the repository skills](../../../.agents/skills/README.md) into the app preset's generated `skills/` directory. These copies are distribution artifacts, not additional authored sources. Run `pnpm run build` before mounting the source checkout's Conductor preset; the published CLI includes the generated files.
+
+| Config | Required value |
+|---|---|
+| `rolesDirectory` | Absolute installation directory containing the seven role Markdown files and their resources. |
+| `protocolDirectory` | Absolute installation root containing the `conductor-*` protocol skill directories. |
+| `sharedProtocolFile` | Absolute installation file containing the shared role protocol referenced by the role Markdown. |
+
+The app resolves these paths relative to the preset's `baseUrl` with `!!js`. Its private `skills` registry is shared with the Conductor tool, not with the task's project or user skill catalogs. Installation files are read on the host rather than through the task filesystem. Loading rejects relative paths, missing or malformed required skills, and unreadable or empty instructions before the preset can publish an agent. Validated roles become prepared definitions with the exact shared protocol prepended as reference; specialists use their dispatch and structured schema instead of reading repository links from the task workspace. Registrations unwind with the preset.
+
+The parent persona instructs the agent to report Conductor errors or blockers and stop instead of implementing the task independently. Its filesystem tools remain available; this instruction is not a replacement for executor permissions. [The installation decision](../../../.agents/notes/implemented/bug-fix/2026-10-24-conductor-installed-skills.md) explains distribution and ownership.
+
+## Model Experience
+
+Indirectly, through [the Conductor tool](../tool-conductor/README.md), which injects the selected role and protocol bodies into fresh specialist requests.
+
+#### KV Cache effect
+
+The shared protocol contributes a stable prefix to every role. Editing it changes all specialist prefixes; editing one role changes that role's prefix. Installing or validating instructions adds no parent conversation messages.
 
 ## Known Limitations and Deferred Work
 
-- **No composition** — this package does not yet provide a `cordis.yml` preset or load Conductor role files.
+- Canonical instruction edits require rebuilding and restarting the app; the running preset does not watch or reload installation assets.
+- Mount validation establishes availability, not that a model will obey the instructions; stage executors own capability enforcement.

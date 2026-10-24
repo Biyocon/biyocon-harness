@@ -36,7 +36,6 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
   'packages/util/launch-environment': 'The package only resolves host environment values; model-facing consumers own any rendered use.',
   'packages/conductor/conductor': 'The bootstrap package exports no runtime behavior.',
   'packages/conductor/tool-conductor': 'The bootstrap package registers no model-facing tool.',
-  'packages/conductor/conductor-presets': 'The bootstrap package mounts no preset composition.',
 }
 
 /**
@@ -45,6 +44,7 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
  * blocks. A package moves on or off this list with its context behavior.
  */
 const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
+  'packages/conductor/conductor-presets': { kind: 'indirect', reason: 'The installed providers supply role and protocol bodies; dsh-tool-conductor owns their model-visible injection.' },
   'packages/attachment/attachment': { kind: 'indirect', reason: 'The storage seam delegates model request rendering to provider adapters.' },
   'packages/attachment/attachment-local': { kind: 'indirect', reason: 'The local backend delegates model request rendering to provider adapters.' },
   'packages/shell/shell': { kind: 'indirect', reason: 'The service interface delegates all model rendering to dsh-tool-bash.' },

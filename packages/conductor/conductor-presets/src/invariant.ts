@@ -14,7 +14,7 @@ export const name = 'conductor-presets-invariant'
 /** Service required before the companion can reserve package ownership. */
 export const inject = ['invariants']
 
-/** No runtime invariant: the bootstrap package mounts no composition or role-file loader yet. */
+/** No runtime invariant: installation validation owns no mutable session state; the skill registry owns provider disposal. */
 const install: InvariantInstaller = () => {}
 
 /**

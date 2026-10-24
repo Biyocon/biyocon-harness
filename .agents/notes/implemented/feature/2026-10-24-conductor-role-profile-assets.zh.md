@@ -26,6 +26,8 @@ Conductor 角色 skill 需要以可移植的方式关联已提供的 profile 图
 
 ## Consequences
 
+CLI 的[安装 skills 投影](../bug-fix/2026-10-24-conductor-installed-skills.md)在打包角色目录时保留这些相对资源；它不增加运行时头像渲染。
+
 Profile 图片易于发现且体积较小，但缩小尺寸和有损 WebP 编码以完整分辨率细节换取仓库体积。Manifest 与角色 metadata 刻意重复记录同一关联，因此测试固定两者的一致性、图片格式、尺寸和大小限制。
 
 真实 filesystem provider 测试检查已解析的 metadata、相对资源及未改变的角色正文。由于模型可见指令、tool 输出和客户端渲染均未改变，组装应用的 snapshot 不作修改。可见头像需要单独的实现决策。
