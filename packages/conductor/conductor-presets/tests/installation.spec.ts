@@ -10,6 +10,7 @@ import * as conductorPresets from '../src/index.ts'
 const directories = {
   rolesDirectory: resolve('.agents/conductor/roles'),
   protocolDirectory: resolve('.agents/skills'),
+  sharedProtocolFile: resolve('.agents/conductor/README.md'),
 }
 
 describe('installed Conductor skills', () => {
@@ -23,7 +24,11 @@ describe('installed Conductor skills', () => {
       const mount = await scope.ctx.plugin(conductorPresets, directories)
       const detective = await ctx.skills.get('conductor-detective', { cwd, scope: key })
       const source = await readFile(join(directories.rolesDirectory, '01-detective.md'), 'utf8')
-      expect(detective?.content).toBe(source.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').trim())
+      expect(detective?.content).toBe([
+        'The shared role protocol is included below as reference. Do not read its repository links from the task workspace; use your dispatch and structured-output schema.',
+        (await readFile(directories.sharedProtocolFile, 'utf8')).trim(),
+        source.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').trim(),
+      ].join('\n\n'))
       for (const name of ['conductor-specialist', 'conductor-ralph', 'conductor-closeout']) {
         expect((await ctx.skills.get(name, { cwd, scope: key }))?.content).toBeTruthy()
       }
@@ -63,7 +68,22 @@ describe('installed Conductor skills', () => {
     }
   })
 
-  it.each(['rolesDirectory', 'protocolDirectory'] as const)('rejects a workspace-relative %s', async (field) => {
+  it.each(['missing', 'empty'] as const)('rejects a %s shared role protocol while mounting', async (variant) => {
+    const directory = await mkdtemp(join(tmpdir(), 'conductor-shared-protocol-'))
+    const sharedProtocolFile = join(directory, 'README.md')
+    const ctx = new Context()
+    try {
+      if (variant === 'empty') await writeFile(sharedProtocolFile, ' \n')
+      await ctx.plugin(SkillRegistry)
+      await expect(ctx.plugin(conductorPresets, { ...directories, sharedProtocolFile }))
+        .rejects.toThrow(/shared role protocol.*(could not be read|empty).*rebuild or reinstall/)
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  it.each(['rolesDirectory', 'protocolDirectory', 'sharedProtocolFile'] as const)('rejects a workspace-relative %s', async (field) => {
     const ctx = new Context()
     try {
       await ctx.plugin(SkillRegistry)

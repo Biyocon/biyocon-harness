@@ -538,16 +538,18 @@ Source: [`packages/compaction/compaction-tool-result-pruner/src/types.ts:4`](../
 Requires: `skills`
 
 ```ts config-catalog
-/** Installation directories containing the generated canonical skills. */
+/** Installation locations containing the generated canonical instructions. */
 export interface Config {
   /** Absolute directory containing the seven role Markdown files. */
   rolesDirectory: string
   /** Absolute root containing the conductor-* protocol skill directories. */
   protocolDirectory: string
+  /** Absolute installation file containing the shared role protocol. */
+  sharedProtocolFile: string
 }
 ```
 
-Source: [`packages/conductor/conductor-presets/src/index.ts:27`](../packages/conductor/conductor-presets/src/index.ts)
+Source: [`packages/conductor/conductor-presets/src/index.ts:28`](../packages/conductor/conductor-presets/src/index.ts)
 
 <a id="deepseek-aidsh-cordis-host-runner"></a>
 

@@ -10,6 +10,8 @@ export async function generateConductorSkills(): Promise<void> {
   // Only this generated directory is replaced; authored roles and protocols stay untouched.
   await rm(destination, { recursive: true, force: true })
   await cp(new URL('conductor/roles/', source), new URL('roles/', destination), { recursive: true })
+  await cp(new URL('conductor/README.md', source), new URL('README.md', destination))
+  await cp(new URL('conductor/templates/', source), new URL('templates/', destination), { recursive: true })
   await mkdir(new URL('protocols/', destination), { recursive: true })
   for (const skill of await readdir(new URL('skills/', source))) {
     if (!skill.startsWith('conductor-')) continue

@@ -44,6 +44,7 @@
       config:
         rolesDirectory: !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/roles/', baseUrl))"
         protocolDirectory: !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/protocols/', baseUrl))"
+        sharedProtocolFile: !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/README.md', baseUrl))"
     - id: workflow-worker
       name: '@deepseek-ai/dsh-workflow-worker-thread'
       config:

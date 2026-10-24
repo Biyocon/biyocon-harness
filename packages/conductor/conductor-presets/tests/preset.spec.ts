@@ -49,6 +49,7 @@ describe('dsh-conductor-presets', () => {
     expect(content).toContain("name: '@deepseek-ai/dsh-conductor-presets'")
     expect(content).toContain("new URL('skills/roles/', baseUrl)")
     expect(content).toContain("new URL('skills/protocols/', baseUrl)")
+    expect(content).toContain("new URL('skills/README.md', baseUrl)")
     expect(content).not.toContain(`- ${ROLE_DIR}`)
     expect(content).toContain('Never replace a failed Conductor run')
   })

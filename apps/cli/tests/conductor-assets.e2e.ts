@@ -10,6 +10,7 @@ const app = join(root, 'apps/cli')
 it('ships byte-identical canonical Conductor resources in the CLI package', async () => {
   const sources = [
     { source: '.agents/conductor/roles', destination: 'roles' },
+    { source: '.agents/conductor/templates', destination: 'templates' },
     ...(await readdir(join(root, '.agents/skills')))
       .filter(name => name.startsWith('conductor-'))
       .map(name => ({ source: `.agents/skills/${name}`, destination: `protocols/${name}` })),
@@ -19,7 +20,10 @@ it('ships byte-identical canonical Conductor resources in the CLI package', asyn
   })
   const [manifest] = JSON.parse(pack.stdout) as Array<{ files: Array<{ path: string }> }>
   const packed = new Set(manifest!.files.map(file => file.path))
-  const expected: string[] = []
+  const shared = 'config/agent-presets/conductor/skills/README.md'
+  const expected: string[] = [shared]
+  expect(packed.has(shared)).toBe(true)
+  expect(await readFile(join(app, shared))).toEqual(await readFile(join(root, '.agents/conductor/README.md')))
   for (const { source, destination } of sources) {
     for (const file of await readdir(join(root, source), { recursive: true, withFileTypes: true })) {
       if (!file.isFile()) continue

@@ -50,6 +50,8 @@ describe('installed Conductor through the headless example', () => {
         expect(child.header.parentSession).toBe(parent.header.id)
         const childText = JSON.stringify(child.events)
         expect(childText).toContain('# Detective')
+        const sharedProtocol = await readFile(join(root, '.agents/conductor/README.md'), 'utf8')
+        expect(childText).toContain(JSON.stringify(sharedProtocol.trim()).slice(1, -1))
         expect(childText).toContain('DETECTIVE_EXTERNAL_OK')
         expect(childText).not.toContain('WORKSPACE_PROTOCOL_MUST_NOT_RUN')
         expect(child.events.filter(row => row.type === 'tool/call').map(row => row.data.name)).toEqual(['read', 'structured_output'])
