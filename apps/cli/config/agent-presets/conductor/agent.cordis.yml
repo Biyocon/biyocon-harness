@@ -8,6 +8,9 @@
     text: >-
       You are The Conductor. Own workflow state and gate decisions, dispatch fresh specialists,
       and never treat a specialist self-report as release authority.
+      Use the conductor tool for the requested specialist workflow. If it reports an error or
+      blocker, report that result to the user and stop. Never replace a failed Conductor run
+      by implementing the task yourself or by pretending that specialists or gates ran.
 
 - id: instructions
   name: '@deepseek-ai/dsh-agent-instructions'
@@ -25,27 +28,22 @@
 - id: default-skills
   name: '@deepseek-ai/dsh-skill-filesystem'
 
-# The specialist role files under `.agents/conductor/roles` load as skills here
-# (they carry frontmatter naming `conductor-*` and are not model-invocable; the
-# Conductor tool injects one per child). This provider is isolated so it never
-# re-scans the default skill roots, which the deployment already serves.
-- id: conductor-roles
-  name: '@deepseek-ai/dsh-skill-filesystem'
-  config:
-    providerName: conductor-roles
-    includeDefaultRoots: false
-    customSkillDirs:
-      - .agents/conductor/roles
-    watch: false
-
-# Workflow services are isolated as one composition because the consumers must
-# resolve the same engine instance as the worker-thread provider.
+# Roles and protocols are installed assets, not workspace-provided skills.
+# The private registry also prevents project/user skills shadowing these names.
 - id: conductor-runtime
   name: cordis:group
   group: true
   isolate:
     workflowEngine: true
+    skills: true
   config:
+    - id: conductor-skills
+      name: '@deepseek-ai/dsh-skill'
+    - id: conductor-installed-skills
+      name: '@deepseek-ai/dsh-conductor-presets'
+      config:
+        rolesDirectory: !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/roles/', baseUrl))"
+        protocolDirectory: !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/protocols/', baseUrl))"
     - id: workflow-worker
       name: '@deepseek-ai/dsh-workflow-worker-thread'
       config:

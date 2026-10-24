@@ -250,6 +250,8 @@ Arbiter GO and closeout are deliberately separate calls. The additional authoriz
 
 ## Risks
 
+Installation-owned skill discovery and mount validation are defined by [the installed-skills decision](../bug-fix/2026-10-24-conductor-installed-skills.md); the runtime's gate and authorization decisions remain independent of resource delivery.
+
 - **Prompt engineering risk**: the runtime can enforce tool restrictions and schemas, but the model still has to follow the role instructions. If the role files are too vague, the runtime will produce clean envelopes with poor decisions. Mitigation: keep role files short and precise; add keyless snapshot tests for representative Conductor runs.
 - **Scope creep into general workflow engine**: Conductor could become the only way to run multi-agent work, making the generic workflow tool feel second-class. Mitigation: keep the workflow tool general; Conductor is one higher-level product built on top of it.
 - **State persistence complexity**: session-log events are durable but querying them for resume is not free. Mitigation: the store scans newest-first by `run_id`; a projection can replace that fold if checkpoint volume becomes material.

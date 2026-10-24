@@ -6,7 +6,11 @@
   },
   "include": ["src"],
   "references": [
+    { "path": "../../core/scope" },
     { "path": "../../../vendor/cordis" },
+    { "path": "../../../vendor/schemastery" },
+    { "path": "../../skill/skill" },
+    { "path": "../../skill/skill-filesystem" },
     { "path": "../../runtime-diagnostics/invariants" }
   ]
 }

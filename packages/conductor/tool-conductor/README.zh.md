@@ -12,6 +12,8 @@
 
 ## 已知限制与延期工作
 
+Skill 查找选择父 agent 的 scope key，因此其预设安装的角色和协议提供方不依赖任务工作区而保持可见。随附预设在挂载前验证这些资源；自定义组合必须提供完整的 skill catalog。
+
 - 所选 subagent provider 必须支持结构化输出、工具过滤、可信工具 guard、可信 child tool contribution 和逐 child persona；不支持的 provider 会在工具加载时明确失败。
 - 当 host 没有能够完整强制执行命令文件系统模式与网络拒绝的 sandbox backend 时，quality execution 会失败并保持关闭状态。
 - `workspace-write` 授予命令配置的 write root；启动受限进程所需的 backend 自有临时文件位于该产品 write root 之外。

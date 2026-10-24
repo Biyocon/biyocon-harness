@@ -401,7 +401,7 @@ return await agent(args.prompt, {
 /** Load one required scoped skill or fail the dispatch before a child starts. */
 async function requireSkill(ctx: Context, parent: Agent, signal: AbortSignal, name: string): Promise<string> {
   const skill = await ctx.skills.get(name, {
-    scope: parent.ctx,
+    scope: parent,
     cwd: parent.session.header.cwd,
     signal,
   })

@@ -533,6 +533,24 @@ export interface ToolResultPruneConfig {
 
 来源：[`packages/compaction/compaction-tool-result-pruner/src/types.ts:4`](../packages/compaction/compaction-tool-result-pruner/src/types.ts)
 
+<a id="deepseek-aidsh-conductor-presets"></a>
+
+## `@deepseek-ai/dsh-conductor-presets`
+
+需要：`skills`
+
+```ts config-catalog
+/** Installation directories containing the generated canonical skills. */
+export interface Config {
+  /** Absolute directory containing the seven role Markdown files. */
+  rolesDirectory: string
+  /** Absolute root containing the conductor-* protocol skill directories. */
+  protocolDirectory: string
+}
+```
+
+来源：[`packages/conductor/conductor-presets/src/index.ts:27`](../packages/conductor/conductor-presets/src/index.ts)
+
 <a id="deepseek-aidsh-cordis-host-runner"></a>
 
 ## `@deepseek-ai/dsh-cordis-host-runner`
@@ -3194,7 +3212,6 @@ export interface Config {
 - `@deepseek-ai/dsh-client-web-react`（[`packages/client/web-react/src/index.ts`](../packages/client/web-react/src/index.ts)）
 - `@deepseek-ai/dsh-cmdline`（[`packages/boot/cmdline/src/index.ts`](../packages/boot/cmdline/src/index.ts)）
 - `@deepseek-ai/dsh-conductor`（[`packages/conductor/conductor/src/index.ts`](../packages/conductor/conductor/src/index.ts)）
-- `@deepseek-ai/dsh-conductor-presets`（[`packages/conductor/conductor-presets/src/index.ts`](../packages/conductor/conductor-presets/src/index.ts)）
 - `@deepseek-ai/dsh-home-paths`（[`packages/util/home-paths/src/index.ts`](../packages/util/home-paths/src/index.ts)）
 - `@deepseek-ai/dsh-hook-protocol`（[`packages/hooks/hook-protocol/src/index.ts`](../packages/hooks/hook-protocol/src/index.ts)）
 - `@deepseek-ai/dsh-launch-environment`（[`packages/util/launch-environment/src/index.ts`](../packages/util/launch-environment/src/index.ts)）
