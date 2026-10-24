@@ -3,26 +3,26 @@
 /** Dictionary namespace owned by this plugin. */
 export const NS = 'workflowRun'
 
-/** Simplified Chinese dictionary (the key-set source of truth). */
-export const zh = {
+/** Danish dictionary (the key-set source of truth). */
+export const da = {
   'run.title': '{name}',
-  'run.members.one': '{count} 个成员',
-  'run.members.other': '{count} 个成员',
-  'run.empty': '没有启动成员',
-  'phase.unassigned': '未分阶段',
-  'phase.empty': '空阶段名',
-  'statusCount.running': '运行中 {count}',
-  'statusCount.completed': '已完成 {count}',
-  'statusCount.failed': '失败 {count}',
-  'statusCount.cancelled': '已取消 {count}',
-  'statusCount.interrupted': '已中断 {count}',
-  'member.empty': '空成员名',
-  'member.open': '打开 {name}',
-  'status.running': '运行中',
-  'status.completed': '已完成',
-  'status.failed': '失败',
-  'status.cancelled': '已取消',
-  'status.interrupted': '已中断',
+  'run.members.one': '{count} medlem',
+  'run.members.other': '{count} medlemmer',
+  'run.empty': 'Ingen medlemmer startet',
+  'phase.unassigned': 'Uden fase',
+  'phase.empty': 'Tomt fasenavn',
+  'statusCount.running': 'Kører {count}',
+  'statusCount.completed': 'Fuldført {count}',
+  'statusCount.failed': 'Mislykkedes {count}',
+  'statusCount.cancelled': 'Annulleret {count}',
+  'statusCount.interrupted': 'Afbrudt {count}',
+  'member.empty': 'Tomt medlemsnavn',
+  'member.open': 'Åbn {name}',
+  'status.running': 'Kører',
+  'status.completed': 'Fuldført',
+  'status.failed': 'Mislykkedes',
+  'status.cancelled': 'Annulleret',
+  'status.interrupted': 'Afbrudt',
 }
 
 /** English dictionary (same key set). */
@@ -48,4 +48,4 @@ export const en: Record<WorkflowRunKey, string> = {
 }
 
 /** Union of this namespace's dictionary keys. */
-export type WorkflowRunKey = keyof typeof zh
+export type WorkflowRunKey = keyof typeof da

@@ -1,45 +1,45 @@
-- dialog "设置":
+- dialog "Indstillinger":
   - navigation:
-    - text: 设置
-    - button "通用设置":
+    - text: Indstillinger
+    - button "Generelt":
       - img
-      - text: 通用设置
-    - button "模型":
+      - text: Generelt
+    - button "Modeller":
       - img
-      - text: 模型
-    - button "插件":
+      - text: Modeller
+    - button "Plugins":
       - img
-      - text: 插件
-    - button "Agent 预设":
+      - text: Plugins
+    - button "Agent-presets":
       - img
-      - text: Agent 预设
-  - button "打开配置文件"
-  - button "关闭":
+      - text: Agent-presets
+  - button "Åbn konfigurationsfil"
+  - button "Luk":
     - img
-    - text: 关闭
-  - text: Agent 预设 对此后新建的会话生效。运行中的会话保持它开始时的预设。
-  - button "标准模式":
-    - text: 标准模式
+    - text: Luk
+  - text: Agent-preset Gælder for sessioner, du starter fremover. Igangværende sessioner beholder det preset, de startede med.
+  - button "Standardtilstand":
+    - text: Standardtilstand
     - img
-  - text: 权限 选择新会话的默认权限模式
-  - button "Workspace Write":
-    - text: Workspace Write
+  - text: Tilladelser Vælg standardtilladelsen for nye sessioner
+  - button "Skriv i arbejdsområde":
+    - text: Skriv i arbejdsområde
     - img
-  - text: 语言
-  - button "中文":
-    - text: 中文
+  - text: Sprog
+  - button "Dansk":
+    - text: Dansk
     - img
-  - text: 外观
-  - button "浅色":
+  - text: Udseende
+  - button "Lyst":
     - img
-    - text: 浅色
-  - button "深色":
+    - text: Lyst
+  - button "Mørkt":
     - img
-    - text: 深色
-  - button "跟随系统" [pressed]:
+    - text: Mørkt
+  - button "System" [pressed]:
     - img
-    - text: 跟随系统
-  - text: 繁忙时 Enter 键行为 仅在智能体运行时生效；Cmd/Ctrl+Enter 使用另一行为
-  - button "排队发送":
-    - text: 排队发送
+    - text: System
+  - text: Enter-handling under arbejde Kun under arbejde; Cmd/Ctrl+Enter bruger den anden handling
+  - button "Sæt i kø":
+    - text: Sæt i kø
     - img

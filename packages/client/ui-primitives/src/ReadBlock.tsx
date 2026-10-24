@@ -11,6 +11,7 @@
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
+import { BlockExpandButton } from './BlockExpandButton.tsx'
 import { writeClipboard } from './clipboard.ts'
 import {
   grammarLoadCount,
@@ -35,7 +36,27 @@ export interface ReadBlockLine {
   text: string
 }
 
+/** Display copy supplied by the owning UI; standalone cards default to English. */
+export interface ReadBlockLabels {
+  copy: string
+  copied: string
+  collapse: string
+  collapseAria: string
+  expand: (hidden: number) => string
+  expandAria: (hidden: number) => string
+  window: (shown: number, total: number) => string
+}
+
+const DEFAULT_LABELS: ReadBlockLabels = {
+  copy: 'Copy', copied: 'Copied', collapse: 'Collapse', collapseAria: 'Collapse content',
+  expand: hidden => `… ${hidden} more lines`,
+  expandAria: hidden => `Expand ${hidden} more lines`,
+  window: (shown, total) => `Showing ${shown} / ${total} lines`,
+}
+
 export interface ReadBlockProps {
+  /** Localized display copy; omitted fields retain English defaults. */
+  labels?: Partial<ReadBlockLabels> | undefined
   /** Banner label (the file path, or a tool-supplied replacement title); omitted draws no label. */
   label?: string | undefined
   /** The returned window's lines, in file order, each keeping its file line number. */
@@ -74,7 +95,9 @@ export function ReadBlock({
   lang,
   maxLines = DEFAULT_READ_MAX_LINES,
   className,
+  labels,
 }: ReadBlockProps) {
+  const copy = { ...DEFAULT_LABELS, ...labels }
   // The raw text the copy control writes and the highlighter tokenizes: the
   // window's lines joined by newlines, without the file numbers or any chrome.
   // Highlighting the whole window in one call (not line by line) keeps grammar
@@ -138,7 +161,7 @@ export function ReadBlock({
         <div className={css.label}>{label ?? ''}</div>
         <div className={css.action}>
           {windowed && (
-            <span className={css.count}>{`显示 ${lines.length} / ${totalLines} 行`}</span>
+            <span className={css.count}>{copy.window(lines.length, totalLines)}</span>
           )}
           <span className={css.lang}>{lang ?? ''}</span>
           {/* Hide copy on an empty window, matching TerminalBlock's empty-output
@@ -147,24 +170,14 @@ export function ReadBlock({
               wipe the clipboard with an empty string. */}
           {lines.length > 0 && (
             <button type="button" className={css.copyButton} onClick={onCopy}>
-              {copied ? '复制成功' : '复制'}
+              {copied ? copy.copied : copy.copy}
             </button>
           )}
         </div>
       </div>
       <div className={css.body}>
         {rows(capped ? paired.slice(0, headLines) : paired)}
-        {hidden > 0 && (
-          <button
-            type="button"
-            className={css.expand}
-            aria-expanded={expanded}
-            aria-label={expanded ? '收起内容' : `展开其余 ${hidden} 行`}
-            onClick={onToggle}
-          >
-            {expanded ? '收起' : `… 其余 ${hidden} 行`}
-          </button>
-        )}
+        <BlockExpandButton hidden={hidden} expanded={expanded} onToggle={onToggle} labels={copy} className={css.expand} />
         {capped && rows(paired.slice(paired.length - tailLines))}
       </div>
     </div>

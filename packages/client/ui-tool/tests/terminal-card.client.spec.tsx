@@ -16,19 +16,19 @@ import type {
 import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SelectionTarget } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
+import { da as commonDa } from '@deepseek-ai/dsh-client-locale/src/locales/da.ts'
 import { terminalCardModel, terminalFailed } from '../src/client/tool/models/terminal-card-model.ts'
 import { createChatStore } from '@deepseek-ai/dsh-client-ui-conversation/src/client/stores.ts'
 import { GenericToolCard, type GenericToolCardProps } from '../src/client/tool/toolviews/GenericToolCard.tsx'
 import { DetailsPanel } from '@deepseek-ai/dsh-client-ui-conversation/src/client/skeleton/DetailsPanel.tsx'
 import { BashRow } from '../src/client/tool/toolviews/bash-sample.tsx'
 import { renderToolDetails, SessionProviderStub, toolChatSnapshot } from './tool-details-render.client.tsx'
-import { zh } from '@deepseek-ai/dsh-client-ui-conversation/src/client/locales.ts'
+import { da } from '@deepseek-ai/dsh-client-ui-conversation/src/client/locales.ts'
 
 type BashRowProps = Parameters<typeof BashRow>[0]
 
 // Mirrors the real lookup chain (conversation namespace, then common).
-const t: GenericToolCardProps['t'] = makeTranslate(zh, commonZh)
+const t: GenericToolCardProps['t'] = makeTranslate(da, commonDa)
 
 afterEach(cleanup)
 
@@ -311,7 +311,7 @@ describe('chat row terminal body', () => {
     const view = render(<GenericToolCard {...ownerProps(running())} />)
     toggleRow(view)
     expect(view.getByText('ls -la')).toBeTruthy()
-    expect(view.queryByText('复制')).toBeNull()
+    expect(view.queryByText('Kopiér')).toBeNull()
     // The card states its own run state: a running command reads as running
     // even though it has no output yet to distinguish it from an empty settle.
     expect(runStateOf(view.container)).toBe('ongoing')
@@ -364,7 +364,7 @@ describe('BashRow terminal card', () => {
     expect(view.queryByText(/a\.ts/)).toBeNull()
     fireEvent.click(view.container.querySelector('[data-expandable]')!)
     expect(view.getByText('a.ts  b.ts', RAW)).toBeTruthy()
-    expect(view.getByText('复制')).toBeTruthy()
+    expect(view.getByText('Kopiér')).toBeTruthy()
     // Collapse back in place: the summary row returns, the card unmounts.
     fireEvent.click(view.container.querySelector('[data-expandable]')!)
     expect(view.queryByText(/a\.ts/)).toBeNull()
@@ -435,8 +435,8 @@ describe('BashRow terminal card', () => {
     fireEvent.click(row)
 
     expect(row.getAttribute('aria-expanded')).toBe('true')
-    expect(view.getByText('IN')).toBeTruthy()
-    expect(view.getByText('OUT')).toBeTruthy()
+    expect(view.getByText('IND')).toBeTruthy()
+    expect(view.getByText('UD')).toBeTruthy()
     expect(view.getByText(/"command": "ls -la"/)).toBeTruthy()
     expect(view.container.querySelector('[data-error]')?.textContent).toBe('Error: command aborted')
   })
@@ -502,8 +502,8 @@ describe('DetailsPanel Output section', () => {
     const view = mount(snapshot({
       nodes: [settled({ resultView: resultTerminal({ output: `${long.join('\n')}\n` }) })],
     }), target)
-    fireEvent.click(view.getByRole('button', { name: '展开其余 4 行输出' }))
-    expect(view.getByRole('button', { name: '收起输出' })).toBeTruthy()
+    fireEvent.click(view.getByRole('button', { name: 'Vis de resterende 4 outputlinjer' }))
+    expect(view.getByRole('button', { name: 'Skjul output' })).toBeTruthy()
     // A second call, selected without unmounting the panel, starts collapsed.
     cleanup()
     const second = mount(snapshot({
@@ -511,7 +511,7 @@ describe('DetailsPanel Output section', () => {
         callId: 'c2', resultView: resultTerminal({ output: `${long.join('\n')}\n` }),
       })],
     }), { turnSeq: 10, callId: 'c2', toolName: 'bash' })
-    expect(second.getByRole('button', { name: '展开其余 4 行输出' })).toBeTruthy()
+    expect(second.getByRole('button', { name: 'Vis de resterende 4 outputlinjer' })).toBeTruthy()
   })
 
   it('renders the presenter description above the card', () => {
@@ -539,20 +539,20 @@ describe('DetailsPanel Output section', () => {
     expect(view.getByText(/"command"/)).toBeTruthy()
     expect(view.getByText('ls -la')).toBeTruthy()
     // The panel takes the primitive's own default cap (16), not the row's.
-    expect(view.getByText(`… 其余 ${20 - 16} 行`)).toBeTruthy()
+    expect(view.getByText(`… ${20 - 16} flere linjer`)).toBeTruthy()
     expect(view.getByText('row-0')).toBeTruthy()
   })
 
-  it('a running terminal call shows the prompt line, not the 运行中… placeholder', () => {
+  it('a running terminal call shows the prompt line, not the Kører… placeholder', () => {
     const view = mount(snapshot({ runningCalls: [running()] }), target)
     expect(view.getByText('ls -la')).toBeTruthy()
-    expect(view.queryByText('运行中…')).toBeNull()
+    expect(view.queryByText('Kører…')).toBeNull()
     expect(runStateOf(view.container)).toBe('ongoing')
   })
 
-  it('a running non-terminal call keeps the 运行中… placeholder', () => {
+  it('a running non-terminal call keeps the Kører… placeholder', () => {
     const view = mount(snapshot({ runningCalls: [running({ callView: null })] }), target)
-    expect(view.getByText('运行中…')).toBeTruthy()
+    expect(view.getByText('Kører…')).toBeTruthy()
   })
 
   it('a non-terminal result keeps the flattened pre with its error styling', () => {
@@ -589,7 +589,7 @@ describe('DetailsPanel Output section', () => {
     // No terminal card: the generic path renders the result text in the Output
     // section's <pre> (the Input section has its own, hence the scoping).
     expect(view.container.querySelector('[data-terminal]')).toBeNull()
-    const output = view.getByText('输出').closest('section')
+    const output = view.getByText('Output').closest('section')
     expect(output?.querySelector('pre')?.textContent).toContain('a.ts  b.ts')
   })
 
@@ -609,8 +609,8 @@ describe('DetailsPanel Output section', () => {
       nodes: [settled({ call: null, callView: null, resultView: resultTerminal({ title: 'ls -la' }) })],
     }), target)
     expect(view.getByText('c1')).toBeTruthy()
-    expect(view.queryByText('输入')).toBeNull()
-    expect(view.getByText('输出')).toBeTruthy()
+    expect(view.queryByText('Input')).toBeNull()
+    expect(view.getByText('Output')).toBeTruthy()
   })
 
   it('scans past other nodes and other calls before reporting the call out of window', () => {
@@ -621,18 +621,18 @@ describe('DetailsPanel Output section', () => {
       ],
       runningCalls: [running({ callId: 'also-elsewhere' })],
     }), target)
-    expect(view.getByText('该调用不在当前窗口内')).toBeTruthy()
+    expect(view.getByText('Dette kald er uden for det aktuelle vindue')).toBeTruthy()
   })
 
   it('no selection at all renders the guidance line and the default title', () => {
     const view = mount(snapshot(), null)
-    expect(view.getByText('详情')).toBeTruthy()
-    expect(view.getByText('点击消息流中的工具行查看详情')).toBeTruthy()
+    expect(view.getByText('Detaljer')).toBeTruthy()
+    expect(view.getByText('Klik på et værktøj i beskedforløbet for at se detaljerne')).toBeTruthy()
   })
 
   it('a step selection without a callId renders the guidance line too', () => {
     const view = mount(snapshot(), { turnSeq: 3, stepSeq: 1 })
-    expect(view.getByText('点击消息流中的工具行查看详情')).toBeTruthy()
+    expect(view.getByText('Klik på et værktøj i beskedforløbet for at se detaljerne')).toBeTruthy()
   })
 
   it('the close button reaches closeDetails', () => {
@@ -664,7 +664,7 @@ describe('DetailsPanel Output section', () => {
         t={t}
       />,
     )
-    fireEvent.click(view.getByRole('button', { name: '关闭详情' }))
+    fireEvent.click(view.getByRole('button', { name: 'Luk detaljer' }))
     expect(closeDetails).toHaveBeenCalledTimes(1)
   })
 
@@ -677,7 +677,7 @@ describe('DetailsPanel Output section', () => {
     }), target)
     // Scope to the Output section: the Input section's CodeBlock renders a
     // <pre> of its own, and it comes first in document order.
-    expect(nonText.getByText('输出').closest('section')?.querySelector('pre')?.textContent)
+    expect(nonText.getByText('Output').closest('section')?.querySelector('pre')?.textContent)
       .toBe('{\n  "type": "reasoning",\n  "text": "why"\n}')
     cleanup()
     const empty = mount(snapshot({

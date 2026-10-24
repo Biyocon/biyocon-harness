@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import type { SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import { PermissionRow, type PermissionRowProps } from '../src/client/PermissionRow.tsx'
-import { en } from '../src/client/locales.ts'
+import { da, en } from '../src/client/locales.ts'
 import { PermissionPresetSettingsController } from '../src/client/settings-store.ts'
 
 afterEach(cleanup)
@@ -43,19 +43,47 @@ const runtime = {
   useWorkspaces: (() => { throw new Error('unused') }) as never,
 }
 
-function mount(controller: PermissionPresetSettingsController) {
+function mount(controller: PermissionPresetSettingsController, translate: PermissionRowProps['t'] = t) {
   return render(
     <PermissionRow
       {...runtime}
       load={() => controller.load()}
       select={preset => controller.select(preset)}
       usePermission={bindSnapshotSelector(controller.store)}
-      t={t}
+      t={translate}
     />,
   )
 }
 
 describe('PermissionRow', () => {
+  it('renders Danish names and switches back to English without refetching the descriptor', async () => {
+    const describe = vi.fn(() => Promise.resolve(ok({ writable: true, hasDocument: false, namespaces: [view('workspace-write')] })))
+    const controller = new PermissionPresetSettingsController({ settings: { describe, mutate: vi.fn() } as never })
+    let language: 'da' | 'en' = 'da'
+    const translate: PermissionRowProps['t'] = (key) => {
+      const dictionary: Record<string, string> = language === 'da' ? da : en
+      return dictionary[key] ?? key
+    }
+    const rendered = mount(controller, translate)
+    fireEvent.click(await screen.findByRole('button', { name: 'Skriv i arbejdsområde' }))
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
+      'Skrivebeskyttet', 'Skriv i arbejdsområde', 'Fuld adgang',
+    ])
+    language = 'en'
+    rendered.rerender(
+      <PermissionRow
+        {...runtime}
+        load={() => Promise.resolve()}
+        select={preset => controller.select(preset)}
+        usePermission={bindSnapshotSelector(controller.store)}
+        t={translate}
+      />,
+    )
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Read Only', 'Workspace Write', 'Full access'])
+    expect(screen.getByRole('button', { name: 'Workspace Write' })).toBeTruthy()
+    expect(describe).toHaveBeenCalledOnce()
+  })
+
   it('loads the descriptor, opens the menu, and selects a new default', async () => {
     const mutate = vi.fn(() => Promise.resolve(ok(view('workspace-write', 1))))
     const controller = new PermissionPresetSettingsController({

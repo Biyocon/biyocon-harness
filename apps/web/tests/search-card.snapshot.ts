@@ -21,6 +21,7 @@ import { describe, expect, it } from 'vitest'
 import { hasClass, installAssembledBootEnv, mountAssembledApp, REFRESHING_GOLDEN } from './assembled-boot.ts'
 
 const EXPECTED = join(process.cwd(), 'apps/web/tests/snapshots/search-card/grep-card.expected.txt')
+const DANISH_EXPECTED = join(process.cwd(), 'apps/web/tests/snapshots/search-card/grep-card-danish.expected.txt')
 
 installAssembledBootEnv()
 
@@ -45,10 +46,17 @@ function cardShape(root: Element): string {
 }
 
 describe('assembled search card', () => {
-  it('renders the grep card, its truncation summary, and its capped head/tail slice from the built bundles', async () => {
+  it.each([
+    { language: 'en-US', sessions: 'Sessions', copy: 'Copy', expected: EXPECTED },
+    { language: 'da-DK', sessions: 'Sessioner', copy: 'Kopiér', expected: DANISH_EXPECTED },
+  ])('renders the localized grep card and capped head/tail slice from built bundles: $language', async ({
+    language, sessions, copy, expected,
+  }) => {
+    Object.defineProperty(navigator, 'languages', { value: [language], configurable: true })
+    Object.defineProperty(navigator, 'language', { value: language, configurable: true })
     mountAssembledApp()
 
-    const tree = await screen.findByRole('tree', { name: 'Sessions' }, { timeout: 10_000 })
+    const tree = await screen.findByRole('tree', { name: sessions }, { timeout: 10_000 })
     fireEvent.click(await within(tree).findByText('Fixture 历史会话'))
     // Wait for chat content to reach the fixture's later turns (the bash sample
     // is turn 66, the grep card turn 67).
@@ -71,10 +79,12 @@ describe('assembled search card', () => {
       expect(grepRow.querySelector('[data-search]')).not.toBeNull()
     }, { timeout: 10_000 })
     const shape = cardShape(grepRow)
+    expect(within(grepRow as HTMLElement).getByRole('button', { name: copy })).toBeTruthy()
+    expect(document.documentElement.lang).toBe(language.slice(0, 2))
     if (REFRESHING_GOLDEN) {
-      mkdirSync(dirname(EXPECTED), { recursive: true })
-      writeFileSync(EXPECTED, shape)
+      mkdirSync(dirname(expected), { recursive: true })
+      writeFileSync(expected, shape)
     }
-    await expect(shape).toMatchFileSnapshot(EXPECTED)
+    await expect(shape).toMatchFileSnapshot(expected)
   })
 })

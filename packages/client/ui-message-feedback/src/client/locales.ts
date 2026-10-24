@@ -1,23 +1,23 @@
 /** `feedback` namespace dictionaries. */
 
-/** Simplified Chinese dictionary (the key-set source of truth). */
-export const zh = {
-  'action.like': '好的回答',
-  'action.likeActive': '取消标记',
-  'action.dislike': '有问题的回答',
-  'action.dislikeActive': '取消标记',
-  'note.open': '补充说明',
-  'note.placeholder': '这条回答哪里好，或哪里有问题？（可选）',
-  'note.save': '保存',
-  'note.cancel': '取消',
-  'note.aria': '反馈说明',
-  'error.conflict': '这条反馈已在别处改动，已显示最新状态',
-  'error.load': '反馈状态加载失败',
-  'error.generic': '反馈保存失败',
+/** Danish dictionary (the key-set source of truth). */
+export const da = {
+  'action.like': 'Godt svar',
+  'action.likeActive': 'Fjern vurdering',
+  'action.dislike': 'Dårligt svar',
+  'action.dislikeActive': 'Fjern vurdering',
+  'note.open': 'Tilføj en note',
+  'note.placeholder': 'Hvad var godt, eller hvad gik galt? (valgfrit)',
+  'note.save': 'Gem',
+  'note.cancel': 'Annuller',
+  'note.aria': 'Feedbacknote',
+  'error.conflict': 'Denne feedback blev ændret et andet sted; den seneste version vises',
+  'error.load': 'Kunne ikke indlæse feedback',
+  'error.generic': 'Kunne ikke gemme feedback',
 } satisfies Record<string, string>
 
 /** The feedback namespace key union. */
-export type MessageFeedbackKey = keyof typeof zh
+export type MessageFeedbackKey = keyof typeof da
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -26,7 +26,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** English dictionary, checked complete against the zh key set. */
+/** English dictionary, checked complete against the da key set. */
 export const en = {
   'action.like': 'Good response',
   'action.likeActive': 'Remove rating',

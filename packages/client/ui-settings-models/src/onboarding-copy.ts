@@ -12,10 +12,10 @@ export const WELCOME_NOTICE_VERSION = '2026-08-15.1'
 
 /** The complete editable internal-testing notice in both supported GUI locales. */
 export const WELCOME_NOTICE_COPY = {
-  zh: {
-    title: '内测声明',
-    body: 'Biyocon Harness 目前的 0.1 版本仍处在面向 Harness 开发者进行测试的阶段，还有许多地方需要持续改进和打磨，希望听取广大开发者的反馈建议。预计 Biyocon Harness 的核心插件以及基础 API 都会在接下来的一段时间内快速迭代、持续演化。\n\n我们期待与全球开发者一起，在开源、开放、可复用、可组合的基础设施之上，共同探索智能上限。欢迎全球 Harness 开发者加入 DSH 插件生态。',
-    continueLabel: '继续',
+  da: {
+    title: 'Meddelelse om intern afprøvning',
+    body: 'Biyocon Harness 0.1 er fortsat under afprøvning for Harness-udviklere. Mange områder kræver yderligere forbedringer, og vi modtager gerne feedback fra udviklerfællesskabet. Biyocon Harness’ kerneplugins og grundlæggende API’er vil fortsat udvikle sig hurtigt i de kommende måneder.\n\nVi ser frem til at udforske grænserne for intelligens sammen med udviklere over hele verden på grundlag af open source og åben, genanvendelig infrastruktur, der kan sammensættes. Harness-udviklere fra hele verden er velkomne i DSH’s plugin-økosystem.',
+    continueLabel: 'Fortsæt',
   },
   en: {
     title: 'Internal Testing Notice',

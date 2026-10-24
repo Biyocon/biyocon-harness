@@ -1,0 +1,6 @@
+- menu:
+  - menuitem "Skrivebeskyttet"
+  - menuitem "Skriv i arbejdsområde":
+    - text: Skriv i arbejdsområde
+    - img
+  - menuitem "Fuld adgang"

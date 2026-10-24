@@ -11,14 +11,14 @@ import { EMPTY_CONVERSATION_VIEWS } from '@deepseek-ai/dsh-client-runtime/client
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
-import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
+import { da as commonDa } from '@deepseek-ai/dsh-client-locale/src/locales/da.ts'
 import { StatsLine, type StatsLineProps } from '../src/client/chat/StatsLine.tsx'
 import { contextOccupancy, deriveStats, formatDuration, formatTokens } from '../src/client/stats.ts'
-import { en, zh } from '../src/client/locales.ts'
+import { en, da } from '../src/client/locales.ts'
 import { chatSnapshotFixture } from './chat-snapshot-fixture.client.ts'
 
 // Mirrors the real lookup chain (conversation namespace, then common).
-const t: StatsLineProps['t'] = makeTranslate(zh, commonZh)
+const t: StatsLineProps['t'] = makeTranslate(da, commonDa)
 const tEn: StatsLineProps['t'] = makeTranslate(en, commonEn)
 
 /** jsdom has no ResizeObserver; StatsLine watches its row for ellipsis truncation through one. */
@@ -248,7 +248,7 @@ describe('StatsLine', () => {
     const { source } = makeSource({ nodes: [timed] })
     const view = render(<StatsLine {...props(source)} t={t} />)
     expect(view.container.textContent)
-      .toBe('1 轮 · 1 步| LLM 3.8s| 首 token 平均 0.8s · 20 tok/s| 缓存命中 90%| 输入 100 tok · 输出 5 tok')
+      .toBe('1 ture · 1 trin| LLM 3.8s| Gns. TTFT 0.8s · 20 tok/s| Cachetræf 90%| Input 100 tok · Output 5 tok')
   })
 
   it('renders without ResizeObserver support', () => {

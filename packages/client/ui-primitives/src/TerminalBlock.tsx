@@ -12,6 +12,7 @@ import { headTailCap } from './head-tail-cap.ts'
 import { useCopyFeedback } from './use-copy-feedback.ts'
 import { Pill } from './Pill.tsx'
 import { StateDot, type StateDotState } from './StateDot.tsx'
+import { BlockExpandButton } from './BlockExpandButton.tsx'
 import css from './TerminalBlock.module.css'
 
 /**
@@ -23,9 +24,8 @@ export const DEFAULT_TERMINAL_MAX_LINES = 16
 
 /**
  * Display copy for the terminal surface; the owner passes localized labels
- * (this package is cordis-free, so copy arrives via props). Every field
- * defaults to the current built-in value, so existing consumers render
- * unchanged.
+ * (this package is cordis-free, so copy arrives via props). Omitted fields
+ * use the built-in English labels.
  */
 export interface TerminalBlockLabels {
   /** Status pill text for a signal-terminated command. */
@@ -55,18 +55,18 @@ export interface TerminalBlockLabels {
 }
 
 const DEFAULT_LABELS: TerminalBlockLabels = {
-  signal: signal => `信号 ${signal}`,
-  exitCode: exitCode => `退出码 ${exitCode}`,
-  running: '运行中',
-  failed: '失败',
-  done: '已完成',
-  copy: '复制',
-  copied: '复制成功',
-  noOutput: '无输出',
-  collapseAria: '收起输出',
-  collapse: '收起',
-  expandAria: hidden => `展开其余 ${hidden} 行输出`,
-  expand: hidden => `… 其余 ${hidden} 行`,
+  signal: signal => `signal ${signal}`,
+  exitCode: exitCode => `exit ${exitCode}`,
+  running: 'Running',
+  failed: 'Failed',
+  done: 'Done',
+  copy: 'Copy',
+  copied: 'Copied',
+  noOutput: 'No output',
+  collapseAria: 'Collapse output',
+  collapse: 'Collapse',
+  expandAria: hidden => `Expand ${hidden} more output lines`,
+  expand: hidden => `… ${hidden} more lines`,
 }
 
 export interface TerminalBlockProps {
@@ -265,17 +265,7 @@ export function TerminalBlock({
             {(capped ? lines.slice(0, headLines) : lines).map((line, index) => (
               <div key={index} className={css.line}>{renderLine(line)}</div>
             ))}
-            {hidden > 0 && (
-              <button
-                type="button"
-                className={css.expand}
-                aria-expanded={expanded}
-                aria-label={expanded ? copy.collapseAria : copy.expandAria(hidden)}
-                onClick={onToggle}
-              >
-                {expanded ? copy.collapse : copy.expand(hidden)}
-              </button>
-            )}
+            <BlockExpandButton hidden={hidden} expanded={expanded} onToggle={onToggle} labels={copy} className={css.expand} />
             {capped && lines.slice(lines.length - tailLines).map((line, index) => (
               <div key={index} className={css.line}>{renderLine(line)}</div>
             ))}

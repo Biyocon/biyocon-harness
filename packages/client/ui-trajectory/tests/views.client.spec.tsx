@@ -28,11 +28,11 @@ import {
   type ConversationSessionHeaderProps, type ConversationSessionProps,
 } from '@deepseek-ai/dsh-client-ui-conversation/src/client/skeleton/ConversationSession.tsx'
 import { createChatStore } from '@deepseek-ai/dsh-client-ui-conversation/src/client/stores.ts'
-import { zh as conversationZh } from '@deepseek-ai/dsh-client-ui-conversation/src/client/locales.ts'
+import { da as conversationDa } from '@deepseek-ai/dsh-client-ui-conversation/src/client/locales.ts'
 import { apply as localeApply, inject as localeInject } from '@deepseek-ai/dsh-client-locale/client'
-import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
+import { makeTranslate, stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import type { LocaleKeysOf } from '@deepseek-ai/dsh-client-ui-slots'
-import { zh, type TrajectoryKey } from '../src/client/locales.ts'
+import { da, en } from '../src/client/locales.ts'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-trajectory/client'
 import { apply as nodeApply } from '@deepseek-ai/dsh-client-ui-trajectory'
 import type { TrajectoryTurnModel } from '../src/client/layout.ts'
@@ -47,7 +47,7 @@ import { deriveTrajectoryTimeline } from '../src/client/timeline.ts'
 const SID = 's1' as SessionId
 const sessionSnapshots = new WeakMap<SlotRegistry, SnapshotStore<ConversationSnapshot>>()
 const tConversation: ConversationSessionHeaderProps['t'] =
-  key => (conversationZh as Record<string, string>)[key] ?? key
+  key => (conversationDa as Record<string, string>)[key] ?? key
 
 afterEach(cleanup)
 // The chat store persists under its declared key; clear so one case's active
@@ -167,7 +167,7 @@ function standaloneProps(
     useWorkspaces: emptyWorkspaces(),
     useProjection: (() => undefined) as never,
     // The locale seat the outlet would inject for the declared namespace.
-    t: (key: LocaleKeysOf<'trajectory'>) => zh[key as TrajectoryKey] ?? key,
+    t: makeTranslate(da),
   } as unknown as ConvViewProps & { t: (key: LocaleKeysOf<'trajectory'>) => string }
 }
 
@@ -248,7 +248,7 @@ function mount(slots: SlotRegistry, nodes: ConversationSnapshot['nodes'] = NODES
           loadOlder: trajectory.loadOlder,
           setActualDuration: trajectory.setActualDuration,
           useDuration: bindSnapshotSelector(trajectory.hooks.duration),
-          t: (key: TrajectoryKey) => zh[key],
+          t: makeTranslate(da),
         }
       })()
       : injected
@@ -368,13 +368,13 @@ describe('tab switching in ConversationRoot', () => {
     expect(screen.queryByText(/turns ·/)).toBeNull()
     expect(view.container.querySelectorAll('tr[data-turn-start="true"]')).toHaveLength(2)
     expect(screen.queryByRole('columnheader')).toBeNull()
-    expect(screen.getByRole('toolbar', { name: '轨迹工具栏' })).toBeTruthy()
-    expect(screen.getByRole('region', { name: 'Trajectory timeline' })).toBeTruthy()
+    expect(screen.getByRole('toolbar', { name: 'Værktøjslinje til forløb' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Forløbets tidslinje' })).toBeTruthy()
     expect(view.container.querySelector('[data-conversation-composer-overlay]')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse turns' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Fold ture sammen' }))
     expect(view.container.querySelector('[data-collapsed-summary="turn"]')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Expand turns' }))
-    expect(screen.getByRole('row', { name: /USER/ })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Fold ture ud' }))
+    expect(screen.getByRole('row', { name: /BRUGER/ })).toBeTruthy()
     expect(screen.queryByTestId('chat-body')).toBeNull()
     expect(b.loadOlder).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('tab', { name: 'Chat' }))
@@ -386,8 +386,8 @@ describe('tab switching in ConversationRoot', () => {
     const labelOf = () => tabsOf(b.slots).find(tab => tab.id === 'trajectory')?.label
     expect(labelOf()).toBe('Trajectory')
     const locale = b.ctx.get('locale') as { setLocale(id: string): void }
-    locale.setLocale('zh')
-    expect(labelOf()).toBe('轨迹')
+    locale.setLocale('da')
+    expect(labelOf()).toBe('Forløb')
     locale.setLocale('en')
     expect(labelOf()).toBe('Trajectory')
   })
@@ -397,14 +397,14 @@ describe('tab switching in ConversationRoot', () => {
     mount(b.slots)
     fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
 
-    fireEvent.keyDown(screen.getByRole('row', { name: /TOOL/ }), { key: 'Enter' })
-    expect(screen.getByRole('complementary', { name: 'Event details' })).toBeTruthy()
-    expect(screen.getByText('Turn 1 · Step 1')).toBeTruthy()
-    expect(screen.getByText('Completed')).toBeTruthy()
-    expect(screen.getByRole('tab', { name: 'Result' })).toBeTruthy()
+    fireEvent.keyDown(screen.getByRole('row', { name: /VÆRKTØJ/ }), { key: 'Enter' })
+    expect(screen.getByRole('complementary', { name: 'Hændelsesdetaljer' })).toBeTruthy()
+    expect(screen.getByText('Tur 1 · Trin 1')).toBeTruthy()
+    expect(screen.getByText('Afsluttet')).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'Resultat' })).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close details' }))
-    expect(screen.queryByRole('complementary', { name: 'Event details' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Luk detaljer' }))
+    expect(screen.queryByRole('complementary', { name: 'Hændelsesdetaljer' })).toBeNull()
   })
 
   it('labels a standalone compaction as between-turn work in the ledger and inspector', async () => {
@@ -434,11 +434,11 @@ describe('tab switching in ConversationRoot', () => {
     const view = mount(b.slots, nodes)
     fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
 
-    expect(screen.getByText('Between turns')).toBeTruthy()
+    expect(screen.getByText('Mellem ture')).toBeTruthy()
     expect(view.container.textContent).not.toContain('Turn null')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Request #2 · Compaction' }))
-    expect(screen.getByText('Compaction · Between turns')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Forespørgsel #2 · Komprimering' }))
+    expect(screen.getByText('Komprimering · Mellem ture')).toBeTruthy()
     expect(view.container.textContent).not.toContain('Turn null')
   })
 
@@ -486,31 +486,31 @@ describe('tab switching in ConversationRoot', () => {
     mount(b.slots, nodes)
     fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
 
-    const firstRequest = screen.getByRole('button', { name: 'Request #2 · Compaction' })
-    const secondRequest = screen.getByRole('button', { name: 'Request #4 · Compaction' })
+    const firstRequest = screen.getByRole('button', { name: 'Forespørgsel #2 · Komprimering' })
+    const secondRequest = screen.getByRole('button', { name: 'Forespørgsel #4 · Komprimering' })
     const firstSection = firstRequest.closest('tr')?.querySelector('span')
     const secondSection = secondRequest.closest('tr')?.querySelector('span')
-    expect(firstSection?.textContent).toBe('Between turns')
-    expect(secondSection?.textContent).toBe('Between turns')
+    expect(firstSection?.textContent).toBe('Mellem ture')
+    expect(secondSection?.textContent).toBe('Mellem ture')
 
     fireEvent.click(firstRequest)
     expect(firstSection?.className).toMatch(/turnLabelActive/)
     expect(secondSection?.className).not.toMatch(/turnLabelActive/)
-    expect(screen.getByText('Request #2')).toBeTruthy()
-    expect(screen.getByText('Compaction · Between turns')).toBeTruthy()
+    expect(screen.getByText('Forespørgsel #2')).toBeTruthy()
+    expect(screen.getByText('Komprimering · Mellem ture')).toBeTruthy()
 
     fireEvent.click(secondRequest)
     expect(firstSection?.className).not.toMatch(/turnLabelActive/)
     expect(secondSection?.className).toMatch(/turnLabelActive/)
-    expect(screen.getByText('Request #4')).toBeTruthy()
-    expect(screen.getByText('Compaction · Between turns')).toBeTruthy()
+    expect(screen.getByText('Forespørgsel #4')).toBeTruthy()
+    expect(screen.getByText('Komprimering · Mellem ture')).toBeTruthy()
   })
 
   it('dragging the overview focuses overlapping records without filtering the ledger', async () => {
     const b = await bench()
     mount(b.slots)
     fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
-    const plot = screen.getByLabelText('Timeline overview; drag horizontally to focus events')
+    const plot = screen.getByLabelText('Tidslinjeoversigt; træk vandret for at fokusere på hændelser')
     vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({
       x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 72, width: 100, height: 72,
       toJSON: () => ({}),
@@ -519,22 +519,22 @@ describe('tab switching in ConversationRoot', () => {
     fireEvent.pointerMove(plot, { clientX: 95, pointerId: 1 })
     fireEvent.pointerUp(plot, { clientX: 95, pointerId: 1 })
 
-    expect(screen.getByRole('row', { name: /USER/ }).getAttribute('data-timeline-focus'))
+    expect(screen.getByRole('row', { name: /BRUGER/ }).getAttribute('data-timeline-focus'))
       .toBe('outside')
 
     const tablePane = screen.getByRole('table').parentElement
     expect(tablePane).not.toBeNull()
     fireEvent.click(tablePane as HTMLElement)
-    expect(screen.getByRole('row', { name: /USER/ }).getAttribute('data-timeline-focus'))
+    expect(screen.getByRole('row', { name: /BRUGER/ }).getAttribute('data-timeline-focus'))
       .toBeNull()
 
     fireEvent.pointerDown(plot, { button: 0, clientX: 55, pointerId: 2 })
     fireEvent.pointerMove(plot, { clientX: 95, pointerId: 2 })
     fireEvent.pointerUp(plot, { clientX: 95, pointerId: 2 })
-    expect(screen.getByRole('row', { name: /USER/ }).getAttribute('data-timeline-focus'))
+    expect(screen.getByRole('row', { name: /BRUGER/ }).getAttribute('data-timeline-focus'))
       .toBe('outside')
     fireEvent.contextMenu(plot)
-    expect(screen.getByRole('row', { name: /USER/ }).getAttribute('data-timeline-focus'))
+    expect(screen.getByRole('row', { name: /BRUGER/ }).getAttribute('data-timeline-focus'))
       .toBe('outside')
   })
 
@@ -542,7 +542,7 @@ describe('tab switching in ConversationRoot', () => {
     const b = await bench()
     const view = mount(b.slots)
     fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
-    const plot = screen.getByLabelText('Timeline overview; drag horizontally to focus events')
+    const plot = screen.getByLabelText('Tidslinjeoversigt; træk vandret for at fokusere på hændelser')
     vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({
       x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 72, width: 100, height: 72,
       toJSON: () => ({}),
@@ -573,20 +573,20 @@ describe('tab switching in ConversationRoot', () => {
     )
     expect(selectedRow?.getAttribute('aria-selected')).toBe('true')
     expect(view.container.querySelector('tr[data-timeline-focus]')).toBeNull()
-    expect(screen.getByRole('complementary', { name: 'Event details' })).toBeTruthy()
+    expect(screen.getByRole('complementary', { name: 'Hændelsesdetaljer' })).toBeTruthy()
   })
 
   it('empty window keeps the toolbar and reports no timing data', async () => {
     const b = await bench(historySnapshot([]))
     mount(b.slots)
     fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
-    expect(screen.getByRole('toolbar', { name: '轨迹工具栏' })).toBeTruthy()
-    expect(screen.getByText('No timing data')).toBeTruthy()
+    expect(screen.getByRole('toolbar', { name: 'Værktøjslinje til forløb' })).toBeTruthy()
+    expect(screen.getByText('Ingen tidsdata')).toBeTruthy()
     expect(screen.getByRole<HTMLButtonElement>('button', {
-      name: 'Collapse turns',
+      name: 'Fold ture sammen',
     }).disabled).toBe(false)
     expect(screen.getByRole<HTMLButtonElement>('button', {
-      name: 'Collapse calls',
+      name: 'Fold kald sammen',
     }).disabled).toBe(false)
     expect(screen.queryByRole('row')).toBeNull()
     expect(screen.queryByText(/turns ·/)).toBeNull()
@@ -622,7 +622,7 @@ describe('timeline projection', () => {
     vi.useFakeTimers()
     try {
       const view = render(
-        <TrajectoryTimeline
+        <TrajectoryTimeline t={makeTranslate(en)}
           turns={[{
             turn: 1,
             groups: [{
@@ -672,7 +672,7 @@ describe('timeline projection', () => {
   it('marks an unloaded history prefix without inventing timeline duration', () => {
     const onLoadEarlier = vi.fn(() => new Promise<boolean>(() => {}))
     const view = render(
-      <TrajectoryTimeline
+      <TrajectoryTimeline t={makeTranslate(en)}
         turns={turns}
         mode="sequence"
         range={null}
@@ -697,7 +697,7 @@ describe('timeline projection', () => {
     expect(screen.getByLabelText('Loading earlier history')).toBeTruthy()
 
     view.rerender(
-      <TrajectoryTimeline
+      <TrajectoryTimeline t={makeTranslate(en)}
         turns={turns}
         mode="sequence"
         range={null}
@@ -710,7 +710,7 @@ describe('timeline projection', () => {
 
   it('cancels native scrolling across the timeline while zooming', () => {
     render(
-      <TrajectoryTimeline
+      <TrajectoryTimeline t={makeTranslate(en)}
         turns={longTurns}
         mode="sequence"
         range={null}
@@ -732,7 +732,7 @@ describe('timeline projection', () => {
 
   it('scales sequence gutters with narrow operation spans', () => {
     const view = render(
-      <TrajectoryTimeline
+      <TrajectoryTimeline t={makeTranslate(en)}
         turns={longTurns}
         mode="sequence"
         range={null}
@@ -759,7 +759,7 @@ describe('timeline projection', () => {
       }],
     }]
     const view = render(
-      <TrajectoryTimeline
+      <TrajectoryTimeline t={makeTranslate(en)}
         turns={denseTurns}
         mode="sequence"
         range={null}
@@ -776,7 +776,7 @@ describe('timeline projection', () => {
   it('clears the selection without changing zoom on a zoomed right click', () => {
     const onRangeChange = vi.fn()
     const view = render(
-      <TrajectoryTimeline
+      <TrajectoryTimeline t={makeTranslate(en)}
         turns={longTurns}
         mode="sequence"
         range={{ start: 2, end: 4 }}
@@ -808,7 +808,7 @@ describe('timeline projection', () => {
   it('clears the selection and suppresses the context menu at full zoom', () => {
     const onRangeChange = vi.fn()
     render(
-      <TrajectoryTimeline
+      <TrajectoryTimeline t={makeTranslate(en)}
         turns={longTurns}
         mode="sequence"
         range={{ start: 2, end: 4 }}
@@ -827,7 +827,7 @@ describe('timeline projection', () => {
   it('pans the zoomed viewport with a right-button drag without changing the selection', () => {
     const onRangeChange = vi.fn()
     const view = render(
-      <TrajectoryTimeline
+      <TrajectoryTimeline t={makeTranslate(en)}
         turns={longTurns}
         mode="sequence"
         range={{ start: 2, end: 4 }}
@@ -857,7 +857,7 @@ describe('timeline projection', () => {
   it('pans the zoomed viewport only far enough to reveal a newly selected record', async () => {
     const onRangeChange = vi.fn()
     const view = render(
-      <TrajectoryTimeline
+      <TrajectoryTimeline t={makeTranslate(en)}
         turns={longTurns}
         mode="sequence"
         range={null}
@@ -872,7 +872,7 @@ describe('timeline projection', () => {
     fireEvent.wheel(plot, { clientX: 50, deltaY: -1_000 })
 
     view.rerender(
-      <TrajectoryTimeline
+      <TrajectoryTimeline t={makeTranslate(en)}
         turns={longTurns}
         mode="sequence"
         range={null}
@@ -888,7 +888,7 @@ describe('timeline projection', () => {
     })
 
     view.rerender(
-      <TrajectoryTimeline
+      <TrajectoryTimeline t={makeTranslate(en)}
         turns={longTurns}
         mode="sequence"
         range={null}
@@ -907,7 +907,7 @@ describe('timeline projection', () => {
   it('auto-pans a zoomed viewport while a range drag pushes against an edge', () => {
     const onRangeChange = vi.fn()
     const view = render(
-      <TrajectoryTimeline
+      <TrajectoryTimeline t={makeTranslate(en)}
         turns={longTurns}
         mode="sequence"
         range={null}
@@ -983,7 +983,7 @@ describe('timeline projection', () => {
       }],
     }] satisfies readonly TrajectoryTurnModel[]
     const view = render(
-      <TrajectoryTimeline
+      <TrajectoryTimeline t={makeTranslate(en)}
         turns={errorTurns}
         mode="sequence"
         range={null}
@@ -1129,7 +1129,7 @@ describe('timeline projection', () => {
         ...standaloneDuration(),
       },
     ))
-    expect(screen.getByRole('toolbar', { name: '轨迹工具栏' })).toBeTruthy()
+    expect(screen.getByRole('toolbar', { name: 'Værktøjslinje til forløb' })).toBeTruthy()
     expect(screen.queryByRole('row')).toBeNull()
   })
 })
@@ -1148,7 +1148,7 @@ describe('TrajectoryView state', () => {
         setActualDuration={(value) => { firstDuration.set(value) }}
       />,
     )
-    const duration = screen.getByRole('button', { name: 'Use actual duration' })
+    const duration = screen.getByRole('button', { name: 'Brug faktisk varighed' })
 
     expect(duration.getAttribute('aria-pressed')).toBe('false')
     fireEvent.click(duration)
@@ -1163,7 +1163,7 @@ describe('TrajectoryView state', () => {
         setActualDuration={(value) => { restoredDuration.set(value) }}
       />,
     )
-    expect(screen.getByRole('button', { name: 'Use actual duration' }).getAttribute('aria-pressed'))
+    expect(screen.getByRole('button', { name: 'Brug faktisk varighed' }).getAttribute('aria-pressed'))
       .toBe('true')
   })
 

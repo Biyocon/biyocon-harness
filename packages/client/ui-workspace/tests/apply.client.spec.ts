@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
@@ -9,8 +10,8 @@ import { WorkspaceBrowser } from '../src/client/WorkspaceBrowser.tsx'
 import { WorkspacePicker } from '../src/client/WorkspacePicker.tsx'
 
 // The service reads its initial locale from the browser; these specs assert
-// the shipped Chinese copy, so they state the browser they assume.
-usePinnedBrowserLanguages('zh-CN')
+// the shipped Danish copy, so they state the browser they assume.
+usePinnedBrowserLanguages('da-DK')
 
 async function bench() {
   const ctx = new Context()
@@ -65,7 +66,7 @@ describe('ui-workspace apply', () => {
     // Copy rides the standard locale seat: the entry declares the namespace
     // and apply registered both dictionaries.
     expect(before.slots.entries('sidebar.workspaces')[0]!.locale).toBe('workspace')
-    expect(before.locale.bind('workspace')('session.new')).toBe('新会话')
+    expect(before.locale.bind('workspace')('session.new')).toBe('Ny session')
 
     const after = await bench()
     await after.ctx.plugin({ inject: [...inject], apply }).await()

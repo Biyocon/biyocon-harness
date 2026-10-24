@@ -1,24 +1,24 @@
 /** `goal` namespace dictionaries. */
 
-/** Simplified Chinese dictionary (the key-set source of truth). */
-export const zh = {
-  'phase.active': '进行中的目标',
-  'phase.paused': '已暂停的目标',
-  'phase.blocked': '受阻的目标',
-  'objective.aria': '目标内容',
-  'commandInput.aria': '命令输入',
-  'action.save': '保存目标',
-  'action.cancel': '取消编辑',
-  'action.pause': '暂停目标',
-  'action.resume': '恢复目标',
-  'action.edit': '编辑目标',
-  'action.clear': '清除目标',
+/** Danish dictionary (the key-set source of truth). */
+export const da = {
+  'phase.active': 'Aktivt mål',
+  'phase.paused': 'Mål på pause',
+  'phase.blocked': 'Blokeret mål',
+  'objective.aria': 'Målsætning',
+  'commandInput.aria': 'Kommandoinput',
+  'action.save': 'Gem mål',
+  'action.cancel': 'Annuller redigering',
+  'action.pause': 'Sæt mål på pause',
+  'action.resume': 'Genoptag mål',
+  'action.edit': 'Rediger mål',
+  'action.clear': 'Ryd mål',
 } satisfies Record<string, string>
 
 /** The goal namespace key union. */
-export type GoalKey = keyof typeof zh
+export type GoalKey = keyof typeof da
 
-/** English dictionary, checked complete against the zh key set. */
+/** English dictionary, checked complete against the da key set. */
 export const en = {
   'phase.active': 'Ongoing Goal',
   'phase.paused': 'Paused Goal',

@@ -16,6 +16,8 @@ The package also fills `conversation.details.tool` with `ToolDetails`. The row a
 
 Generic rows classify known Tool names into search, read, shell, write, edit, code, or generic variants. Running, successful, failed, and interrupted lifecycle states come only from the frozen call/result slice. File paths resolve against the session `cwd` only when the user invokes the Host open-file callback; presentation code does not read Session services.
 
+Chat rows and selected-call details share translated labels for diff, read, search, and web result cards through the `conversation` locale seat. The primitives receive display props only and do not depend on the locale plugin.
+
 ## Atomic Tool views
 
 An owning business package registers its wire Tool name into `tool.call.toolview`:

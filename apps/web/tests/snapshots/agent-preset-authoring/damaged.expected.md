@@ -1,106 +1,106 @@
-- dialog "设置":
+- dialog "Indstillinger":
   - navigation:
-    - text: 设置
-    - button "通用设置":
+    - text: Indstillinger
+    - button "Generelt":
       - img
-      - text: 通用设置
-    - button "模型":
+      - text: Generelt
+    - button "Modeller":
       - img
-      - text: 模型
-    - button "插件":
+      - text: Modeller
+    - button "Plugins":
       - img
-      - text: 插件
-    - button "Agent 预设":
+      - text: Plugins
+    - button "Agent-presets":
       - img
-      - text: Agent 预设
-  - button "打开配置文件"
-  - button "关闭":
+      - text: Agent-presets
+  - button "Åbn konfigurationsfil"
+  - button "Luk":
     - img
-    - text: 关闭
-  - heading "Agent 预设" [level=2]
-  - paragraph: 预设即一个会话的 Agent 所运行的插件组装 —— 它的工具、提示词与能力。复制一份既有预设改成自己的，或用「创造模式」让 Agent 帮你创建。
-  - heading "内置" [level=3]
+    - text: Luk
+  - heading "Agent-presets" [level=2]
+  - paragraph: Et preset er den plugin-sammensætning, en sessions agent kører med — dens værktøjer, instruks og funktioner. Duplikér et eksisterende preset, og tilpas det, eller lad agenten lave et udkast i Kreatørtilstand.
+  - heading "Indbygget" [level=3]
   - list:
     - listitem:
-      - 'button "当前使用: 标准模式" [disabled] [pressed]':
-        - text: 标准模式 内置 当前使用 功能完整的编码 Agent，支持文件编辑、Shell、文件与网页检索、Skills、计划、目标、子代理和工作流。
+      - 'button "I brug: Standardtilstand" [disabled] [pressed]':
+        - text: Standardtilstand Indbygget I brug Komplet kodeagent med filredigering, shell, fil- og websøgning, færdigheder, planlægning, mål, underagenter og arbejdsforløb.
         - code: standard
-      - 'button "查看: 标准模式"':
+      - 'button "Vis: Standardtilstand"':
         - img
-        - text: 查看
-      - 'button "复制: 标准模式"':
+        - text: Vis
+      - 'button "Duplikér: Standardtilstand"':
         - img
-        - text: 复制
+        - text: Duplikér
     - listitem:
-      - 'button "设为默认: PTC 模式"':
-        - text: PTC 模式 内置 具备标准模式的全部能力，并通过 Code Mode SDK 呈现工具，让模型用一个 TypeScript 程序组合多步操作。
+      - 'button "Sæt som standard: PTC-tilstand"':
+        - text: PTC-tilstand Indbygget Alle funktioner fra Standardtilstand med værktøjer tilgængelige via Code Mode SDK, så modellen kan kombinere handlinger i flere trin i ét TypeScript-program.
         - code: code
-      - 'button "查看: PTC 模式"':
+      - 'button "Vis: PTC-tilstand"':
         - img
-        - text: 查看
-      - 'button "复制: PTC 模式"':
+        - text: Vis
+      - 'button "Duplikér: PTC-tilstand"':
         - img
-        - text: 复制
+        - text: Duplikér
     - listitem:
-      - 'button "设为默认: 极简模式"':
-        - text: 极简模式 内置 仅提供持久 bash 与 str_replace_editor 的双工具编码 Agent。
+      - 'button "Sæt som standard: Minimaltilstand"':
+        - text: "Minimaltilstand Indbygget Kodeagent med to værktøjer: vedvarende bash og str_replace_editor."
         - code: minimal
-      - 'button "查看: 极简模式"':
+      - 'button "Vis: Minimaltilstand"':
         - img
-        - text: 查看
-      - 'button "复制: 极简模式"':
+        - text: Vis
+      - 'button "Duplikér: Minimaltilstand"':
         - img
-        - text: 复制
+        - text: Duplikér
     - listitem:
-      - 'button "设为默认: 创造模式"':
-        - text: 创造模式 内置 用于创建自定义 Agent preset：具备标准模式的全部能力，并提供运行时检查、插件实验和 preset 创作指导。
+      - 'button "Sæt som standard: Kreatørtilstand"':
+        - text: Kreatørtilstand Indbygget Til oprettelse af egne agent-presets med alle funktioner fra Standardtilstand samt inspektion af runtime, plugin-eksperimenter og vejledning i preset-oprettelse.
         - code: cordis
-      - 'button "查看: 创造模式"':
+      - 'button "Vis: Kreatørtilstand"':
         - img
-        - text: 查看
-      - 'button "复制: 创造模式"':
+        - text: Vis
+      - 'button "Duplikér: Kreatørtilstand"':
         - img
-        - text: 复制
+        - text: Duplikér
     - listitem:
-      - 'button "设为默认: Conductor 模式"':
-        - text: Conductor 模式 内置 通过持久 gate、受限的全新专家、独立审计和显式 closeout 授权执行多角色工作。
+      - 'button "Sæt som standard: Conductor-tilstand"':
+        - text: Conductor-tilstand Indbygget Arbejde med flere roller, vedvarende kontrolpunkter, afgrænsede nye specialister, uafhængig revision og udtrykkelig tilladelse til afslutning.
         - code: conductor
-      - 'button "查看: Conductor 模式"':
+      - 'button "Vis: Conductor-tilstand"':
         - img
-        - text: 查看
-      - 'button "复制: Conductor 模式"':
+        - text: Vis
+      - 'button "Duplikér: Conductor-tilstand"':
         - img
-        - text: 复制
-  - heading "自定义" [level=3]
+        - text: Duplikér
+  - heading "Brugerdefineret" [level=3]
   - list:
     - listitem:
-      - 'button "加载失败: broken-yaml" [disabled]':
-        - text: broken-yaml 加载失败 自定义 暂无描述。
+      - 'button "Kunne ikke indlæse: broken-yaml" [disabled]':
+        - text: broken-yaml Kunne ikke indlæse Brugerdefineret Ingen beskrivelse.
         - alert: "the composition is not valid YAML: unexpected end of the stream within a flow collection (3:1)"
         - code: broken-yaml
-      - 'button "查看路径: broken-yaml"':
+      - 'button "Vis placering: broken-yaml"':
         - img
-        - text: 查看路径
-      - 'button "复制: broken-yaml" [disabled]':
+        - text: Vis placering
+      - 'button "Duplikér: broken-yaml" [disabled]':
         - img
-        - text: 预设加载失败，不能复制
-      - 'button "删除: broken-yaml"':
+        - text: Et preset, der ikke kunne indlæses, kan ikke duplikeres
+      - 'button "Slet: broken-yaml"':
         - img
-        - text: 删除
+        - text: Slet
     - listitem:
-      - 'button "加载失败: 幽灵预设" [disabled]':
-        - text: 幽灵预设 加载失败 自定义 composition 已被手动删除。
+      - 'button "Kunne ikke indlæse: 幽灵预设" [disabled]':
+        - text: 幽灵预设 Kunne ikke indlæse Brugerdefineret composition 已被手动删除。
         - alert: the composition file agent.cordis.yml is missing — the directory still occupies the id; delete it or restore the file
         - code: ghost
-      - 'button "查看路径: 幽灵预设"':
+      - 'button "Vis placering: 幽灵预设"':
         - img
-        - text: 查看路径
-      - 'button "复制: 幽灵预设" [disabled]':
+        - text: Vis placering
+      - 'button "Duplikér: 幽灵预设" [disabled]':
         - img
-        - text: 预设加载失败，不能复制
-      - 'button "删除: 幽灵预设"':
+        - text: Et preset, der ikke kunne indlæses, kan ikke duplikeres
+      - 'button "Slet: 幽灵预设"':
         - img
-        - text: 删除
-  - button "用「创造模式」创作自定义预设":
+        - text: Slet
+  - button "Lav et udkast til et brugerdefineret preset i Kreatørtilstand":
     - img
-    - text: 用「创造模式」创作自定义预设
+    - text: Lav et udkast til et brugerdefineret preset i Kreatørtilstand

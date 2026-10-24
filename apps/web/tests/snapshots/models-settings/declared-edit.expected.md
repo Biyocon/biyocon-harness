@@ -1,68 +1,68 @@
-- dialog "设置":
+- dialog "Indstillinger":
   - navigation:
-    - text: 设置
-    - button "通用设置":
+    - text: Indstillinger
+    - button "Generelt":
       - img
-      - text: 通用设置
-    - button "模型":
+      - text: Generelt
+    - button "Modeller":
       - img
-      - text: 模型
-    - button "插件":
+      - text: Modeller
+    - button "Plugins":
       - img
-      - text: 插件
-    - button "Agent 预设":
+      - text: Plugins
+    - button "Agent-presets":
       - img
-      - text: Agent 预设
-  - button "打开配置文件"
-  - button "关闭":
+      - text: Agent-presets
+  - button "Åbn konfigurationsfil"
+  - button "Luk":
     - img
-    - text: 关闭
-  - heading "模型" [level=2]
-  - paragraph: 填入各提供方的 API 密钥即可使用其模型。
+    - text: Luk
+  - heading "Modeller" [level=2]
+  - paragraph: Angiv dine API-nøgler for at bruge modeller fra følgende udbydere.
   - list:
     - listitem:
       - text: minimax-cn
-      - img "API 密钥已配置"
-      - button "编辑 minimax-cn": 编辑
-      - button "删除 minimax-cn": 删除
+      - img "API-nøgle konfigureret"
+      - button "Rediger minimax-cn": Rediger
+      - button "Slet minimax-cn": Slet
     - listitem:
-      - text: Acme Gateway 自定义
-      - button "编辑 Acme Gateway (acme-gateway)": 编辑
-      - button "删除 Acme Gateway (acme-gateway)": 删除
-      - text: Acme Gateway acme-gateway API 密钥
-      - textbox "API 密钥":
-        - /placeholder: 输入 API 密钥，或留空使用环境认证
+      - text: Acme Gateway Brugerdefineret
+      - button "Rediger Acme Gateway (acme-gateway)": Rediger
+      - button "Slet Acme Gateway (acme-gateway)": Slet
+      - text: Acme Gateway acme-gateway API-nøgle
+      - textbox "API-nøgle":
+        - /placeholder: Angiv en API-nøgle, eller lad feltet være tomt for at bruge godkendelse via miljøvariabler
       - group:
-        - text: 自定义设置 显示名称
-        - textbox "显示名称":
+        - text: Tilpassede indstillinger Visningsnavn
+        - textbox "Visningsnavn":
           - /placeholder: acme-gateway
           - text: Acme Gateway
-        - text: API 地址
-        - textbox "API 地址":
+        - text: Basis-URL
+        - textbox "Basis-URL":
           - /placeholder: https://gateway.acme.example/v1
           - text: https://gateway.acme.example/v1
-        - text: API 协议
-        - combobox "API 协议":
+        - text: API-protokol
+        - combobox "API-protokol":
           - option "openai-completions" [selected]
           - option "openai-responses"
           - option "anthropic-messages"
-        - region "模型目录":
-          - text: 模型目录 已自定义模型目录
-          - button "恢复默认模型"
-          - button "获取可用模型"
-          - textbox "模型 ID 1":
-            - /placeholder: 模型 ID
+        - region "Modeller":
+          - text: Modeller Tilpasset modelkatalog
+          - button "Gendan standardværdier"
+          - button "Hent tilgængelige modeller"
+          - textbox "Model-id 1":
+            - /placeholder: Model-id
             - text: acme-large
-          - textbox "显示名称 1":
-            - /placeholder: 显示名称
-          - button "容量 1"
-          - button "删除模型 1"
-          - button "添加模型"
-      - button "取消"
-      - button "保存"
-  - button "添加提供方":
+          - textbox "Visningsnavn 1":
+            - /placeholder: Visningsnavn
+          - button "Kapaciteter 1"
+          - button "Slet model 1"
+          - button "Tilføj model"
+      - button "Annuller"
+      - button "Anvend"
+  - button "Tilføj udbyder":
     - img
-    - text: 添加提供方
-  - button "添加自定义提供方":
+    - text: Tilføj udbyder
+  - button "Tilføj en brugerdefineret udbyder":
     - img
-    - text: 添加自定义提供方
+    - text: Tilføj en brugerdefineret udbyder

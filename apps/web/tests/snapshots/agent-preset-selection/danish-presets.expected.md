@@ -1,0 +1,77 @@
+- dialog "Indstillinger":
+  - navigation:
+    - text: Indstillinger
+    - button "Generelt":
+      - img
+      - text: Generelt
+    - button "Modeller":
+      - img
+      - text: Modeller
+    - button "Plugins":
+      - img
+      - text: Plugins
+    - button "Agent-presets":
+      - img
+      - text: Agent-presets
+  - button "Åbn konfigurationsfil"
+  - button "Luk":
+    - img
+    - text: Luk
+  - heading "Agent-presets" [level=2]
+  - paragraph: Et preset er den plugin-sammensætning, en sessions agent kører med — dens værktøjer, instruks og funktioner. Duplikér et eksisterende preset, og tilpas det, eller lad agenten lave et udkast i Kreatørtilstand.
+  - heading "Indbygget" [level=3]
+  - list:
+    - listitem:
+      - 'button "I brug: Standardtilstand" [disabled] [pressed]':
+        - text: Standardtilstand Indbygget I brug Komplet kodeagent med filredigering, shell, fil- og websøgning, færdigheder, planlægning, mål, underagenter og arbejdsforløb.
+        - code: standard
+      - 'button "Vis: Standardtilstand"':
+        - img
+        - text: Vis
+      - 'button "Duplikér: Standardtilstand" [disabled]':
+        - img
+        - text: Denne installation har ingen skrivbar preset-mappe
+    - listitem:
+      - 'button "Sæt som standard: PTC-tilstand"':
+        - text: PTC-tilstand Indbygget Alle funktioner fra Standardtilstand med værktøjer tilgængelige via Code Mode SDK, så modellen kan kombinere handlinger i flere trin i ét TypeScript-program.
+        - code: code
+      - 'button "Vis: PTC-tilstand"':
+        - img
+        - text: Vis
+      - 'button "Duplikér: PTC-tilstand" [disabled]':
+        - img
+        - text: Denne installation har ingen skrivbar preset-mappe
+    - listitem:
+      - 'button "Sæt som standard: Minimaltilstand"':
+        - text: "Minimaltilstand Indbygget Kodeagent med to værktøjer: vedvarende bash og str_replace_editor."
+        - code: minimal
+      - 'button "Vis: Minimaltilstand"':
+        - img
+        - text: Vis
+      - 'button "Duplikér: Minimaltilstand" [disabled]':
+        - img
+        - text: Denne installation har ingen skrivbar preset-mappe
+    - listitem:
+      - 'button "Sæt som standard: Kreatørtilstand"':
+        - text: Kreatørtilstand Indbygget Til oprettelse af egne agent-presets med alle funktioner fra Standardtilstand samt inspektion af runtime, plugin-eksperimenter og vejledning i preset-oprettelse.
+        - code: cordis
+      - 'button "Vis: Kreatørtilstand"':
+        - img
+        - text: Vis
+      - 'button "Duplikér: Kreatørtilstand" [disabled]':
+        - img
+        - text: Denne installation har ingen skrivbar preset-mappe
+    - listitem:
+      - 'button "Sæt som standard: Conductor-tilstand"':
+        - text: Conductor-tilstand Indbygget Arbejde med flere roller, vedvarende kontrolpunkter, afgrænsede nye specialister, uafhængig revision og udtrykkelig tilladelse til afslutning.
+        - code: conductor
+      - 'button "Vis: Conductor-tilstand"':
+        - img
+        - text: Vis
+      - 'button "Duplikér: Conductor-tilstand" [disabled]':
+        - img
+        - text: Denne installation har ingen skrivbar preset-mappe
+  - heading "Brugerdefineret" [level=3]
+  - button "Lav et udkast til et brugerdefineret preset i Kreatørtilstand" [disabled]:
+    - img
+    - text: Lav et udkast til et brugerdefineret preset i Kreatørtilstand

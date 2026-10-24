@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /** Ownerless-copy registrations: the five seats, dictionaries, thunked labels, and HMR recovery. */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
@@ -12,8 +13,8 @@ import { SettingsDocumentAction } from '../src/client/SettingsDocumentAction.tsx
 import type { SettingsDocumentActionInjected } from '../src/client/SettingsDocumentAction.tsx'
 
 // The service reads its initial locale from the browser; these specs assert
-// the shipped Chinese copy, so they state the browser they assume.
-usePinnedBrowserLanguages('zh-CN')
+// the shipped Danish copy, so they state the browser they assume.
+usePinnedBrowserLanguages('da-DK')
 
 /** The seats this plugin fills for a loopback browser (slot name → expected component). */
 const SEATS = [
@@ -88,7 +89,7 @@ describe('ui-settings-general apply', () => {
     const entry = generalEntry(before.slots)!
     expect(entry.options).toMatchObject({ id: 'general', order: 0 })
     // The nav label is a locale-following thunk; owners resolve at read time.
-    expect(resolveSlotLabel(entry.options.label)).toBe('通用设置')
+    expect(resolveSlotLabel(entry.options.label)).toBe('Generelt')
     expect(before.slots.spec('settings.general.item')).toEqual({ kind: 'list', scope: 'root' })
     expect(before.slots.entries('settings.general.item')).toEqual([])
     // The onboarding hole stays declared for feature-owned steps; this plugin
@@ -117,18 +118,18 @@ describe('ui-settings-general apply', () => {
     })
   })
 
-  it('registers the zh/en settings dictionaries and frees the seats on teardown', async () => {
+  it('registers the da/en settings dictionaries and frees the seats on teardown', async () => {
     const b = await bench()
     declare(b.slots)
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
-    expect(b.locale.bind('settings')('title')).toBe('设置')
+    expect(b.locale.bind('settings')('title')).toBe('Indstillinger')
     b.locale.setLocale('en')
     expect(b.locale.bind('settings')('close')).toBe('Close')
-    b.locale.setLocale('zh')
+    b.locale.setLocale('da')
     await fiber.dispose()
     // The (ns, locale) seats are free again — the dictionary disposer ran.
-    expect(() => b.locale.register('settings', 'zh', {})).not.toThrow()
+    expect(() => b.locale.register('settings', 'da', {})).not.toThrow()
     expect(() => b.locale.register('settings', 'en', {})).not.toThrow()
   })
 
@@ -145,8 +146,8 @@ describe('ui-settings-general apply', () => {
       expect(b.slots.entries(name)).toHaveLength(1)
     })
     expect(resolveSlotLabel(generalEntry(b.slots)!.options.label)).toBe('General')
-    b.locale.setLocale('zh')
-    expect(resolveSlotLabel(generalEntry(b.slots)!.options.label)).toBe('通用设置')
+    b.locale.setLocale('da')
+    expect(resolveSlotLabel(generalEntry(b.slots)!.options.label)).toBe('Generelt')
   })
 
   it('refreshes loaded document availability on reconnect without reading it eagerly', async () => {
@@ -193,7 +194,7 @@ describe('ui-settings-general apply', () => {
     // The recovered registrations still ride the locale path.
     b.locale.setLocale('en')
     expect(resolveSlotLabel(generalEntry(b.slots)!.options.label)).toBe('General')
-    b.locale.setLocale('zh')
+    b.locale.setLocale('da')
   })
 
   it('removes every seat and the item declaration on teardown', async () => {

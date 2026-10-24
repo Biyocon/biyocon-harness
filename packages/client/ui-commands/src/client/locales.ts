@@ -1,20 +1,20 @@
 /** `command` namespace dictionaries (the popupSelect shell's copy). */
 
-/** Simplified Chinese dictionary (the key-set source of truth). */
-export const zh = {
-  'search.placeholder': '搜索…',
-  'search.aria': '筛选选项',
-  'status.loading': '正在加载选项…',
-  'status.applying': '正在应用…',
-  'status.empty': '无选项',
-  'overlay.aria': '/{command} 选项',
-  'listbox.aria': '/{command} 匹配项',
+/** Danish dictionary (the key-set source of truth). */
+export const da = {
+  'search.placeholder': 'Søg…',
+  'search.aria': 'Filtrer valgmuligheder',
+  'status.loading': 'Indlæser valgmuligheder…',
+  'status.applying': 'Anvender…',
+  'status.empty': 'Ingen valgmuligheder',
+  'overlay.aria': 'Valgmuligheder for /{command}',
+  'listbox.aria': 'Match for /{command}',
 } satisfies Record<string, string>
 
 /** The command namespace key union. */
-export type CommandKey = keyof typeof zh
+export type CommandKey = keyof typeof da
 
-/** English dictionary, checked complete against the zh key set. */
+/** English dictionary, checked complete against the da key set. */
 export const en = {
   'search.placeholder': 'Search…',
   'search.aria': 'Filter options',

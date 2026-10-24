@@ -18,7 +18,7 @@ import type { ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
 import type { CommandContribution, SelectOption } from '@deepseek-ai/dsh-client-ui-commands/client'
 import type { ModelSelectInjected } from '../src/client/slots.ts'
 import { apply, inject } from '../src/client/index.ts'
-import { zh } from '../src/client/locales.ts'
+import { da } from '../src/client/locales.ts'
 
 const sid = (k: string): SessionId => k as SessionId
 
@@ -105,6 +105,7 @@ async function bench() {
     },
   })
   ctx.provide('locale', new LocaleRuntime(ctx))
+  ctx.locale.setLocale('da')
   const scopes = new Map<SessionId, Context>()
   const addressed = new Set<SessionId>()
   ctx.provide('sessions', {
@@ -250,7 +251,7 @@ describe('ui-model-selection dual entry', () => {
     b.ctx.remote.$dispatch('llm/adapters-updated', [])
     await Promise.resolve()
     await Promise.resolve()
-    expect(b.blockOf('s1')?.reason).toBe(zh['blocked.composer'])
+    expect(b.blockOf('s1')?.reason).toBe(da['blocked.composer'])
 
     // Recovering clears it without a reload of the surface.
     b.setRoutable(true)

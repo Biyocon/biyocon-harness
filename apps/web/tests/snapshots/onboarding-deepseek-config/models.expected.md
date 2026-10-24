@@ -1,75 +1,75 @@
-- dialog "设置":
+- dialog "Indstillinger":
   - navigation:
-    - text: 设置
-    - button "通用设置":
+    - text: Indstillinger
+    - button "Generelt":
       - img
-      - text: 通用设置
-    - button "模型":
+      - text: Generelt
+    - button "Modeller":
       - img
-      - text: 模型
-    - button "插件":
+      - text: Modeller
+    - button "Plugins":
       - img
-      - text: 插件
-    - button "Agent 预设":
+      - text: Plugins
+    - button "Agent-presets":
       - img
-      - text: Agent 预设
-  - button "打开配置文件"
-  - button "关闭":
+      - text: Agent-presets
+  - button "Åbn konfigurationsfil"
+  - button "Luk":
     - img
-    - text: 关闭
-  - heading "模型" [level=2]
-  - paragraph: 填入各提供方的 API 密钥即可使用其模型。
+    - text: Luk
+  - heading "Modeller" [level=2]
+  - paragraph: Angiv dine API-nøgler for at bruge modeller fra følgende udbydere.
   - list:
     - listitem:
       - text: DeepSeek
-      - img "API 密钥已配置"
-      - button "编辑 DeepSeek (deepseek-official)": 编辑
-      - text: DeepSeek deepseek-official API 密钥
-      - textbox "API 密钥":
-        - /placeholder: 已配置——输入新值可替换
+      - img "API-nøgle konfigureret"
+      - button "Rediger DeepSeek (deepseek-official)": Rediger
+      - text: DeepSeek deepseek-official API-nøgle
+      - textbox "API-nøgle":
+        - /placeholder: Konfigureret — angiv en ny værdi for at erstatte den
       - group:
-        - text: 自定义设置 API 地址
-        - textbox "API 地址":
+        - text: Tilpassede indstillinger Basis-URL
+        - textbox "Basis-URL":
           - /placeholder: https://api.deepseek.com
-        - region "模型目录":
-          - text: 模型目录 已自定义模型目录
-          - button "恢复默认模型"
-          - textbox "模型 ID 1":
-            - /placeholder: 模型 ID
+        - region "Modeller":
+          - text: Modeller Tilpasset modelkatalog
+          - button "Gendan standardværdier"
+          - textbox "Model-id 1":
+            - /placeholder: Model-id
             - text: deepseek-v4-pro
-          - textbox "显示名称 1":
-            - /placeholder: 显示名称
+          - textbox "Visningsnavn 1":
+            - /placeholder: Visningsnavn
             - text: DeepSeek-V4-Pro
-          - button "容量 1":
+          - button "Kapaciteter 1":
             - img
-          - button "删除模型 1":
+          - button "Slet model 1":
             - img
-          - textbox "模型 ID 2":
-            - /placeholder: 模型 ID
+          - textbox "Model-id 2":
+            - /placeholder: Model-id
             - text: private-preview
-          - textbox "显示名称 2":
-            - /placeholder: 显示名称
+          - textbox "Visningsnavn 2":
+            - /placeholder: Visningsnavn
             - text: Private Preview
-          - button "容量 2" [expanded]:
+          - button "Kapaciteter 2" [expanded]:
             - img
-          - button "删除模型 2":
+          - button "Slet model 2":
             - img
-          - text: 上下文窗口
-          - textbox "上下文窗口 2":
+          - text: Kontekstvindue
+          - textbox "Kontekstvindue 2":
             - /placeholder: 1M
             - text: "131072"
-          - text: 最大输出 token 数
-          - textbox "最大输出 token 数 2":
+          - text: Maksimalt antal outputtokens
+          - textbox "Maksimalt antal outputtokens 2":
             - /placeholder: 256K
             - text: 64K
-          - button "添加模型":
+          - button "Tilføj model":
             - img
-            - text: 添加模型
-      - button "取消"
-      - button "保存"
-  - button "添加提供方":
+            - text: Tilføj model
+      - button "Annuller"
+      - button "Anvend"
+  - button "Tilføj udbyder":
     - img
-    - text: 添加提供方
-  - button "添加自定义提供方":
+    - text: Tilføj udbyder
+  - button "Tilføj en brugerdefineret udbyder":
     - img
-    - text: 添加自定义提供方
+    - text: Tilføj en brugerdefineret udbyder

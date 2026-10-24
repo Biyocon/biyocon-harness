@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Registration: the General row, the settings section, the new-session chip,
  * and the header label all come from one apply, and each defers until the slot
@@ -22,8 +23,8 @@ import { AgentPresetSeat } from '../src/client/AgentPresetSeat.tsx'
 import type { AgentPresetSeatInjected } from '../src/client/AgentPresetSeat.tsx'
 
 // The service reads its initial locale from the browser; these specs assert
-// the shipped Chinese copy, so they state the browser they assume.
-usePinnedBrowserLanguages('zh-CN')
+// the shipped Danish copy, so they state the browser they assume.
+usePinnedBrowserLanguages('da-DK')
 
 const ROSTER_ONE = {
   rpcId: 'r',
@@ -194,7 +195,7 @@ describe('ui-agent-preset apply', () => {
     expect(section.component).toBe(AgentPresetSection)
     expect(section.options).toMatchObject({ id: 'agent-presets', order: 20 })
     // The nav label is a locale-following thunk; owners resolve it at read time.
-    expect(resolveSlotLabel(section.options.label)).toBe('Agent 预设')
+    expect(resolveSlotLabel(section.options.label)).toBe('Agent-presets')
   })
 
   it('registers into a declaration that arrives after apply', async () => {

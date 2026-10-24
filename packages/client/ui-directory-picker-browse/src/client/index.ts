@@ -32,20 +32,20 @@ export function apply(ctx: ClientContext): void {
     // a failed activation must not squat the namespace's other locale.
     const disposers: (() => void)[] = []
     const dictionaries: [locale: string, dict: Record<string, string>][] = [
-      ['zh', {
-        'browser.title': '选择工作区目录',
-        'browser.home': '主目录',
-        'browser.newFolder': '新建文件夹',
-        'browser.folderName': '文件夹名称',
-        'browser.createIn': '在"{name}"中新建文件夹',
-        'browser.untitledFolder': '未命名文件夹',
-        'browser.create': '创建',
-        'browser.cancel': '取消',
-        'browser.open': '打开',
-        'browser.editPath': '编辑路径',
-        'browser.loading': '加载中…',
-        'browser.truncated': '文件夹过多，仅显示开头部分。',
-        'browser.showHidden': '显示隐藏文件',
+      ['da', {
+        'browser.title': 'Vælg arbejdsområdets mappe',
+        'browser.home': 'Hjemmemappe',
+        'browser.newFolder': 'Ny mappe',
+        'browser.folderName': 'Mappenavn',
+        'browser.createIn': 'Ny mappe i "{name}"',
+        'browser.untitledFolder': 'Unavngiven mappe',
+        'browser.create': 'Opret',
+        'browser.cancel': 'Annuller',
+        'browser.open': 'Åbn',
+        'browser.editPath': 'Rediger sti',
+        'browser.loading': 'Indlæser…',
+        'browser.truncated': 'Der er for mange mapper; kun begyndelsen vises.',
+        'browser.showHidden': 'Vis skjulte filer',
       }],
       ['en', {
         'browser.title': 'Select Workspace Directory',

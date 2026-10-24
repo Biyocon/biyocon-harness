@@ -1,6 +1,6 @@
-- menu "模型与推理等级":
-  - menuitemradio "Default" [checked]:
-    - text: Default
+- menu "Model og ræsonnementsniveau":
+  - menuitemradio "Standard" [checked]:
+    - text: Standard
     - img
   - menuitemradio "Off"
   - menuitemradio "High"

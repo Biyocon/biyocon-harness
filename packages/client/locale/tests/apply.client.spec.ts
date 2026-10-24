@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /** locale apply wiring: service + dictionaries provision, declaration-aware
  * Language row registration, snapshot projection into the row store, and
  * recovery after an HMR collapse of the declaring entry. */
@@ -74,9 +75,9 @@ function faceOf(slots: SlotRegistry) {
 
 describe('locale apply', () => {
   // A fresh service opens in the browser's language, so these wiring specs
-  // pin one to keep their zh baseline independent of the test environment.
+  // pin one to keep their da baseline independent of the test environment.
   beforeEach(() => {
-    vi.stubGlobal('navigator', { languages: ['zh-CN'], language: 'zh-CN' })
+    vi.stubGlobal('navigator', { languages: ['da-DK'], language: 'da-DK' })
   })
 
   afterEach(() => {
@@ -87,15 +88,41 @@ describe('locale apply', () => {
     expect(inject).toEqual(['slots', 'connection', 'remote', 'settingsScope'])
   })
 
+  it('owns document language until disposal and follows live language changes', async () => {
+    const previous = document.documentElement.lang
+    const b = await bench()
+    const fiber = b.ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    const locale = b.ctx.get('locale') as LocaleRuntime
+    expect(document.documentElement.lang).toBe('da')
+    locale.setLocale('en')
+    expect(document.documentElement.lang).toBe('en')
+    locale.setLocale('da')
+    expect(document.documentElement.lang).toBe('da')
+    await fiber.dispose()
+    expect(document.documentElement.lang).toBe(previous)
+  })
+
+  it('supports registry-only clients without a browser document', async () => {
+    const b = await bench()
+    vi.stubGlobal('document', undefined)
+    const fiber = b.ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    const locale = b.ctx.get('locale') as LocaleRuntime
+    locale.setLocale('en')
+    expect(locale.getLocale().active).toBe('en')
+    await fiber.dispose()
+  })
+
   it('provides the service with base + settings dictionaries and registers the row (declaration before or after apply)', async () => {
     const before = await bench()
     declareItems(before.slots)
     await before.ctx.plugin({ inject: [...inject], apply }).await()
     const locale = before.ctx.get('locale') as LocaleRuntime
     // Base dictionaries are registered: the (ns, locale) seats are occupied.
-    expect(() => locale.register('common', 'zh', {})).toThrow('already has locale')
+    expect(() => locale.register('common', 'da', {})).toThrow('already has locale')
     expect(() => locale.register('common', 'en', {})).toThrow('already has locale')
-    expect(locale.bind(SETTINGS_NS)('language.title')).toBe('语言')
+    expect(locale.bind(SETTINGS_NS)('language.title')).toBe('Sprog')
     const entry = before.slots.entries(SLOT).find(e => e.component === LanguageRow)!
     expect(entry.options).toMatchObject({ id: 'language', order: 0 })
 
@@ -119,15 +146,15 @@ describe('locale apply', () => {
     const { entry, instance, face } = faceOf(b.slots)
     // The inject-time re-sync sealed the init window: the mirror is current.
     expect(instance.getSnapshot().active).toBe('en')
-    expect(instance.getSnapshot().options.map(o => o.id)).toEqual(['zh', 'en'])
+    expect(instance.getSnapshot().options.map(o => o.id)).toEqual(['en', 'da'])
     // Copy rides the standard locale seat: the entry declares the namespace.
     expect(entry.locale).toBe(SETTINGS_NS)
     expect(locale.bind(SETTINGS_NS)('language.title')).toBe('Language')
 
-    face.setLocale('zh')
-    expect(locale.getLocale().active).toBe('zh')
-    expect(instance.getSnapshot().active).toBe('zh')
-    expect(locale.bind(SETTINGS_NS)('language.title')).toBe('语言')
+    face.setLocale('da')
+    expect(locale.getLocale().active).toBe('da')
+    expect(instance.getSnapshot().active).toBe('da')
+    expect(locale.bind(SETTINGS_NS)('language.title')).toBe('Sprog')
     await vi.waitFor(() => { expect(b.mutate).toHaveBeenCalledTimes(2) })
   })
 
@@ -140,11 +167,24 @@ describe('locale apply', () => {
     await vi.waitFor(() => { expect(locale.getLocale().active).toBe('en') })
     b.setHostPreference(undefined)
     b.ctx.remote.$dispatch('settings/document-updated', [LOCALE_SETTINGS_NAMESPACE, 0])
-    await vi.waitFor(() => { expect(locale.getLocale().active).toBe('zh') })
+    await vi.waitFor(() => { expect(locale.getLocale().active).toBe('da') })
     b.setHostPreference('en')
     b.ctx.remote.$dispatch('settings/document-updated', [LOCALE_SETTINGS_NAMESPACE, 0])
     await vi.waitFor(() => { expect(locale.getLocale().active).toBe('en') })
     expect(b.describe).toHaveBeenCalledTimes(3)
+  })
+
+  it('decodes stored zh through the settings scope and renders English', async () => {
+    const b = await bench()
+    b.setHostPreference('zh')
+    declareItems(b.slots)
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    const locale = b.ctx.get('locale') as LocaleRuntime
+    await vi.waitFor(() => { expect(locale.getLocale().active).toBe('en') })
+    expect(locale.bind(SETTINGS_NS)('language.title')).toBe('Language')
+    expect(document.documentElement.lang).toBe('en')
+    expect(b.mutate).not.toHaveBeenCalled()
+    await b.ctx.fiber.dispose()
   })
 
   it('recovers after an HMR collapse of the declaring entry (stale disposer must not block)', async () => {

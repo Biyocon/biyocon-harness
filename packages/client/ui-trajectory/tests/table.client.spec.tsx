@@ -3,6 +3,8 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { da, en } from '../src/client/locales.ts'
 import { TrajectoryTable } from '../src/client/TrajectoryTable.tsx'
 import type { TrajectoryTurnModel } from '../src/client/layout.ts'
 
@@ -58,6 +60,7 @@ const TURNS: readonly TrajectoryTurnModel[] = [{
 }]
 
 const FOLD_PROPS = {
+  t: makeTranslate(en),
   collapsedTurns: new Set<number>(),
   onToggleTurn: () => {},
   collapsedAssistants: new Set<string>(),
@@ -65,6 +68,22 @@ const FOLD_PROPS = {
 }
 
 describe('TrajectoryTable', () => {
+  it('updates the selected inspector and folded summaries when its locale changes', () => {
+    const view = render(<TrajectoryTable turns={TURNS} {...FOLD_PROPS} />)
+    fireEvent.click(screen.getByRole('row', { name: /ASSISTANT/ }))
+    expect(screen.getByRole('tab', { name: 'Summary' })).toBeTruthy()
+    view.rerender(<TrajectoryTable turns={TURNS} {...FOLD_PROPS} t={makeTranslate(da)} />)
+    expect(screen.getByRole('row', { name: /ASSISTENT/ })).toBeTruthy()
+    expect(screen.getByRole('complementary', { name: 'Hændelsesdetaljer' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'Oversigt' })).toBeTruthy()
+    expect(screen.getByText('Afsluttet')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Forespørgslens tidsmåling' }))
+    expect(screen.getByRole('tab', { name: 'Tidsmåling', selected: true })).toBeTruthy()
+    expect(screen.getByText('Samlet varighed')).toBeTruthy()
+    view.rerender(<TrajectoryTable turns={TURNS} {...FOLD_PROPS} t={makeTranslate(da)} collapsedTurns={new Set([1])} />)
+    expect(screen.getByText('1 trin · 2 værktøjskald')).toBeTruthy()
+  })
+
   it('shows a muted placeholder for an assistant response containing only tool calls', () => {
     const turns: readonly TrajectoryTurnModel[] = [{
       turn: 1,

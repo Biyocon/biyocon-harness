@@ -4,19 +4,19 @@ import { cleanup, fireEvent, render } from '@testing-library/react'
 
 import type { RunningToolCall, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
+import { da as commonDa } from '@deepseek-ai/dsh-client-locale/src/locales/da.ts'
 import { resolveWorkspacePath } from '@deepseek-ai/dsh-client-runtime/client'
 import { classifyTool, resultText, toolRowModel } from '../src/client/tool/models/tool-call-model.ts'
 import { ToolRow } from '../src/client/tool/components/ToolRow.tsx'
 import { GenericToolCard, type GenericToolCardProps } from '../src/client/tool/toolviews/GenericToolCard.tsx'
-import { zh } from '@deepseek-ai/dsh-client-ui-conversation/src/client/locales.ts'
+import { da } from '@deepseek-ai/dsh-client-ui-conversation/src/client/locales.ts'
 
 afterEach(() => {
   cleanup()
 })
 
 // Mirrors the real lookup chain (conversation namespace, then common).
-const t: GenericToolCardProps['t'] = makeTranslate(zh, commonZh)
+const t: GenericToolCardProps['t'] = makeTranslate(da, commonDa)
 
 const running = (over?: Partial<RunningToolCall>): RunningToolCall => ({
   callId: 'c1', name: 'bash', argsRaw: '{"command":"ls -la","description":"List files"}',
@@ -339,9 +339,9 @@ describe('ToolRow', () => {
     const inspect = vi.fn()
     const view = render(<ToolRow {...rowProps} inspect={inspect} />)
     // Collapsed: no pill.
-    expect(view.queryByText('Inspect')).toBeNull()
+    expect(view.queryByText('Undersøg')).toBeNull()
     fireEvent.click(view.getByRole('button', { name: /Bash/ }))
-    const pill = view.getByText('Inspect')
+    const pill = view.getByText('Undersøg')
     fireEvent.click(pill)
     expect(inspect).toHaveBeenCalledTimes(1)
     // The pill click must not collapse the row (body is a .row sibling).
@@ -351,25 +351,25 @@ describe('ToolRow', () => {
   it('no inspect callback, no pill', () => {
     const view = render(<ToolRow {...rowProps} />)
     fireEvent.click(view.getByRole('button'))
-    expect(view.queryByText('Inspect')).toBeNull()
+    expect(view.queryByText('Undersøg')).toBeNull()
   })
 
   it('the expanded card gutter-labels each section it carries (IN / OUT)', () => {
     const both = render(<ToolRow {...rowProps} output="result text" />)
     fireEvent.click(both.getByRole('button'))
-    expect(both.getByText('IN')).toBeTruthy()
-    expect(both.getByText('OUT')).toBeTruthy()
+    expect(both.getByText('IND')).toBeTruthy()
+    expect(both.getByText('UD')).toBeTruthy()
     expect(both.getByText('result text')).toBeTruthy()
     cleanup()
     const inputOnly = render(<ToolRow {...rowProps} />)
     fireEvent.click(inputOnly.getByRole('button'))
-    expect(inputOnly.getByText('IN')).toBeTruthy()
-    expect(inputOnly.queryByText('OUT')).toBeNull()
+    expect(inputOnly.getByText('IND')).toBeTruthy()
+    expect(inputOnly.queryByText('UD')).toBeNull()
     cleanup()
     const outputOnly = render(<ToolRow {...rowProps} body={null} output="only out" />)
     fireEvent.click(outputOnly.getByRole('button'))
-    expect(outputOnly.queryByText('IN')).toBeNull()
-    expect(outputOnly.getByText('OUT')).toBeTruthy()
+    expect(outputOnly.queryByText('IND')).toBeNull()
+    expect(outputOnly.getByText('UD')).toBeTruthy()
     expect(outputOnly.getByText('only out')).toBeTruthy()
   })
 })
@@ -425,7 +425,7 @@ describe('GenericToolCard', () => {
     const inspect = vi.fn()
     const view = render(<GenericToolCard {...props('bash', result())} inspect={inspect} />)
     fireEvent.click(view.getByRole('button', { name: /Bash/ }))
-    fireEvent.click(view.getByText('Inspect'))
+    fireEvent.click(view.getByText('Undersøg'))
     expect(inspect).toHaveBeenCalledTimes(1)
   })
 

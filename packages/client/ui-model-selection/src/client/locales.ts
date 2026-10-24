@@ -8,31 +8,31 @@
  * model".
  */
 
-/** Simplified Chinese dictionary (the key-set source of truth). */
-export const zh = {
-  'command.description': '选择本会话使用的模型',
-  'option.loadError': '目录加载失败：{message}',
-  'trigger.fallback': '选择模型',
-  'trigger.selectAria': '选择模型',
-  'trigger.aria': '选择模型，当前 {model}',
-  'trigger.ariaEffort': '选择模型，当前 {model}，推理等级 {effort}',
-  'menu.aria': '模型与推理等级',
-  'menu.model': '模型',
-  'menu.effort': '推理等级',
-  'effort.providerDefault': 'Default',
-  'status.loading': '正在刷新模型列表…',
-  'error.action': '模型操作失败：{message}',
-  'action.reload': '重新加载',
-  'warning.groupLoad': '{name} 加载失败：{message}',
-  'empty.models': '没有可用的模型。',
-  'blocked.composer': '当前模型不可用，请先选择模型',
-  'empty.efforts': '当前模型未提供推理等级。',
+/** Danish dictionary (the key-set source of truth). */
+export const da = {
+  'command.description': 'Vælg modellen til denne samtale',
+  'option.loadError': 'Kunne ikke indlæse kataloget: {message}',
+  'trigger.fallback': 'Vælg model',
+  'trigger.selectAria': 'Vælg model',
+  'trigger.aria': 'Vælg model, aktuelt {model}',
+  'trigger.ariaEffort': 'Vælg model, aktuelt {model}, ræsonnementsniveau {effort}',
+  'menu.aria': 'Model og ræsonnementsniveau',
+  'menu.model': 'Model',
+  'menu.effort': 'Niveau',
+  'effort.providerDefault': 'Standard',
+  'status.loading': 'Opdaterer modellisten…',
+  'error.action': 'Modelhandlingen mislykkedes: {message}',
+  'action.reload': 'Genindlæs',
+  'warning.groupLoad': 'Kunne ikke indlæse {name}: {message}',
+  'empty.models': 'Ingen modeller tilgængelige.',
+  'blocked.composer': 'Denne model er utilgængelig — vælg en for at fortsætte',
+  'empty.efforts': 'Denne model tilbyder ingen ræsonnementsniveauer.',
 } satisfies Record<string, string>
 
 /** The model namespace key union. */
-export type ModelKey = keyof typeof zh
+export type ModelKey = keyof typeof da
 
-/** English dictionary, checked complete against the zh key set. */
+/** English dictionary, checked complete against the da key set. */
 export const en = {
   'command.description': 'Select the model for this conversation',
   'option.loadError': 'Catalog failed to load: {message}',

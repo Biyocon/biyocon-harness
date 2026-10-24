@@ -1,6 +1,4 @@
-import type { CommonKey } from './zh.ts'
-
-/** en base dictionary for the common namespace, checked complete against the zh key set. */
+/** English dictionary and canonical keys for the common namespace. */
 export const en = {
   'ok': 'OK',
   'cancel': 'Cancel',
@@ -26,4 +24,7 @@ export const en = {
   'unknown': 'Unknown',
   'none': 'None',
   'truncated': 'Truncated',
-} satisfies Record<CommonKey, string>
+} satisfies Record<string, string>
+
+/** Shared UI vocabulary key union. */
+export type CommonKey = keyof typeof en
