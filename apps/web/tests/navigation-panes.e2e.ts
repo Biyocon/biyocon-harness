@@ -288,6 +288,35 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
     await details.getByRole('button', { name: 'Close details' }).click()
   }, 60_000)
 
+  it.skipIf(MODE === 'record')('localizes the open trajectory inspector and timeline without changing session records', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-navigation-trajectory-danish'))
+    await ensureSeedOpen(page)
+    await page.getByRole('tab', { name: 'Trajectory', exact: true }).click()
+    await page.locator('tr[data-kind="tool"]').first().click()
+    await page.getByRole('button', { name: 'Settings', exact: true }).click()
+    await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'English', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Dansk', exact: true }).click()
+    await page.getByRole('dialog', { name: 'Indstillinger' }).waitFor()
+    await page.keyboard.press('Escape')
+    try {
+      expect(await page.locator('html').getAttribute('lang')).toBe('da')
+      const details = page.getByRole('complementary', { name: 'Hændelsesdetaljer', exact: true })
+      await details.getByRole('tab', { name: 'Oversigt', exact: true }).waitFor()
+      await page.getByRole('region', { name: 'Forløbets tidslinje', exact: true }).waitFor()
+      expect(await details.getByText('Afsluttet', { exact: true }).count()).toBe(1)
+      const snapshot = (await captureStableAria(page, '[class*="viewArea"]', scaffold.workspaceCwd))
+        .split(SEED_ID).join('{{seededId}}')
+      await compareOrRefreshGolden(join(SNAPSHOT_DIR, 'trajectory-danish.expected.md'), snapshot, MODE)
+      await details.getByRole('button', { name: 'Luk detaljer', exact: true }).click()
+    } finally {
+      await page.getByRole('button', { name: 'Indstillinger', exact: true }).click()
+      await page.getByRole('dialog', { name: 'Indstillinger' }).getByRole('button', { name: 'Dansk', exact: true }).click()
+      await page.getByRole('menuitem', { name: 'English', exact: true }).click()
+      await page.getByRole('dialog', { name: 'Settings' }).waitFor()
+      await page.keyboard.press('Escape')
+    }
+  }, 60_000)
+
   it.skipIf(MODE === 'record')('downloads through the Session Header and /export with one dialog', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-navigation-export'))
     await ensureSeedOpen(page)
@@ -506,7 +535,7 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
 
   it.skipIf(MODE === 'record')('keeps the recorded fixture inventory exact', async () => {
     await assertFixtureInventory(SNAPSHOT_DIR, [
-      'seed.jsonl', 'search-results.expected.md', 'trajectory.expected.md',
+      'seed.jsonl', 'search-results.expected.md', 'trajectory.expected.md', 'trajectory-danish.expected.md',
       'terminal-card.expected.md',
     ])
   })

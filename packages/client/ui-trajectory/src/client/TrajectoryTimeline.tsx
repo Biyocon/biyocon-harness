@@ -13,6 +13,7 @@ import {
   type TrajectoryTimelineMode,
   type TrajectoryTimeRange,
 } from './timeline.ts'
+import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './TrajectoryTimeline.module.css'
 
 const MINIMUM_DRAG_PX = 3
@@ -81,15 +82,15 @@ function timelineRecordDetail(cell: TrajectoryCellProps): TimelineRecordDetail {
   }
 }
 
-function timelineKindLabel(kind: TrajectoryCellKind): string {
+function timelineKindLabel(kind: TrajectoryCellKind, t: TranslateNS<'trajectory'>): string {
   switch (kind) {
-    case 'system': return 'SYSTEM'
-    case 'user': return 'USER'
-    case 'context': return 'CONTEXT'
-    case 'compacted': return 'COMPACTED'
-    case 'message': return 'ASSISTANT'
-    case 'tool': return 'TOOL'
-    case 'subtool': return 'SUBTOOL'
+    case 'system': return t('kind.system')
+    case 'user': return t('kind.user')
+    case 'context': return t('kind.context')
+    case 'compacted': return t('kind.compacted')
+    case 'message': return t('kind.assistant')
+    case 'tool': return t('kind.tool')
+    case 'subtool': return t('kind.subtool')
   }
 }
 
@@ -105,30 +106,34 @@ function formatRecordedTime(timestamp: number): string {
 function timelineTooltipLabel(
   kind: TrajectoryCellKind,
   detail: TimelineRecordDetail | undefined,
+  t: TranslateNS<'trajectory'>,
 ): string {
-  const heading = timelineKindLabel(kind)
+  const heading = timelineKindLabel(kind, t)
   if (detail === undefined) return heading
   const duration = detail.durationMs === undefined
     ? null
-    : `Total ${formatTimelineOffset(detail.durationMs)}`
+    : t('detail.timelineTotal', { duration: formatTimelineOffset(detail.durationMs) })
   const range = detail.startedAt === undefined
     ? null
     : detail.durationMs === undefined
-      ? `Started ${formatRecordedTime(detail.startedAt)}`
+      ? t('detail.timelineStarted', { time: formatRecordedTime(detail.startedAt) })
       : `${formatRecordedTime(detail.startedAt)} → ${formatRecordedTime(
         detail.startedAt + detail.durationMs,
       )}`
   const segments = detail.ttftMs === undefined || detail.decodingMs === undefined
     ? null
-    : `TTFT ${formatTimelineOffset(detail.ttftMs)} · Decoding ${formatTimelineOffset(
-      detail.decodingMs,
-    )}`
+    : t('detail.timelineSegments', {
+      ttft: formatTimelineOffset(detail.ttftMs), decoding: formatTimelineOffset(detail.decodingMs),
+    })
   const timing = [duration, segments].filter(value => value !== null).join(' · ')
   return [heading, range, timing].filter(value => value !== null && value !== '').join('\n')
 }
 
 /** Props for the fixed full-domain overview above the trajectory ledger. */
 export interface TrajectoryTimelineProps {
+  /** Active trajectory translations supplied by the view. */
+  t: TranslateNS<'trajectory'>
+
   turns: readonly TrajectoryTurnModel[]
   mode: TrajectoryTimelineMode
   range: TrajectoryTimeRange | null
@@ -185,28 +190,30 @@ function rangeFraction(
   }
 }
 
-function LaneLabels() {
+function LaneLabels({ t }: { t: TranslateNS<'trajectory'> }) {
   return (
     <div className={css.labels} aria-hidden="true">
-      <span>Input</span>
-      <span>Model</span>
-      <span>Tools</span>
+      <span>{t('detail.input')}</span>
+      <span>{t('detail.model')}</span>
+      <span>{t('detail.tools')}</span>
     </div>
   )
 }
 
 function EarlierHistoryBoundary({
+  t,
   loading,
   onHover,
   onLoad,
 }: {
+  t: TranslateNS<'trajectory'>
   loading: boolean
   onHover: () => void
   onLoad: (() => void) | undefined
 }) {
   return (
     <Tooltip
-      label={loading ? 'Loading earlier history…' : 'Click to load earlier history'}
+      label={loading ? t('detail.loadingEarlierHistory') : t('detail.clickToLoadEarlierHistory')}
       side="right"
       delayMs={TIMELINE_TOOLTIP_DELAY_MS}
     >
@@ -215,7 +222,7 @@ function EarlierHistoryBoundary({
         className={css.earlierHistory}
         data-earlier-history
         data-loading={loading || undefined}
-        aria-label={loading ? 'Loading earlier history' : 'Load earlier history'}
+        aria-label={loading ? t('detail.loadingEarlierHistoryStatus') : t('detail.loadEarlierHistory')}
         aria-disabled={loading || onLoad === undefined}
         onClick={onLoad}
         onPointerEnter={(event) => {
@@ -233,6 +240,7 @@ function EarlierHistoryBoundary({
 
 /** Overview renderer with drag ranges, click-sized focus, and Escape reset. */
 export const TrajectoryTimeline = memo(function TrajectoryTimeline({
+  t,
   turns,
   mode,
   range,
@@ -380,13 +388,14 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
 
   if (model === null) {
     return (
-      <section ref={rootRef} className={css.root} aria-label="Trajectory timeline">
+      <section ref={rootRef} className={css.root} aria-label={t('detail.trajectoryTimeline')}>
         <div className={css.plot}>
-          <LaneLabels />
+          <LaneLabels t={t} />
           <div className={css.track}>
-            <span className={css.empty}>No timing data</span>
+            <span className={css.empty}>{t('detail.noTimingData')}</span>
             {hasEarlierRecords && (
               <EarlierHistoryBoundary
+                t={t}
                 loading={loadingEarlier}
                 onHover={() => { setHover(null) }}
                 onLoad={loadEarlier}
@@ -575,14 +584,14 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
   }
 
   return (
-    <section ref={rootRef} className={css.root} aria-label="Trajectory timeline">
+    <section ref={rootRef} className={css.root} aria-label={t('detail.trajectoryTimeline')}>
       <div className={css.plot}>
-        <LaneLabels />
+        <LaneLabels t={t} />
         <div
           ref={trackRef}
           className={css.track}
           data-panning={panning || undefined}
-          aria-label="Timeline overview; drag horizontally to focus events"
+          aria-label={t('detail.timelineOverviewDragHorizontallyToFocusEvents')}
           tabIndex={0}
           onKeyDown={onKeyDown}
           onPointerDown={onPointerDown}
@@ -602,6 +611,7 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
         >
           {showsEarlierBoundary && (
             <EarlierHistoryBoundary
+              t={t}
               loading={loadingEarlier}
               onHover={() => { setHover(null) }}
               onLoad={loadEarlier}
@@ -687,7 +697,7 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
                 return (
                   <Tooltip
                     key={span.index}
-                    label={() => timelineTooltipLabel(span.kind, detail)}
+                    label={() => timelineTooltipLabel(span.kind, detail, t)}
                     side="bottom"
                     delayMs={TIMELINE_TOOLTIP_DELAY_MS}
                   >

@@ -363,6 +363,16 @@ export function apply(ctx: ClientContext): void {
   // so the render machinery can synthesize the `t` standard seat.
   ctx.slots.installLocale(locale)
 
+  // Registry-only clients do not mount a browser document.
+  if (typeof document !== 'undefined') ctx.effect(() => {
+    const root = document.documentElement
+    const previous = root.lang
+    const syncLanguage = (): void => { root.lang = locale.getLocale().active }
+    syncLanguage()
+    const unsubscribe = locale.subscribe(syncLanguage)
+    return () => { unsubscribe(); root.lang = previous }
+  }, 'locale: document language')
+
   const store = createLanguageRowStore()
   let bound: BoundActions<typeof store> | undefined
   const sync = (snapshot: LocaleSnapshot): void => {

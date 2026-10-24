@@ -6,6 +6,8 @@ locale 插件：LocaleRuntime——`en`／`da` 偏好以 `locale.preference` 存
 
 已存储的旧偏好 `zh` 解析为英文，不写入设置；选择器仅提供 English 与 Dansk。
 
+Web 壳以 `lang="en"` 启动。插件在激活及每次语言切换（包括 Host 偏好加载）时同步 `document.documentElement.lang`，并在 dispose 时恢复原属性值。仅使用注册表的客户端不需要 document。
+
 ## 模型体验
 
 无。locale 注册表为浏览器 UI 文案提供服务；这里没有任何内容进入模型请求。

@@ -29,6 +29,7 @@ import { CHAT_READ_MAX_LINES, type ReadCardModel } from '../models/read-card-mod
 import { CHAT_SEARCH_MAX_LINES, type SearchCardModel } from '../models/search-card-model.ts'
 import { terminalBlockLabels, type TerminalCardModel } from '../models/terminal-card-model.ts'
 import type { ToolRowState, ToolRowVariant } from '../models/tool-call-model.ts'
+import { resultBlockLabels } from '../models/block-labels.ts'
 import css from './ToolRow.module.css'
 
 export interface ToolRowProps {
@@ -147,6 +148,7 @@ export function ToolRow({
   inspect,
 }: ToolRowProps) {
   const [expanded, setExpanded] = useState(false)
+  const labels = resultBlockLabels(t)
   const terminalBody = terminal ?? null
   const diffBody = diff ?? null
   const readBody = read ?? null
@@ -244,13 +246,15 @@ export function ToolRow({
               />
             )
             : diffBody !== null
-              ? <DiffBlock {...diffBody.card} maxLines={CHAT_DIFF_MAX_LINES} className={css.diffBody} />
+              ? <DiffBlock {...diffBody.card} labels={labels.diff} maxLines={CHAT_DIFF_MAX_LINES} className={css.diffBody} />
               : readBody !== null
-                ? <ReadBlock {...readBody} maxLines={CHAT_READ_MAX_LINES} className={css.readBody} />
+                ? <ReadBlock {...readBody} labels={labels.read} maxLines={CHAT_READ_MAX_LINES} className={css.readBody} />
                 : searchBody !== null
                   ? (
                     <>
-                      <SearchBlock {...searchBody.card} maxLines={CHAT_SEARCH_MAX_LINES} className={css.searchBody} />
+                      <SearchBlock
+                        {...searchBody.card} labels={labels.search} maxLines={CHAT_SEARCH_MAX_LINES} className={css.searchBody}
+                      />
                       {/* A capped search's recovery locator lives only in the result
                           text; show it below the card so the dropped rows survive. */}
                       {searchBody.recovery !== undefined && (
@@ -259,7 +263,7 @@ export function ToolRow({
                     </>
                   )
                   : webBody !== null
-                    ? <WebBlock {...webBody} className={css.webBody} />
+                    ? <WebBlock {...webBody} labels={labels.web} className={css.webBody} />
                     : (
                       <>
                         {variant === 'code' && body !== null && (
@@ -271,7 +275,7 @@ export function ToolRow({
                           <div className={css.ioCard}>
                             {cardBody !== null && (
                               <div className={css.ioSection}>
-                                <span className={css.ioLabel}>IN</span>
+                                <span className={css.ioLabel}>{t('tool.input')}</span>
                                 <span className={css.ioText}>{cardBody}</span>
                               </div>
                             )}
@@ -280,7 +284,7 @@ export function ToolRow({
                             )}
                             {outputText !== null && (
                               <div className={css.ioSection}>
-                                <span className={css.ioLabel}>OUT</span>
+                                <span className={css.ioLabel}>{t('tool.output')}</span>
                                 <span className={css.ioText} data-error={state === 'error' || undefined}>
                                   {outputText}
                                 </span>
@@ -297,7 +301,7 @@ export function ToolRow({
               onClick={inspect}
             >
               <IconInspectOutline12 />
-              Inspect
+              {t('tool.inspect')}
             </button>
           )}
         </div>

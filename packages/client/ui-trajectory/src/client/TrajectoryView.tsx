@@ -465,6 +465,7 @@ export function TrajectoryView({
         t={t}
       />
       <TrajectoryTimeline
+        t={t}
         turns={timelineTurns}
         mode={timelineMode}
         range={timelineRange}
@@ -478,6 +479,7 @@ export function TrajectoryView({
       />
       <div className={css.ledger}>
         <TrajectoryTable
+          t={t}
           requestNumbers={requestNumbers}
           turns={timelineTurns}
           streamingCells={streamingCells}

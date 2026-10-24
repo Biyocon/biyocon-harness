@@ -182,7 +182,7 @@ describe('FileMutationRow diff card', () => {
     toggleRow(view)
     expect(view.container.querySelector('[data-diff]')).not.toBeNull()
     expect(view.getByText('hello fixture')).toBeTruthy()
-    expect(view.getByText('Copy')).toBeTruthy()
+    expect(view.getByText('Kopiér')).toBeTruthy()
   })
 
   it('the summary is a path link that opens the tool path through the host', () => {
@@ -204,7 +204,7 @@ describe('FileMutationRow diff card', () => {
     }), 'write')} />)
     // The footer counts live inside the collapsed diff card.
     toggleRow(view)
-    expect(view.getByText('└ +1 -0 · 1 file')).toBeTruthy()
+    expect(view.getByText('└ +1 -0 · 1 fil')).toBeTruthy()
   })
 
   it('reflects the run state on its leading slot', () => {

@@ -7,6 +7,7 @@ import { searchCardModel } from './models/search-card-model.ts'
 import { terminalBlockLabels, terminalCardModel } from './models/terminal-card-model.ts'
 import { resultText } from './models/tool-call-model.ts'
 import { webCardModel } from './models/web-card-model.ts'
+import { resultBlockLabels } from './models/block-labels.ts'
 import css from './ToolDetails.module.css'
 
 /** Pure details-body inputs; framework session seats stay at the slot boundary. */
@@ -23,6 +24,7 @@ interface ToolDetailsContentProps {
  * @returns the details output body.
  */
 export function ToolDetails({ block, cwd, t }: ToolDetailsContentProps) {
+  const labels = resultBlockLabels(t)
   const terminal = terminalCardModel(block, cwd)
   if (terminal !== null) {
     return (
@@ -35,14 +37,14 @@ export function ToolDetails({ block, cwd, t }: ToolDetailsContentProps) {
     )
   }
   const read = readCardModel(block, cwd)
-  if (read !== null) return <ReadBlock {...read} className={css.read} />
+  if (read !== null) return <ReadBlock {...read} labels={labels.read} className={css.read} />
   const diff = diffCardModel(block)
-  if (diff !== null) return <DiffBlock {...diff.card} className={css.cardBody} />
+  if (diff !== null) return <DiffBlock {...diff.card} labels={labels.diff} className={css.cardBody} />
   const search = searchCardModel(block)
   if (search !== null) {
     return (
       <>
-        <SearchBlock {...search.card} className={css.cardBody} />
+        <SearchBlock {...search.card} labels={labels.search} className={css.cardBody} />
         {search.recovery !== undefined ? <div className={css.recovery}>{search.recovery}</div> : null}
       </>
     )
@@ -52,7 +54,7 @@ export function ToolDetails({ block, cwd, t }: ToolDetailsContentProps) {
     const body = 'kind' in block ? resultText(block) : ''
     return (
       <>
-        <WebBlock {...web} className={css.web} />
+        <WebBlock {...web} labels={labels.web} className={css.web} />
         {body !== '' ? <pre className={css.code}>{body}</pre> : null}
       </>
     )

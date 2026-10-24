@@ -34,7 +34,27 @@ export interface DiffHunk {
   newText: string
 }
 
+/** Display copy supplied by the owning UI; standalone cards default to English. */
+export interface DiffBlockLabels {
+  copy: string
+  copied: string
+  collapse: string
+  collapseAria: string
+  expand: (hidden: number) => string
+  expandAria: (hidden: number) => string
+  files: (count: number) => string
+}
+
+const DEFAULT_LABELS: DiffBlockLabels = {
+  copy: 'Copy', copied: 'Copied', collapse: 'Collapse', collapseAria: 'Collapse diff',
+  expand: hidden => `… ${hidden} more lines`,
+  expandAria: hidden => `Expand ${hidden} more diff lines`,
+  files: count => `${count} file${count === 1 ? '' : 's'}`,
+}
+
 export interface DiffBlockProps {
+  /** Localized display copy; omitted fields retain English defaults. */
+  labels?: Partial<DiffBlockLabels> | undefined
   /** One entry per applied hunk, in file order; empty renders nothing. */
   diffs: DiffHunk[]
   /** Height cap in body lines before the middle collapses (default {@link DEFAULT_DIFF_MAX_LINES}). */
@@ -138,7 +158,8 @@ function copyText(rows: DiffRow[]): string {
  * @param props - see {@link DiffBlockProps}.
  * @returns the diff block element.
  */
-export function DiffBlock({ diffs, maxLines = DEFAULT_DIFF_MAX_LINES, className }: DiffBlockProps) {
+export function DiffBlock({ diffs, maxLines = DEFAULT_DIFF_MAX_LINES, className, labels }: DiffBlockProps) {
+  const copy = { ...DEFAULT_LABELS, ...labels }
   const { rows, added, removed, files } = useMemo(() => buildRows(diffs), [diffs])
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -168,7 +189,7 @@ export function DiffBlock({ diffs, maxLines = DEFAULT_DIFF_MAX_LINES, className 
   return (
     <div className={clsx(css.block, className)} data-diff="">
       <button type="button" className={css.copyButton} onClick={onCopy}>
-        {copied ? 'Copied' : 'Copy'}
+        {copied ? copy.copied : copy.copy}
       </button>
       <div className={css.body}>
         {head.map((row, index) => (
@@ -179,17 +200,17 @@ export function DiffBlock({ diffs, maxLines = DEFAULT_DIFF_MAX_LINES, className 
             type="button"
             className={css.expand}
             aria-expanded={expanded}
-            aria-label={expanded ? 'Collapse diff' : `Expand ${hidden} more diff lines`}
+            aria-label={expanded ? copy.collapseAria : copy.expandAria(hidden)}
             onClick={onToggle}
           >
-            {expanded ? 'Collapse' : `… ${hidden} more lines`}
+            {expanded ? copy.collapse : copy.expand(hidden)}
           </button>
         )}
         {tail.map((row, index) => (
           <div key={index} className={clsx(css.line, ROW_CLASS[row.kind])}>{row.text}</div>
         ))}
       </div>
-      <div className={css.footer}>└ +{added} -{removed} · {files} file{files === 1 ? '' : 's'}</div>
+      <div className={css.footer}>└ +{added} -{removed} · {copy.files(files)}</div>
     </div>
   )
 }

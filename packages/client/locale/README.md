@@ -6,6 +6,8 @@ Locale plugin: LocaleRuntime — the `en`/`da` preference stored as `locale.pref
 
 Stored legacy `zh` preferences resolve to English without a settings write; the selector exposes only English and Dansk.
 
+The Web shell starts with `lang="en"`. The plugin synchronizes `document.documentElement.lang` on activation and every locale change, including Host preference hydration, and restores the previous attribute value on disposal. Registry-only clients require no document.
+
 ## Model Experience
 
 None, as the locale registry serves browser UI copy; nothing here reaches a model request.

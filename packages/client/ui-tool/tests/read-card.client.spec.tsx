@@ -200,7 +200,7 @@ describe('ReadRow keyed toolview', () => {
     expect(view.getAllByText('src/a.ts').length).toBe(2)
     expect(view.container.querySelector('[data-read]')).not.toBeNull()
     expect(contentTexts(view.container)).toContain('export const a = 1')
-    expect(view.getByText('Showing 3 / 180 lines')).toBeTruthy()
+    expect(view.getByText('Viser 3 / 180 linjer')).toBeTruthy()
     // Collapse back in place: the card unmounts, the summary link returns.
     toggleRow(view)
     expect(view.container.querySelector('[data-read]')).toBeNull()
@@ -318,7 +318,7 @@ describe('DetailsPanel Output section (read)', () => {
     expect(view.getByText(/"file_path"/)).toBeTruthy()
     expect(view.container.querySelector('[data-read]')).not.toBeNull()
     // The panel takes the primitive's own default cap (16), not the row's.
-    expect(view.getByText(`… ${20 - 16} more lines`)).toBeTruthy()
+    expect(view.getByText(`… ${20 - 16} flere linjer`)).toBeTruthy()
     expect(contentTexts(view.container)).toContain('row-0')
   })
 

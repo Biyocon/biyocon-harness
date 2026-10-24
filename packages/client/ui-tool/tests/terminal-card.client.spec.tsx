@@ -435,8 +435,8 @@ describe('BashRow terminal card', () => {
     fireEvent.click(row)
 
     expect(row.getAttribute('aria-expanded')).toBe('true')
-    expect(view.getByText('IN')).toBeTruthy()
-    expect(view.getByText('OUT')).toBeTruthy()
+    expect(view.getByText('IND')).toBeTruthy()
+    expect(view.getByText('UD')).toBeTruthy()
     expect(view.getByText(/"command": "ls -la"/)).toBeTruthy()
     expect(view.container.querySelector('[data-error]')?.textContent).toBe('Error: command aborted')
   })

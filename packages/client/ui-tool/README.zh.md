@@ -16,6 +16,8 @@ Client 工具展示插件。`ui-conversation` 通过 `conversation.chat.node` �
 
 通用行把已知工具名称归类为 search、read、shell、write、edit、code 或 generic 变体。运行中、成功、失败和中断状态只来自冻结的 call/result slice。只有用户调用 Host 打开文件回调时，文件路径才相对会话 `cwd` 解析；展示代码不读取会话服务。
 
+Chat 行与已选调用详情通过 `conversation` locale seat 共享 diff、read、search 和 web 结果卡片的翻译标签。原子组件仅接收展示属性，不依赖 locale 插件。
+
 ## 原子工具视图
 
 拥有该视图的业务包将其 wire 工具名称注册进 `tool.call.toolview`：

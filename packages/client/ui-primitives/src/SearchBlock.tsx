@@ -37,12 +37,36 @@ export interface SearchFileGroup {
   matches: SearchBlockLineMatch[]
 }
 
+/** Display copy supplied by the owning UI; standalone cards default to English. */
+export interface SearchBlockLabels {
+  copy: string
+  copied: string
+  collapse: string
+  collapseAria: string
+  expand: (hidden: number) => string
+  expandAria: (hidden: number) => string
+  empty: string
+  summary: (shown: number, total: number, files: number | null, truncated: boolean) => string
+}
+
+const DEFAULT_LABELS: SearchBlockLabels = {
+  copy: 'Copy', copied: 'Copied', collapse: 'Collapse', collapseAria: 'Collapse results', empty: 'No results',
+  expand: hidden => `… ${hidden} more lines`,
+  expandAria: hidden => `Expand ${hidden} more result lines`,
+  summary: (shown, total, files, truncated) => {
+    const count = truncated ? `Showing ${shown} / ${total}` : `${shown}`
+    return files === null ? `${count} paths` : `${count} matches · ${files} files`
+  },
+}
+
 /** Fields both search shapes carry (the render site positions; this component draws). */
 interface SearchBlockCommon {
+  /** Localized display copy; omitted fields retain English defaults. */
+  labels?: Partial<SearchBlockLabels> | undefined
   /**
    * Whether the tool capped the inline result: the shape carries only the
    * retained results, not every result the search found. The banner summary
-   * folds the pre-cap `total` in (`显示 X / 共 N …`) so the card never presents a
+   * folds the pre-cap `total` in (`Showing X / N …`) so the card never presents a
    * capped result as complete.
    */
   truncated: boolean
@@ -111,25 +135,6 @@ function shownCount(props: SearchBlockProps): number {
 }
 
 /**
- * The banner summary. When the search was capped it reads `显示 X / 共 N …` so
- * the retained count and the pre-cap total sit in one clause (mirroring the read
- * card's `显示 X / Y 行`); when it was not capped it is a plain count of what the
- * card holds. The unit — `处匹配 · K 个文件` for grep, `个路径` for glob — trails
- * the count either way.
- * @param props - the card's props.
- * @param shown - the retained result count from {@link shownCount}.
- * @param truncated - whether the search was capped.
- * @param total - the pre-cap total the truncation clause reports.
- * @returns the summary text.
- */
-function summaryText(props: SearchBlockProps, shown: number, truncated: boolean, total: number): string {
-  const count = truncated ? `Showing ${shown} / ${total}` : `${shown}`
-  return props.kind === 'paths'
-    ? `${count} paths`
-    : `${count} matches · ${props.files.length} files`
-}
-
-/**
  * Flatten a card's shape into its render rows, dropping a collapsed file
  * group's match rows.
  * @param props - the card's props.
@@ -171,6 +176,7 @@ function rowKey(row: SearchRow): string {
  * @returns the search block element.
  */
 export function SearchBlock(props: SearchBlockProps) {
+  const copy = { ...DEFAULT_LABELS, ...props.labels }
   const { truncated, total, maxLines = DEFAULT_SEARCH_MAX_LINES, className } = props
   const [expanded, setExpanded] = useState(false)
   const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(() => new Set())
@@ -239,15 +245,15 @@ export function SearchBlock(props: SearchBlockProps) {
   return (
     <div className={clsx(css.block, className)} data-search={props.kind}>
       <div className={css.header}>
-        <span className={css.summary}>{summaryText(props, shown, truncated, total)}</span>
+        <span className={css.summary}>{copy.summary(shown, total, props.kind === 'paths' ? null : props.files.length, truncated)}</span>
         {!empty && (
           <button type="button" className={css.copyButton} onClick={onCopy}>
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? copy.copied : copy.copy}
           </button>
         )}
       </div>
       {empty
-        ? <div className={css.empty}>No results</div>
+        ? <div className={css.empty}>{copy.empty}</div>
         : (
           <div className={css.body}>
             {head.map(row => (
@@ -258,10 +264,10 @@ export function SearchBlock(props: SearchBlockProps) {
                 type="button"
                 className={css.expand}
                 aria-expanded={expanded}
-                aria-label={expanded ? 'Collapse results' : `Expand ${hidden} more result lines`}
+                aria-label={expanded ? copy.collapseAria : copy.expandAria(hidden)}
                 onClick={onToggle}
               >
-                {expanded ? 'Collapse' : `… ${hidden} more lines`}
+                {expanded ? copy.collapse : copy.expand(hidden)}
               </button>
             )}
             {tailHeader !== undefined && (

@@ -1,0 +1,90 @@
+- toolbar "Værktøjslinje til forløb":
+  - button "Brug faktisk varighed": Varighed
+  - button "Fold ture sammen": Ture
+  - button "Fold kald sammen": Kald
+  - img
+  - searchbox "Søg i forløb"
+- region "Forløbets tidslinje"
+- table:
+  - rowgroup:
+    - row "SYSTEM, Oprindelig systemprompt":
+      - cell "SYSTEM"
+      - cell "Oprindelig systemprompt"
+    - 'row "BRUGER, NavScenario: first run bash to print exactly NAVIGATION_OK, then read nav-a.md and nav-b.md using two read calls in ONE assistant message, then reply with the single word FIRST_DONE and stop."':
+      - cell "Tur 1 BRUGER": BRUGER
+      - 'cell "NavScenario: first run bash to print exactly NAVIGATION_OK, then read nav-a.md and nav-b.md using two read calls in ONE assistant message, then reply with the single word FIRST_DONE and stop."'
+    - 'row "Forespørgsel 1, ASSISTENT, The user wants me to follow a specific navigation scenario. Let me: Run bash to print \"NAVIGATION_OK\" Read nav-a.md and nav-b.md in two read calls in ONE message Reply with \"FIRST_DONE\" Let me start with the bash command and the reads."':
+      - 'cell "Forespørgsel #1 ASSISTENT"':
+        - 'button "Forespørgsel #1"'
+        - text: ASSISTENT
+      - 'cell "The user wants me to follow a specific navigation scenario. Let me: Run bash to print \"NAVIGATION_OK\" Read nav-a.md and nav-b.md in two read calls in ONE message Reply with \"FIRST_DONE\" Let me start with the bash command and the reads."'
+    - 'row "VÆRKTØJ, bash {\"command\": \"echo NAVIGATION_OK\", \"description\": \"Print NAVIGATION_OK\"}" [selected]':
+      - cell "VÆRKTØJ"
+      - 'cell "bash{\"command\": \"echo NAVIGATION_OK\", \"description\": \"Print NAVIGATION_OK\"} → NAVIGATION_OK"'
+    - 'row "VÆRKTØJ, read {\"file_path\": \"nav-a.md\"}"':
+      - cell "VÆRKTØJ"
+      - 'cell "read{\"file_path\": \"nav-a.md\"} → <path>{{cwd}}/nav-a.md</path> <type>file</type> <content> 1: # alpha nav (End of file - total 1 lines) </content>"'
+    - 'row "VÆRKTØJ, read {\"file_path\": \"nav-b.md\"}"':
+      - cell "VÆRKTØJ"
+      - 'cell "read{\"file_path\": \"nav-b.md\"} → <path>{{cwd}}/nav-b.md</path> <type>file</type> <content> 1: # beta nav (End of file - total 1 lines) </content>"'
+    - row "Forespørgsel 2, ASSISTENT, FIRST_DONE":
+      - 'cell "Forespørgsel #2 ASSISTENT"':
+        - 'button "Forespørgsel #2"'
+        - text: ASSISTENT
+      - cell "FIRST_DONE"
+    - 'row "BRUGER, Reply in markdown with: a level-2 heading \"Navigation Summary\", a bulleted list of exactly two items, and a fenced code block containing echo WATERFALL. Then stop."':
+      - cell "Tur 2 BRUGER": BRUGER
+      - 'cell "Reply in markdown with: a level-2 heading \"Navigation Summary\", a bulleted list of exactly two items, and a fenced code block containing echo WATERFALL. Then stop."'
+    - row "Forespørgsel 3, ASSISTENT, Navigation Summary alpha nav beta nav echo WATERFALL":
+      - 'cell "Forespørgsel #3 ASSISTENT"':
+        - 'button "Forespørgsel #3"'
+        - text: ASSISTENT
+      - cell "Navigation Summary alpha nav beta nav echo WATERFALL"
+- complementary "Hændelsesdetaljer":
+  - separator "Tilpas hændelsesdetaljernes størrelse"
+  - text: VÆRKTØJ Tur 1 · Trin 1
+  - button "Luk detaljer"
+  - tablist "Hændelsesdetaljer":
+    - tab "Oversigt" [selected]
+    - tab "Payload"
+    - tab "Resultat"
+    - tab "Skema"
+    - tab "Tidsmåling"
+  - tabpanel "Oversigt":
+    - term: Hierarki
+    - definition:
+      - button "Assistentbesked":
+        - text: Assistentbesked
+        - img
+    - term: Status
+    - definition: Afsluttet
+    - heading "Payload" [level=3]:
+      - button "Payload":
+        - text: Payload
+        - img
+    - text: "{"
+    - tree "Payload JSON":
+      - treeitem "command:\"echo NAVIGATION_OK\","
+      - treeitem "description:\"Print NAVIGATION_OK\""
+    - text: "}"
+    - heading "Resultat" [level=3]:
+      - button "Resultat":
+        - text: Resultat
+        - img
+    - text: NAVIGATION_OK
+    - heading "Skema" [level=3]:
+      - button "Skema":
+        - text: Skema
+        - img
+    - paragraph: Skema ikke tilgængeligt
+    - heading "Tidsmåling" [level=3]:
+      - button "Tidsmåling":
+        - text: Tidsmåling
+        - img
+    - term: Startet
+    - definition:
+      - button "2026-07-25 {{clock}}"
+    - term: Varighed
+    - definition: 13 ms
+    - term: Tidskilde
+    - definition: Sessionens tidsstempler

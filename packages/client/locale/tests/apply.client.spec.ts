@@ -88,6 +88,32 @@ describe('locale apply', () => {
     expect(inject).toEqual(['slots', 'connection', 'remote', 'settingsScope'])
   })
 
+  it('owns document language until disposal and follows live language changes', async () => {
+    const previous = document.documentElement.lang
+    const b = await bench()
+    const fiber = b.ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    const locale = b.ctx.get('locale') as LocaleRuntime
+    expect(document.documentElement.lang).toBe('da')
+    locale.setLocale('en')
+    expect(document.documentElement.lang).toBe('en')
+    locale.setLocale('da')
+    expect(document.documentElement.lang).toBe('da')
+    await fiber.dispose()
+    expect(document.documentElement.lang).toBe(previous)
+  })
+
+  it('supports registry-only clients without a browser document', async () => {
+    const b = await bench()
+    vi.stubGlobal('document', undefined)
+    const fiber = b.ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    const locale = b.ctx.get('locale') as LocaleRuntime
+    locale.setLocale('en')
+    expect(locale.getLocale().active).toBe('en')
+    await fiber.dispose()
+  })
+
   it('provides the service with base + settings dictionaries and registers the row (declaration before or after apply)', async () => {
     const before = await bench()
     declareItems(before.slots)
@@ -156,6 +182,7 @@ describe('locale apply', () => {
     const locale = b.ctx.get('locale') as LocaleRuntime
     await vi.waitFor(() => { expect(locale.getLocale().active).toBe('en') })
     expect(locale.bind(SETTINGS_NS)('language.title')).toBe('Language')
+    expect(document.documentElement.lang).toBe('en')
     expect(b.mutate).not.toHaveBeenCalled()
     await b.ctx.fiber.dispose()
   })

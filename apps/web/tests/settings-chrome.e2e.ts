@@ -412,6 +412,7 @@ describe('web e2e: settings modal and General preferences', () => {
     await selector.click()
     expect(await page.getByRole('menuitem').allTextContents()).toEqual(['English', 'Dansk'])
     await page.getByRole('menuitem', { name: 'English' }).click()
+    expect(await page.locator('html').getAttribute('lang')).toBe('en')
     // The settings-owned copy re-registers localized: dialog title, nav,
     // Appearance labels. (Only the settings namespaces are localized —
     // the rest of the app's copy is intentionally out of this row's scope.)
@@ -428,6 +429,7 @@ describe('web e2e: settings modal and General preferences', () => {
     await page.reload({ waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
     acknowledgeReloadConnectionLoss(tripwire, warningStart)
+    expect(await page.locator('html').getAttribute('lang')).toBe('en')
     const enTrigger = page.getByRole('button', { name: 'Settings' })
     await enTrigger.waitFor({ timeout: 10_000 })
 
@@ -454,6 +456,7 @@ describe('web e2e: settings modal and General preferences', () => {
     await enTrigger.click()
     await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'English' }).click()
     await page.getByRole('menuitem', { name: 'Dansk' }).click()
+    expect(await page.locator('html').getAttribute('lang')).toBe('da')
     await page.getByRole('dialog', { name: 'Indstillinger' }).waitFor({ timeout: 10_000 })
     expect(await page.evaluate(() => localStorage.getItem('dsh.locale'))).toBeNull()
     await expect.poll(async () => readFile(join(scaffold.harnessHome, 'settings.yaml'), 'utf8'), { timeout: 5_000 })

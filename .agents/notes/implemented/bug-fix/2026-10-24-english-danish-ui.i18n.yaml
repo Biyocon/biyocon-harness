@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-24-english-danish-ui.md
-2026-10-24-english-danish-ui.md: f6c07cf2e6d3e5d57abb7aecb13b0817b7fc3244
-2026-10-24-english-danish-ui.zh.md: 3412e4c664455dbce2654a1005358ff786b78929
+2026-10-24-english-danish-ui.md: 778ea334fca0897d995fd1c6a652a87c71358ce5
+2026-10-24-english-danish-ui.zh.md: 9c2c7cf83b524def79d71b516e7d58c3760f6f43
