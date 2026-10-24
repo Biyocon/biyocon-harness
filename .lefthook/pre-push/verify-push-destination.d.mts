@@ -1,4 +1,4 @@
-export const ALLOWED_PUSH_REPOSITORY: 'biyocon/deepseek-harness'
+export const ALLOWED_PUSH_REPOSITORY: 'biyocon/biyocon-harness'
 
 export interface ValidatedPushDestination {
   readonly remoteName: string

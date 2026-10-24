@@ -20,7 +20,7 @@ const nativeLefthook = createRequire(lefthookPackage).resolve(
   `lefthook-${process.platform === 'win32' ? 'windows' : process.platform}-${process.arch}/bin/lefthook${process.platform === 'win32' ? '.exe' : ''}`,
 )
 const productionConfig = readFileSync(new URL('../lefthook.yml', import.meta.url), 'utf8')
-const fork = 'https://github.com/Biyocon/deepseek-harness.git'
+const fork = 'https://github.com/Biyocon/biyocon-harness.git'
 const upstream = 'https://github.com/deepseek-ai/deepseek-harness.git'
 const transportKey = 'DSH_GIT_PRE_PUSH_ARGS'
 const fixtures: string[] = []
@@ -120,11 +120,22 @@ function expectHookResult(fixture: HookFixture, result: ReturnType<typeof comman
 }
 
 describe('push destination normalization', () => {
+  it('rejects the former fork identity even when GitHub redirects it', () => {
+    for (const location of [
+      'https://github.com/Biyocon/deepseek-harness.git',
+      'git@github.com:Biyocon/deepseek-harness.git',
+      'ssh://git@github.com/Biyocon/deepseek-harness.git',
+    ]) {
+      expect(normalizePushRepository(location)).toBe('biyocon/deepseek-harness')
+      expect(() => validatePushDestination(['biyocon', location])).toThrow(/is not allowed/u)
+    }
+  })
+
   for (const location of [
-    'https://github.com/Biyocon/deepseek-harness.git',
-    'https://github.com/biyocon/deepseek-harness/',
-    'git@github.com:Biyocon/deepseek-harness.git',
-    'ssh://git@github.com/Biyocon/deepseek-harness.git',
+    'https://github.com/Biyocon/biyocon-harness.git',
+    'https://github.com/biyocon/biyocon-harness/',
+    'git@github.com:Biyocon/biyocon-harness.git',
+    'ssh://git@github.com/Biyocon/biyocon-harness.git',
   ]) {
     it(`accepts ${location}`, () => {
       expect(normalizePushRepository(location)).toBe(ALLOWED_PUSH_REPOSITORY)
@@ -140,7 +151,7 @@ describe('push destination normalization', () => {
     'git@github.com:deepseek-ai/deepseek-harness.git',
     'https://github.com/another/deepseek-harness.git',
     'https://github.com/Biyocon/another.git',
-    'https://github.com/Biyocon/deepseek-harness.git?ref=master',
+    'https://github.com/Biyocon/biyocon-harness.git?ref=master',
     'file:///tmp/deepseek-harness',
     'DISABLED_no_push_to_upstream',
   ]) {
@@ -156,21 +167,21 @@ describe('push destination normalization', () => {
     ])).toThrow(/deepseek-ai\/deepseek-harness/u)
     expect(validatePushDestination([
       'renamed-fork',
-      'https://github.com/Biyocon/deepseek-harness.git',
+      'https://github.com/Biyocon/biyocon-harness.git',
     ])).toEqual({ remoteName: 'renamed-fork', repository: ALLOWED_PUSH_REPOSITORY })
   })
 
   for (const location of [
-    'https:/github.com/Biyocon/deepseek-harness.git',
-    'https:github.com/Biyocon/deepseek-harness.git',
-    'https:///github.com/Biyocon/deepseek-harness.git',
-    'https://github.com/Biyocon\\deepseek-harness.git',
-    'https://%67ithub.com/Biyocon/deepseek-harness.git',
-    'https://github.com/another/../Biyocon/deepseek-harness.git',
-    'https://github.com/another/%2e%2e/Biyocon/deepseek-harness.git',
-    'ssh:/git@github.com/Biyocon/deepseek-harness.git',
-    'httpſ://github.com/Biyocon/deepseek-harness.git',
-    'ſsh://git@github.com/Biyocon/deepseek-harness.git',
+    'https:/github.com/Biyocon/biyocon-harness.git',
+    'https:github.com/Biyocon/biyocon-harness.git',
+    'https:///github.com/Biyocon/biyocon-harness.git',
+    'https://github.com/Biyocon\\biyocon-harness.git',
+    'https://%67ithub.com/Biyocon/biyocon-harness.git',
+    'https://github.com/another/../Biyocon/biyocon-harness.git',
+    'https://github.com/another/%2e%2e/Biyocon/biyocon-harness.git',
+    'ssh:/git@github.com/Biyocon/biyocon-harness.git',
+    'httpſ://github.com/Biyocon/biyocon-harness.git',
+    'ſsh://git@github.com/Biyocon/biyocon-harness.git',
   ]) {
     it(`rejects unsupported syntax in ${location}`, () => {
       expect(normalizePushRepository(location)).toBeUndefined()
@@ -187,14 +198,14 @@ describe('push destination normalization', () => {
     ['DEL', '\u007f'],
   ] as const) {
     it(`rejects an embedded ASCII ${label} character before URL parsing`, () => {
-      const location = `https://github.com/Biyocon/deepseek-${character}harness.git`
+      const location = `https://github.com/Biyocon/biyocon-${character}harness.git`
       expect(normalizePushRepository(location)).toBeUndefined()
       expect(() => validatePushDestination(['biyocon', location])).toThrow(/not an unambiguous/u)
     })
   }
 
   it('rejects direct URL pushes and incomplete hook arguments', () => {
-    const location = 'https://github.com/Biyocon/deepseek-harness.git'
+    const location = 'https://github.com/Biyocon/biyocon-harness.git'
     expect(() => validatePushDestination([location, location])).toThrow(/direct URL pushes/u)
     expect(() => validatePushDestination([])).toThrow(/expected Git pre-push arguments/u)
     expect(() => validatePushDestination(['biyocon'])).toThrow(/expected Git pre-push arguments/u)
@@ -203,7 +214,7 @@ describe('push destination normalization', () => {
 })
 
 describe('installed pre-push hook', { timeout: 30_000 }, () => {
-  for (const location of [fork, 'git@github.com:Biyocon/deepseek-harness.git', 'ssh://git@github.com/Biyocon/deepseek-harness.git']) {
+  for (const location of [fork, 'git@github.com:Biyocon/biyocon-harness.git', 'ssh://git@github.com/Biyocon/biyocon-harness.git']) {
     it(`runs typecheck for ${location} with nonempty push files`, () => {
       const fixture = createHookFixture()
       expectHookResult(fixture, runFixtureHook(fixture, ['renamed-fork', location]), 0)
@@ -212,7 +223,8 @@ describe('installed pre-push hook', { timeout: 30_000 }, () => {
 
   for (const [label, args, diagnostic] of [
     ['upstream', ['origin', upstream], 'is not allowed'],
-    ['malformed HTTPS', ['biyocon', 'https:/github.com/Biyocon/deepseek-harness.git'], 'not an unambiguous'],
+    ['former fork', ['biyocon', 'https://github.com/Biyocon/deepseek-harness.git'], 'is not allowed'],
+    ['malformed HTTPS', ['biyocon', 'https:/github.com/Biyocon/biyocon-harness.git'], 'not an unambiguous'],
     ['direct URL', [fork, fork], 'direct URL pushes'],
     ['missing arguments', [], 'expected Git pre-push arguments'],
     ['missing location', ['biyocon'], 'expected Git pre-push arguments'],
@@ -232,7 +244,7 @@ describe('installed pre-push hook', { timeout: 30_000 }, () => {
   })
 
   for (const [label, location] of [
-    ['userinfo', 'https://dsh-synthetic-credential@github.com/Biyocon/deepseek-harness.git'],
+    ['userinfo', 'https://dsh-synthetic-credential@github.com/Biyocon/biyocon-harness.git'],
     ['query', `${fork}?access_token=dsh-synthetic-credential`],
   ] as const) {
     for (const entry of ['validator CLI', 'installed hook']) {

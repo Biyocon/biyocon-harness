@@ -2,7 +2,7 @@
 
 ## Repository
 - Cloned from: https://github.com/deepseek-ai/deepseek-harness.git
-- Location: C:\Users\Biyocon\Deepseek
+- Location: C:\Users\Biyocon\biyocon-harness
 
 ## Installation Status
 ✅ Repository cloned successfully

@@ -1,7 +1,7 @@
 @echo off
 title DeepSeek Harness Desktop
 set DSH_HOME=C:\Users\Biyocon\.dsh
-cd /d "C:\Users\Biyocon\Deepseek"
+cd /d "C:\Users\Biyocon\biyocon-harness"
 
 REM Check if server is already running
 echo Checking if DeepSeek Harness is already running...
@@ -14,7 +14,7 @@ echo Starting DeepSeek Harness Web UI...
 start http://127.0.0.1:3082
 
 REM Launch the server in background
-start "DeepSeek Server" cmd /c "cd /d C:\Users\Biyocon\Deepseek && pnpm dsh web --port 3082"
+start "DeepSeek Server" cmd /c "cd /d C:\Users\Biyocon\biyocon-harness && pnpm dsh web --port 3082"
 
 echo DeepSeek Harness started at http://127.0.0.1:3082
 echo Press any key to close this window...
