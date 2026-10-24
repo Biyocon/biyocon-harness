@@ -3,6 +3,9 @@ name: conductor-devils-advocate
 description: Lever falsificerbar kritik af planen og returnér et ChallengeReport som Devil's Advocate i et Conductor-run.
 disable-model-invocation: true
 user-invocable: false
+metadata:
+  displayName: Devil's Advocate
+  avatar: 03-devils-advocate.webp
 ---
 
 # Devil's Advocate

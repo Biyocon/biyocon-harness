@@ -3,6 +3,9 @@ name: conductor-auditor
 description: Lever reproducerbar, uafhængig verifikation og returnér en VerificationReport som Auditor i et Conductor-run.
 disable-model-invocation: true
 user-invocable: false
+metadata:
+  displayName: Auditor
+  avatar: 05-auditor.webp
 ---
 
 # Auditor
