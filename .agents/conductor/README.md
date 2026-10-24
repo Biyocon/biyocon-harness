@@ -82,4 +82,10 @@ Rollefilerne beskriver adfærd, men giver ingen teknisk adgang. Headsman må kun
 - [Integrator](roles/06-integrator.md) — `DeliveryPackage`
 - [The Arbiter](roles/07-the-arbiter.md) — `DecisionRecord`
 
+## Profilbilleder
+
+[Profilmanifestet](roles/profiles.yml) knytter The Conductor og de syv specialistroller til lokale 512×512 WebP-billeder. Hver specialistfil bærer samme `metadata.displayName` og relative `metadata.avatar`; filesystem-skill-provideren bevarer metadataene og skillens `resourceBase`. Billedstierne er relative til `roles/` og afhænger ikke af en bestemt maskine eller worktree.
+
+Dette er statiske rolledata, ikke en avatarfunktion i klienten. Conductor-dispatch, sessions, descriptors, API'er og UI er uændrede; manifestet indlæses ikke automatisk, og billederne erstatter ikke klienternes ikoner. Billedernes oprindelse, optimering og afgrænsning er beskrevet i [Agent Note om profilassets](../notes/implemented/feature/2026-10-24-conductor-role-profile-assets.md).
+
 Arkitekturens sporede design og runtimebeslutninger findes i [Conductor Agent Note](../notes/implemented/feature/2026-09-11-conductor-runtime-layer.md). Projektets stående regler findes i [AGENTS.md](../../AGENTS.md).
