@@ -5,7 +5,7 @@
 
 import { pathToFileURL } from 'node:url'
 
-export const ALLOWED_PUSH_REPOSITORY = 'biyocon/deepseek-harness'
+export const ALLOWED_PUSH_REPOSITORY = 'biyocon/biyocon-harness'
 
 function normalizedRepositoryPath(pathname) {
   if (pathname.includes('%') || pathname.includes('\\')) return undefined

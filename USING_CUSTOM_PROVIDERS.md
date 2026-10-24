@@ -28,7 +28,7 @@ ollama pull phi3
 ### 3. Register in DeepSeek
 Use the registration script provided:
 ```bash
-cd C:\Users\Biyocon\Deepseek
+cd C:\Users\Biyocon\biyocon-harness
 node register-custom-providers.js
 ```
 

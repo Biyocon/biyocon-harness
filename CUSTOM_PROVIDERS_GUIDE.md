@@ -17,8 +17,8 @@ The DeepSeek harness uses a provider-neutral LLM architecture where:
 Create a new package in the `packages` directory:
 
 ```bash
-mkdir C:\Users\Biyocon\Deepseek\packages\llm-ollama
-mkdir C:\Users\Biyocon\Deepseek\packages\llm-kimi
+mkdir C:\Users\Biyocon\biyocon-harness\packages\llm-ollama
+mkdir C:\Users\Biyocon\biyocon-harness\packages\llm-kimi
 ```
 
 ### Method 2: Create Provider Adapter Files
@@ -348,7 +348,7 @@ const kimiResponse = await ctx.llm.prepareCall({
 
 3. **Run pnpm install** to make the packages available:
    ```bash
-   cd C:\Users\Biyocon\Deepseek
+   cd C:\Users\Biyocon\biyocon-harness
    pnpm install
    ```
 

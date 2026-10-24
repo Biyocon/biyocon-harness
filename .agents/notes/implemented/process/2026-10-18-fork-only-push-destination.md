@@ -6,11 +6,13 @@ English | [中文](2026-10-18-fork-only-push-destination.zh.md)
 
 ## Problem
 
-The repository imports changes from `deepseek-ai/deepseek-harness`, but all Biyocon development must remain in `Biyocon/deepseek-harness`. Remote naming and account permissions reduce accidental publication risk, but neither establishes a versioned local rule for renamed remotes, direct URL pushes, or future credential changes.
+The repository imports changes from `deepseek-ai/deepseek-harness`, but all Biyocon development must remain in `Biyocon/biyocon-harness`. Remote naming and account permissions reduce accidental publication risk, but neither establishes a versioned local rule for renamed remotes, direct URL pushes, or future credential changes.
 
 ## Decision
 
-The upstream repository is fetch-only, and the Biyocon fork is the sole push destination. The pre-push validator inspects Git's remote location, recognizes only explicit GitHub HTTPS/SSH authorities or GitHub SCP syntax, rejects direct URL pushes, and allows only `Biyocon/deepseek-harness`. It preserves the raw path instead of applying browser URL repair, which can disagree with Git's transport selection. Lefthook runs the validator in a piped sequence before typecheck, so rejection prevents typecheck from starting.
+The upstream repository is fetch-only, and the Biyocon fork is the sole push destination. The pre-push validator inspects Git's remote location, recognizes only explicit GitHub HTTPS/SSH authorities or GitHub SCP syntax, rejects direct URL pushes, and allows only `Biyocon/biyocon-harness`. It preserves the raw path instead of applying browser URL repair, which can disagree with Git's transport selection. Lefthook runs the validator in a piped sequence before typecheck, so rejection prevents typecheck from starting.
+
+The [fork identity and checkout-location decision](2026-10-24-biyocon-harness-repository-name.md) owns the selected name and relocation ordering; this note retains the transport validation and upstream integration rationale.
 
 The generated hook invokes `scripts/run-lefthook.mjs`. The dispatcher replaces inherited pre-push transport values with Git's original argument array encoded as JSON, then starts Lefthook shell-free with only `run pre-push`. The validator's script job has a fixed argument and reads that payload; neither the remote name nor location becomes shell syntax or a Lefthook option. Other hooks retain their arguments without the payload. Rejection diagnostics omit raw remote locations, which can contain credentials.
 

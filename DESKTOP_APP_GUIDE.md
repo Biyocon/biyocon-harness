@@ -16,7 +16,7 @@ The harness provides a web-based interface that runs locally:
 
 ```bash
 # From the DeepSeek root directory
-cd C:\Users\Biyocon\Deepseek
+cd C:\Users\Biyocon\biyocon-harness
 pnpm dsh web
 ```
 
@@ -54,7 +54,7 @@ If you want to integrate with desktop environments:
 
 1. **Open Command Prompt or PowerShell in the DeepSeek directory:**
    ```cmd
-   cd C:\Users\Biyocon\Deepseek
+   cd C:\Users\Biyocon\biyocon-harness
    ```
 
 2. **Start the Web UI (recommended approach):**
@@ -73,7 +73,7 @@ To create a desktop shortcut for easy access:
 2. Select "New" → "Shortcut"
 3. Enter the target path:
    ```
-   cmd /k "cd C:\Users\Biyocon\Deepseek && pnpm dsh web"
+   cmd /k "cd C:\Users\Biyocon\biyocon-harness && pnpm dsh web"
    ```
 4. Name the shortcut "DeepSeek Harness Web UI"
 5. Click "Finish"
@@ -97,7 +97,7 @@ This way, you'll be able to start the DeepSeek harness with a simple double-clic
 
 If the web UI fails to start:
 
-1. Make sure you're in the correct directory: `C:\Users\Biyocon\Deepseek`
+1. Make sure you're in the correct directory: `C:\Users\Biyocon\biyocon-harness`
 2. Run: `pnpm install` (should already be done)
 3. Try running: `pnpm dsh web --help` for options
 4. Check that no other application is using port 3080

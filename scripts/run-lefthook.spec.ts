@@ -9,7 +9,7 @@ import { removeFixtureSafely } from './test-fixture-cleanup.ts'
 const dispatcher = fileURLToPath(new URL('./run-lefthook.mjs', import.meta.url))
 const transportKey = 'DSH_GIT_PRE_PUSH_ARGS'
 const fixtures: string[] = []
-const fork = 'https://github.com/Biyocon/deepseek-harness.git'
+const fork = 'https://github.com/Biyocon/biyocon-harness.git'
 
 interface DispatcherFixture {
   root: string

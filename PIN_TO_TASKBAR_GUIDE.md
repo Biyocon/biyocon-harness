@@ -10,10 +10,10 @@ Since the DeepSeek harness runs a local web server, you can create a shortcut an
 
 1. **Create a Batch File** (to make it easier to start):
    
-   Create a file called `start-deepseek.bat` in your DeepSeek directory (`C:\Users\Biyocon\Deepseek`) with the following content:
+   Create a file called `start-deepseek.bat` in your DeepSeek directory (`C:\Users\Biyocon\biyocon-harness`) with the following content:
    ```batch
    @echo off
-   cd /d "C:\Users\Biyocon\Deepseek"
+   cd /d "C:\Users\Biyocon\biyocon-harness"
    echo Starting DeepSeek Harness Web UI...
    start http://127.0.0.1:3080
    pnpm dsh web
@@ -22,7 +22,7 @@ Since the DeepSeek harness runs a local web server, you can create a shortcut an
 2. **Create a Shortcut to the Batch File**:
    - Right-click on your Desktop or in a folder
    - Select "New" → "Shortcut"
-   - Enter the path: `C:\Users\Biyocon\Deepseek\start-deepseek.bat`
+   - Enter the path: `C:\Users\Biyocon\biyocon-harness\start-deepseek.bat`
    - Click "Next" and name it "DeepSeek Harness"
    - Click "Finish"
 
@@ -34,7 +34,7 @@ Since the DeepSeek harness runs a local web server, you can create a shortcut an
 
 1. **Start DeepSeek at least once**:
    ```cmd
-   cd C:\Users\Biyocon\Deepseek
+   cd C:\Users\Biyocon\biyocon-harness
    pnpm dsh web
    ```
 
@@ -54,7 +54,7 @@ If you want a more native experience, create a simple launcher:
 1. **Create PowerShell Script** (`deepseek-launcher.ps1`):
    ```powershell
    # Set working directory to DeepSeek
-   Set-Location "C:\Users\Biyocon\Deepseek"
+   Set-Location "C:\Users\Biyocon\biyocon-harness"
    
    # Start the web UI in background
    Start-Process -FilePath "pnpm" -ArgumentList "dsh web" -WindowStyle Hidden
@@ -78,7 +78,7 @@ If you want the DeepSeek server to start automatically on login:
 2. Create a basic task that runs when you log in
 3. Set the action to run:
    ```
-   cmd /c "cd C:\Users\Biyocon\Deepseek && pnpm dsh web"
+   cmd /c "cd C:\Users\Biyocon\biyocon-harness && pnpm dsh web"
    ```
 
 ## Tips for Best Experience
@@ -89,8 +89,8 @@ If you want the DeepSeek server to start automatically on login:
 
 3. **Create desktop shortcuts** for quick access:
    ```
-   Target: cmd /c "cd C:\Users\Biyocon\Deepseek && pnpm dsh web"
-   Start in: C:\Users\Biyocon\Deepseek
+   Target: cmd /c "cd C:\Users\Biyocon\biyocon-harness && pnpm dsh web"
+   Start in: C:\Users\Biyocon\biyocon-harness
    ```
 
 4. **Adjust ports if needed**: If port 3080 is occupied, you can specify a different port:
@@ -104,7 +104,7 @@ If the web server doesn't start:
 
 1. Make sure you're in the correct directory:
    ```
-   cd C:\Users\Biyocon\Deepseek
+   cd C:\Users\Biyocon\biyocon-harness
    ```
 
 2. Check if dependencies are installed:
