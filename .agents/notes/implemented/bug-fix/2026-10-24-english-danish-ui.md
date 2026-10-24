@@ -22,4 +22,6 @@ Keeping Chinese as a hidden fallback would still expose unsupported application 
 
 ## Consequences
 
+Structured result cards share one internal overflow toggle with caller-supplied labels and styles. Keeping separate copies of that control duplicates the same accessibility and expansion behavior; the shared component preserves the rendered markup and English defaults without exposing another public UI entry point.
+
 Locale schema and registry tests cover the supported pair and English fallback. Browser scenarios exercise the real assembled settings page, language persistence, and shipped preset selection; their accessibility snapshots record the localized application rather than a mock component.

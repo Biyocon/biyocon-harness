@@ -11,6 +11,7 @@
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
+import { BlockExpandButton } from './BlockExpandButton.tsx'
 import { writeClipboard } from './clipboard.ts'
 import {
   grammarLoadCount,
@@ -176,17 +177,7 @@ export function ReadBlock({
       </div>
       <div className={css.body}>
         {rows(capped ? paired.slice(0, headLines) : paired)}
-        {hidden > 0 && (
-          <button
-            type="button"
-            className={css.expand}
-            aria-expanded={expanded}
-            aria-label={expanded ? copy.collapseAria : copy.expandAria(hidden)}
-            onClick={onToggle}
-          >
-            {expanded ? copy.collapse : copy.expand(hidden)}
-          </button>
-        )}
+        <BlockExpandButton hidden={hidden} expanded={expanded} onToggle={onToggle} labels={copy} className={css.expand} />
         {capped && rows(paired.slice(paired.length - tailLines))}
       </div>
     </div>
