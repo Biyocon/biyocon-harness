@@ -10,7 +10,7 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 type Phase = 'waiting' | 'running' | 'stopped' | 'complete'
 
 /**
- * Require a Conductor dispatch before parent workspace tools and stop solo fallback.
+ * Require a Conductor dispatch, then deny parent tools until the next user task.
  * Specialist scopes retain their independently restricted tools. Registrations
  * belong to the mounting fiber; no generic instruction or loop policy changes.
  * @param ctx - context of the mode-enabled Conductor tool.
@@ -30,7 +30,6 @@ export function installModeRouting(ctx: Context): void {
     const agent = context.agent
     if (agent !== undefined && isParent(agent)) {
       const phase = phases.get(agent) ?? 'waiting'
-      if (phase === 'complete') return assembly
       assembly.tools = assembly.tools.filter(tool => phase === 'waiting' && tool.name === 'conductor')
     }
     return assembly
@@ -40,7 +39,6 @@ export function installModeRouting(ctx: Context): void {
     const agent = exec.agent
     if (agent === undefined || !isParent(agent)) return undefined
     const phase = phases.get(agent) ?? 'waiting'
-    if (phase === 'complete') return undefined
     if (phase === 'waiting' && exec.name === 'conductor') return undefined
     return phase === 'waiting'
       ? 'Conductor mode requires conductor as the first tool call for each new task; do not inspect the workspace yourself.'

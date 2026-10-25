@@ -73,16 +73,31 @@ describe('Conductor mode parent routing', () => {
     expect(await h.tools()).toEqual(['conductor'])
   })
 
-  it('leaves post-GO capabilities unchanged, then requires a new dispatch for the next task', async () => {
+  it.each(['read', 'write'])('hides and denies %s after GO until the next user task', async (name) => {
     const h = await setup()
+    let writes = 0
+    h.ctx.tools.register(defineTool({
+      name: 'write', description: 'write', parameters: {},
+      output: { schema: { type: 'null' }, render: () => [] },
+      execute: () => { writes += 1; return Promise.resolve(null) },
+    }))
     await h.task()
-    h.outcome({ result: { kind: 'decision' } })
+    h.outcome({ result: { kind: 'decision', decision: { decision: 'go' } } })
     expect((await h.execute('conductor')).isError).toBe(false)
-    expect(await h.tools()).toEqual(['conductor', 'read'])
-    expect((await h.execute('read')).isError).toBe(false)
+    expect(await h.tools()).toEqual([])
+    const denied = await h.execute(name)
+    expect(denied.isError).toBe(true)
+    expect(JSON.stringify(denied)).toContain('report the Conductor result and stop')
+    expect((await h.execute('conductor')).isError).toBe(true)
+    await h.task(2, false)
+    expect(await h.tools()).toEqual([])
+    expect((await h.execute(name)).isError).toBe(true)
     await h.task()
-    expect((await h.execute('read')).isError).toBe(true)
-    expect(h.reads()).toBe(1)
+    expect(await h.tools()).toEqual(['conductor'])
+    expect((await h.execute(name)).isError).toBe(true)
+    expect((await h.execute('conductor')).isError).toBe(false)
+    expect(h.reads()).toBe(0)
+    expect(writes).toBe(0)
   })
 
   it('prevents solo fallback after a tool error or any non-decision result', async () => {

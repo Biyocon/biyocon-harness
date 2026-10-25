@@ -16,7 +16,7 @@ CLI（命令行界面）构建将[正典角色目录](../../../.agents/conductor
 
 应用通过 `!!js` 相对于预设的 `baseUrl` 解析这些路径。预设的私有 `skills` 注册表与 Conductor 工具共享，不与任务的项目或用户 skill 目录共享。安装文件直接在宿主上读取，不经过任务文件系统。加载会在预设发布 agent（智能体）之前拒绝相对路径、缺失或格式错误的必需 skill，以及无法读取或正文为空的指令。验证后的角色成为预备定义，其前方附上完整共享协议作为参考；专家使用分派和结构化 schema，而不是从任务工作区读取仓库链接。注册随预设一同释放。
 
-应用启用工具的 `routeTasks` 策略：父级的每项新任务都先调用 `conductor`，包括未提及该模式的分析任务。分派之前，其他工具既不向模型展示，也会被执行器拒绝。分派受阻或失败后，只能报告最终结果，不得自行调查、实现任务或自动重新分派。专家仍可读取工作区指令，但这些指令不能绕过执行器策略。Arbiter 决策返回后，父级原有的能力保持不变；下一项用户任务仍须重新分派。[路由决策](../../../.agents/notes/implemented/bug-fix/2026-10-25-conductor-mode-routing.md)说明该策略；[安装决策](../../../.agents/notes/implemented/bug-fix/2026-10-24-conductor-installed-skills.md)负责指令交付。
+应用启用工具的 `routeTasks` 策略：父级的每项新任务都先调用 `conductor`，包括未提及该模式的分析任务。分派之前，其他工具既不向模型展示，也会被执行器拒绝。返回任何结果之后（包括 Arbiter GO），父级的所有工具仍被隐藏并拒绝执行；只能报告最终结果，不得自行调查、实现任务或自动重新分派。专家仍可读取工作区指令，但这些指令不能绕过执行器策略。下一项用户任务仅允许再次分派 Conductor。[路由决策](../../../.agents/notes/implemented/bug-fix/2026-10-25-conductor-mode-routing.md)说明该策略；[安装决策](../../../.agents/notes/implemented/bug-fix/2026-10-24-conductor-installed-skills.md)负责指令交付。
 
 ## 模型体验
 

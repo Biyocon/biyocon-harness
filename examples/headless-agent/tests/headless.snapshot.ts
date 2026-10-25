@@ -948,6 +948,11 @@ describe('headless stream-json snapshots', () => {
         }
 
         const parentRecords = parseJsonl(parent.content)
+        const parentHeaders = parentRecords.filter(row => row.type === 'request/header')
+        expect(parentHeaders).toHaveLength(2)
+        const finalHeader = (parentHeaders.at(-1)?.data as JsonObject | undefined)?.header as JsonObject | undefined
+        expect(finalHeader).toBeDefined()
+        expect(finalHeader).not.toHaveProperty('tools')
         const checkpoints = parentRecords.filter(record => record.type === 'conductor/checkpoint')
         expect(checkpoints).toHaveLength(8)
         const finalCheckpoint = checkpoints.at(-1)
