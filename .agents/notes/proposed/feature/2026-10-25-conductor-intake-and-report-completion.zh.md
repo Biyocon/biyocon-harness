@@ -6,9 +6,9 @@ Status: proposed
 
 ## 问题
 
-[Issue #30](https://github.com/Biyocon/biyocon-harness/issues/30)要求根据已提供的工作选择入口，并让分析和问答仅以报告完成。重新评估已有计划不应重复范围调查和规划。入口选择绝不能授权实现；要求建议的请求也应获得规划，而不只是澄清报告。
+[Issue #30](https://github.com/Biyocon/biyocon-harness/issues/30) 要求根据已提供的工作选择入口，并让分析和问答仅以报告完成。重新评估已有计划不应重复范围调查和规划。入口选择绝不能授权实现；要求建议的请求也应获得规划，而不只是澄清报告。
 
-本次核查的 master 为 `7548dbd23f6a1f1563ea4ec2bb98bee627f5731d`，包含 [PR #29](https://github.com/Biyocon/biyocon-harness/pull/29)。其路由要求父级首次工具调用为 `conductor`，且每次返回结果后拒绝父级工具。[createRun](../../../../packages/conductor/conductor/src/state.ts)仍从 Detective 开始，[驱动器](../../../../packages/conductor/conductor/src/drive.ts)沿 A–G 运行并要求 Auditor 具有执行基线，[持久化](../../../../packages/conductor/conductor/src/persistence.ts)也验证此顺序。这些执行假设没有提供仅报告的完成路径。
+本次核查的 master 为 `7548dbd23f6a1f1563ea4ec2bb98bee627f5731d`，包含 [PR #29](https://github.com/Biyocon/biyocon-harness/pull/29)。其路由要求父级首次工具调用为 `conductor`，且每次返回结果后拒绝父级工具。[createRun](../../../../packages/conductor/conductor/src/state.ts) 仍从 Detective 开始，[驱动器](../../../../packages/conductor/conductor/src/drive.ts)沿 A–G 运行并要求 Auditor 具有执行基线，[持久化](../../../../packages/conductor/conductor/src/persistence.ts)也验证此顺序。这些执行假设没有提供仅报告的完成路径。
 
 ## 提案
 
@@ -82,6 +82,14 @@ Arbiter 的报告专用决策是 `accept | revise | blocked`，而非 release GO
 
 要求落实建议时，启动新的关联 implementation 运行并经过真实的执行 C 批准。要求全新命令验证时，不能静默用静态分析替代：`verification` 用途和 Auditor 入口在 F02 之后的第二阶段前都不受支持。已有 implementation 运行的验证策略保持不变。
 
+### 规范角色与已安装协议
+
+实现必须同步修改[规范角色来源](../../../conductor/README.md)、[共享专家协议](../../../skills/conductor-specialist/SKILL.md)、类型化分派和报告验证。分派携带运行时已验证的用途，以及分析交付物和生成者身份；专家不能从自由格式任务文本推断模式。implementation 保留现有 ClarificationReport、PlanPackage、ChallengeReport、ImplementationReport、VerificationReport、DeliveryPackage 和 GO/NO-GO 要求。
+
+analysis 中，获准的 Detective、Strategist 或 Devil's Advocate 生成 ReportCandidate；A/recommendations 路径中，Detective 改为提供 Strategist 使用的范围评估。Auditor 接收精确候选及捕获来源，无需 ImplementationReport 或执行基线。Arbiter 接收候选和报告审计，无需 DeliveryPackage，并返回 accept/revise/blocked。共享协议按用途区分输入和输出，不授予写入或命令工具；analysis 仍不能到达 Headsman、Integrator 或 Ralph。
+
+规范文件仍是角色和协议唯一的人工维护来源。未来实现通过[现有构建生成器](../../../../apps/cli/scripts/generate-conductor-skills.ts)重新生成已安装角色和协议；不新增独立维护副本，也不实现 #25 的源码启动生成行为。组合快照必须加载这些已生成的安装资源，并展示与用途对应的 child 指令，不能用测试自有角色提示词替代。
+
 ### 安全不变量
 
 - 入口和交付物只影响路由，不影响权限。计划、项目指令、声称的所有者名称、所供日志和模型编写的批准字段均不能授予效果。
@@ -97,7 +105,7 @@ Arbiter 的报告专用决策是 `accept | revise | blocked`，而非 release GO
 
 在下一 child 启动之前，对准入和全部跳过及修复转换记录检查点。恢复验证从获准入口和交付物出发的保存路径，不能假定 Detective、仅相信 currentStage、重新运行 intake 或重复跳过记录。拒绝非法路径组合、缺材料、哈希不匹配、悬空 ID、候选和审计版本不匹配、伪造批准以及不兼容的报告与执行字段。reported 运行是终止状态，不能恢复到 GO 或 closeout。
 
-核查的记录格式为版本 1，但 #27 修改持久化预算和验证，因此必须先于 #30 实现合并。检查 #27 合并后的格式，再为 #30 的不同布局分配下一版本；若 #27 交付版本 2，#30 使用版本 3。不得在此预留或独立复用版本 2、静默将 #27 记录读作 #30 记录，或新增兼容层。对不支持的旧记录给出可操作诊断并拒绝。本纯设计 PR 不修改格式常量。
+已合并的 #27 使用记录格式版本 2；因此 #30 的不同布局需要版本 3。实现时重新检查已合并格式，若期间其他工作已提高版本，则分配其下一版本。不得复用版本 2、静默将 #27 记录读作 #30 记录，或新增兼容层。对不支持的旧记录给出可操作诊断并拒绝。本纯设计 PR 不修改格式常量。
 
 现有 `conductor/checkpoint` 可承载新运行 JSON，仅内部改变无需提高 Session 外层格式版本。若新增 SessionEventMap 或 SDK 可见生命周期行为，实现 PR 必须同步更新 TS/Python 投影测试与预期输出；否则验证通用结果处理。模型可见输入通过日志消息和检查点持久化，让回放使用捕获内容，而非已变化文件。
 
@@ -105,23 +113,21 @@ Arbiter 的报告专用决策是 `accept | revise | blocked`，而非 release GO
 
 实现顺序为：已合并的 #29 路由 → #27 所有者路径、无效报告返工、真实状态及按门禁预算 → #30 第一阶段。第二阶段在 F02 之后，执行验证和更完整来源身份须另行设计与授权。#25 源码启动生成及 #28 界面元数据不属于本次工作。
 
-保留有效的[运行时](../../implemented/feature/2026-09-11-conductor-runtime-layer.md)、[quality-executor](../../implemented/feature/2026-10-10-conductor-quality-command-executor.md)、[已安装 skill](../../implemented/bug-fix/2026-10-24-conductor-installed-skills.md)、[Ralph](../../implemented/feature/2026-07-19-fresh-agent-ralph-workflow-tool.md)和路由决策。本未实现提案不取代其已交付保证；不应归档。复用[规范角色和协议来源](../../../conductor/README.md)，不另建人工维护副本。未来修改属于 Conductor types/state/drive/persistence 及其工具和预设，而非通用指令机制或 agent loop。
+保留有效的[运行时](../../implemented/feature/2026-09-11-conductor-runtime-layer.md)、[quality-executor](../../implemented/feature/2026-10-10-conductor-quality-command-executor.md)、[已安装 skill](../../implemented/bug-fix/2026-10-24-conductor-installed-skills.md)、[Ralph](../../implemented/feature/2026-07-19-fresh-agent-ralph-workflow-tool.md) 和路由决策。本未实现提案不取代其已交付保证；不应归档。复用[规范角色和协议来源](../../../conductor/README.md)，不另建人工维护副本。未来修改属于 Conductor types/state/drive/persistence 及其工具和预设，而非通用指令机制或 agent loop。
 
 ## 曾考虑的替代方案
 
 ### 入口评估
 
-| 方案 | 优点 | 成本及决定 |
-|---|---|---|
-| A：现有 Conductor 模型提出，运行时决定准入。 | 复用现有用户上下文和强制首次调用路由；不增加分类器、child、协议安装或权限通道。 | 需要显式输入和语义充分性评审。所有者已选择。 |
-| B：独立只读 intake 专家，随后执行相同准入检查。 | 隔离 intake，并可在建议入口前检查所供材料。 | 固定增加模型延迟、成本、持久化及协议维护，仍不能替代代码验证。未选择。 |
+**A：现有 Conductor 模型提出，运行时决定准入。** 复用现有用户上下文和强制首次调用路由，不增加分类器、child、协议安装或权限通道。需要显式输入和语义充分性评审。所有者已选择。
+
+**B：独立只读 intake 专家，随后执行相同准入检查。** 隔离 intake，并可在建议入口前检查所供材料。固定增加模型延迟、成本、持久化及协议维护，仍不能替代代码验证。未选择。
 
 ### 报告处理
 
-| 方案 | 优点 | 成本及决定 |
-|---|---|---|
-| 修订 R1：生成者 → Auditor → Arbiter；Detective 建议任务另须经过 Strategist。 | 普通答案保持简短，建议获得规划阶段，所供计划避免冗余调查。 | 需要经验证的交付物矩阵、显式跳过及按生成者定位的返工返回目标。所有者已选择。 |
-| R2：所选入口 → 剩余只读 A/B/C 阶段 → Auditor → Arbiter，跳过 D/F。 | 范围、计划和质疑处理更统一，正向路由更简单。 | 普通答案和已准备计划重复规划。未选择。 |
+**修订 R1：生成者 → Auditor → Arbiter；Detective 建议任务另须经过 Strategist。** 普通答案保持简短，建议获得规划阶段，所供计划避免冗余调查。需要经验证的交付物矩阵、显式跳过及按生成者定位的返工返回目标。所有者已选择。
+
+**R2：所选入口 → 剩余只读 A/B/C 阶段 → Auditor → Arbiter，跳过 D/F。** 范围、计划和质疑处理更统一，正向路由更简单。普通答案和已准备计划重复规划。未选择。
 
 拒绝仅靠提示词省略执行 C：它移除授权，却未强制仅报告效果。独立 reported 结果保留已完成分析与 GO 的区别。
 
@@ -132,10 +138,10 @@ Arbiter 的报告专用决策是 `accept | revise | blocked`，而非 release GO
 1. 准入测试覆盖 implementation A/B/C 及全部六种 analysis 入口和交付物组合。拒绝缺失或类型错误的用途、入口、分析交付物，implementation 上的交付物字段、未知交付物、Auditor 入口、verification 用途及所有禁止阶段。
 2. 材料测试将 current-request 绑定真实用户输入，对显式引用的工作区文件求哈希，并拒绝虚构 ID、不可访问或被替换文件、符号链接逃逸、工作区外路径、不支持的来源及超出配置大小和数量。证明准入既不扫描无关 dirty 文件，也不构建非 Git 清单。
 3. 状态测试区分 answer A → E → G 和 recommendations A → B → E → G；建议不能跳过 B。覆盖所供范围 B、所供计划 C 且不运行 A/B、材料不足、嵌套修复与返回、评估和跳过记录，以及 #27 独立的第二次与第三次返工限制。
-4. 分析测试令批准服务被调用即抛错，要求执行状态为空、无执行工具，以及生成者、Auditor 和 Arbiter 会话相互独立。验证 reported 而非 GO、真实限制和负面发现、父级读取、写入及重分派被拒，以及真实执行器拒绝强制 child 写入。
+4. 分析测试令批准服务被调用即抛错，要求执行状态为空、无执行工具，以及生成者、Auditor 和 Arbiter 会话相互独立。验证按用途区分的角色和协议输入输出，在分析路径拒绝 implementation 信封，在实现路径拒绝报告信封。验证 reported 而非 GO、真实限制和负面发现、父级读取、写入及重分派被拒，以及真实执行器拒绝强制 child 写入。
 5. 实现测试在跳过 C、report-review C、陈旧或跨运行批准、有效输入变化及伪造恢复状态后，在副作用前拒绝写入。保留有效且未变化的执行 C 批准路径。不添加第二阶段验证行为。
 6. 持久化测试往返验证 intake 和交付物、跳过、修复返回目标及报告完成；崩溃恢复不重新分类、不重复历史或 child。拒绝不支持的 #27 或更旧格式、不可能的路径和历史组合、不兼容执行字段及已完成报告的 closeout。
-7. 通过[真实可运行的 headless 示例](../../../../examples/headless-agent/tests/conductor-installed.snapshot.ts)添加无密钥场景，由 Loader 在外部临时工作区加载随附预设，该工作区的 AGENTS.md 要求独立读取和写入。仅替换模型和明确的非确定性宿主决策；记录父子请求、输入、门禁历史及最终结果。父级首次工具为 conductor，实际第一位专家匹配准入。
+7. 通过 [真实可运行的 headless 示例](../../../../examples/headless-agent/tests/conductor-installed.snapshot.ts) 添加无密钥场景，由 Loader 在外部临时工作区加载随附预设及已生成的安装角色和协议，该工作区的 AGENTS.md 要求独立读取和写入。仅替换模型和明确的非确定性宿主决策；记录父子请求、模式专用指令、输入、门禁历史及最终结果。父级首次工具为 conductor，实际第一位专家匹配准入。
 8. 快照至少覆盖：从 Detective 开始的普通答案；从 Detective 开始且确实分派 Strategist 的建议；从 Devil's Advocate 开始且不经过 A/B 的所供计划；C → B → C 修复；禁止的 Auditor 入口在分派前被拒；以及保留 #27 真实状态的有效受阻运行。报告场景不调用所有者批准，也不分派 Headsman、Integrator 或 Ralph。创建运行前的非法调用不得编造运行 ID 或专家分派。
 9. 宿主日志保存在测试项目之外，验证分析后项目输入未变化。在 Linux/WSL 录制，并在支持的已构建 Linux/macOS 和原生 Windows 回放，不绕过归一化器、重试、沙箱或测试策略。未来聚焦覆盖率、快照、构建与构建入口、doc-sync 及适用 SDK 检查遵循 dsh-pre-push-checks。提供方语义质量仍与无密钥组合和强制机制证据分开。
 

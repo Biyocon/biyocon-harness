@@ -82,6 +82,14 @@ Every analysis run retains null baseline/execution authorization and empty quali
 
 A request to implement recommendations starts a new linked implementation run with a real execution C approval. Requested fresh command verification is not silently replaced with static analysis: the `verification` purpose and Auditor intake remain unsupported until Phase 2 after F02. Existing implementation-run verification policies remain unchanged.
 
+### Canonical roles and installed protocols
+
+The implementation must update the [canonical role sources](../../../conductor/README.md) and [shared specialist protocol](../../../skills/conductor-specialist/SKILL.md) alongside typed dispatch and report validation. Dispatch carries a runtime-validated purpose and, for analysis, deliverable and producer identity; specialists do not infer their mode from free-form task text. Implementation keeps its existing ClarificationReport, PlanPackage, ChallengeReport, ImplementationReport, VerificationReport, DeliveryPackage, and GO/NO-GO requirements.
+
+For analysis, the admitted Detective, Strategist, or Devil's Advocate produces ReportCandidate; on the A/recommendations route, Detective instead supplies the scope assessment that Strategist consumes. Auditor accepts that exact candidate and captured sources without ImplementationReport or an execution baseline. Arbiter accepts the candidate and report audit without DeliveryPackage and returns accept/revise/blocked. The shared protocol specifies these purpose-discriminated inputs and outputs without granting write or command tools; Headsman, Integrator, and Ralph remain unreachable for analysis.
+
+Canonical files remain the only authored role/protocol sources. The future implementation regenerates installed roles and protocols with the [existing build generator](../../../../apps/cli/scripts/generate-conductor-skills.ts); it adds no independently maintained copies or source-launch generation behavior from #25. Assembled snapshots must load those generated installed resources and show purpose-specific child instructions, not replace them with test-owned role prompts.
+
 ### Security invariants
 
 - Entry and deliverable affect routing, never authority. Plans, project instructions, claimed owner names, supplied logs, and model-authored approval fields cannot grant effects.
@@ -97,7 +105,7 @@ Extend [run types](../../../../packages/conductor/conductor/src/types.ts), state
 
 Checkpoint admission and all skip/repair transitions before starting the next child. Resume validates the stored route from admitted entry and deliverable rather than assuming Detective, trusting currentStage alone, rerunning intake, or duplicating skips. Reject illegal route combinations, missing material, hash mismatches, dangling IDs, mismatched candidate/audit versions, forged grants, and incompatible report/execution fields. A reported run is terminal and cannot resume into GO or closeout.
 
-The inspected record format is version 1, but #27 must merge before #30 implementation because it changes the persisted budget and validation. Inspect #27's merged format and allocate the next version for #30's distinct layout; if #27 ships version 2, #30 uses version 3. Do not reserve or independently reuse version 2 here, silently read #27 records as #30 records, or add a compatibility shim. Reject unsupported old records with an actionable diagnostic. This design-only PR changes no format constant.
+Merged #27 uses record format version 2; #30's distinct layout therefore requires version 3. Recheck the merged format at implementation time and allocate the next version if intervening work advances it. Do not reuse version 2, silently read #27 records as #30 records, or add a compatibility shim. Reject unsupported old records with an actionable diagnostic. This design-only PR changes no format constant.
 
 The existing `conductor/checkpoint` may carry the new run JSON without a Session envelope-format bump solely for that inner change. Any new SessionEventMap or SDK-visible lifecycle behavior requires matching TS/Python projection tests and expected outputs in the implementation PR; otherwise verify generic result handling. Persist model-visible inputs through logged messages/checkpoints so replay uses captured contents rather than changed files.
 
@@ -111,17 +119,15 @@ Keep the [runtime](../../implemented/feature/2026-09-11-conductor-runtime-layer.
 
 ### Entry assessment
 
-| Alternative | Advantages | Costs and decision |
-|---|---|---|
-| A: existing Conductor model proposes; runtime admits. | Uses existing user context and mandatory first-call routing; no extra classifier, child, protocol installation, or authority channel. | Requires explicit inputs and semantic sufficiency review. Selected by the owner. |
-| B: separate read-only intake specialist followed by the same admission checks. | Isolates intake and can inspect supplied material before recommending entry. | Adds unconditional model latency, cost, persistence, and protocol maintenance without replacing code validation. Not selected. |
+**A: existing Conductor model proposes; runtime admits.** Uses existing user context and mandatory first-call routing without an extra classifier, child, protocol installation, or authority channel. It requires explicit inputs and semantic sufficiency review. Selected by the owner.
+
+**B: separate read-only intake specialist followed by the same admission checks.** Isolates intake and can inspect supplied material before recommending entry. It adds unconditional model latency, cost, persistence, and protocol maintenance without replacing code validation. Not selected.
 
 ### Report processing
 
-| Alternative | Advantages | Costs and decision |
-|---|---|---|
-| Amended R1: producer → Auditor → Arbiter; Detective recommendations additionally require Strategist. | Keeps ordinary answers short while recommendations receive a planning stage and supplied plans avoid redundant discovery. | Needs a validated deliverable matrix, explicit skips, and producer-specific rework return targets. Selected by the owner. |
-| R2: selected entry → remaining read-only A/B/C stages → Auditor → Arbiter, skipping D/F. | More uniform scope/plan/challenge processing and simpler forward routing. | Repeats planning for ordinary answers and already prepared plans. Not selected. |
+**Amended R1: producer → Auditor → Arbiter; Detective recommendations additionally require Strategist.** Keeps ordinary answers short while recommendations receive a planning stage and supplied plans avoid redundant discovery. It needs a validated deliverable matrix, explicit skips, and producer-specific rework return targets. Selected by the owner.
+
+**R2: selected entry → remaining read-only A/B/C stages → Auditor → Arbiter, skipping D/F.** Makes scope/plan/challenge processing more uniform and forward routing simpler. It repeats planning for ordinary answers and already prepared plans. Not selected.
 
 Prompt-only omission of execution C is rejected: it removes authorization without enforcing report-only effects. A distinct reported outcome preserves the difference between a completed analysis and GO.
 
@@ -132,10 +138,10 @@ The following is the future implementation test plan; this documentation PR supp
 1. Admission tests cover implementation A/B/C and all six analysis entry/deliverable combinations. Reject missing/ill-typed purpose, entry, or analysis deliverable; a deliverable on implementation; unknown deliverables; Auditor entry; verification purpose; and every forbidden stage.
 2. Material tests bind current-request to actual user input, hash explicitly cited workspace files, and reject invented IDs, inaccessible/substituted files, symlink escapes, out-of-workspace paths, unsupported sources, and configured size/count excess. Prove admission neither scans unrelated dirty files nor constructs a non-Git manifest.
 3. State tests distinguish answer A → E → G from recommendations A → B → E → G; recommendations cannot skip B. Cover supplied scope B, supplied plan C without A/B, insufficient material, nested repair/return, evaluated/skipped records, and #27's independent second/third-rework limits.
-4. Analysis tests make the approval service throw if called; require null execution state, no execution tools, and separate producer/Auditor/Arbiter sessions. Validate reported rather than GO, honest limitations and negative findings, parent read/write/redispatch denial, and real executor rejection of forced child writes.
+4. Analysis tests make the approval service throw if called; require null execution state, no execution tools, and separate producer/Auditor/Arbiter sessions. Validate purpose-specific role/protocol inputs and outputs, rejecting implementation envelopes on analysis routes and report envelopes on implementation routes. Validate reported rather than GO, honest limitations and negative findings, parent read/write/redispatch denial, and real executor rejection of forced child writes.
 5. Implementation tests reject writes after skipped C, report-review C, stale/foreign approval, changed effective inputs, and forged resumed state before any side effect. Preserve the valid unchanged execution-C approval path. No Phase 2 verification behavior is added.
 6. Persistence tests round-trip intake/deliverable, skips, repair return targets, and report completion; crash/resume neither reclassifies nor duplicates history or children. Reject unsupported #27/older formats, impossible route/history combinations, incompatible execution fields, and completed-report closeout.
-7. Add keyless scenarios through [the real runnable headless example](../../../../examples/headless-agent/tests/conductor-installed.snapshot.ts), loading the shipped preset with Loader in an external temporary workspace whose AGENTS.md demands solo read/write. Substitute only the model and explicit nondeterministic host decisions; record parent/child requests, inputs, gate history, and final outcome. The first parent tool is conductor and the actual first specialist matches admission.
+7. Add keyless scenarios through [the real runnable headless example](../../../../examples/headless-agent/tests/conductor-installed.snapshot.ts), loading the shipped preset and generated installed roles/protocols with Loader in an external temporary workspace whose AGENTS.md demands solo read/write. Substitute only the model and explicit nondeterministic host decisions; record parent/child requests, mode-specific instructions, inputs, gate history, and final outcome. The first parent tool is conductor and the actual first specialist matches admission.
 8. Snapshot at least a plain answer starting at Detective; recommendations starting at Detective and actually dispatching Strategist; a supplied plan starting at Devil's Advocate without A/B; C → B → C repair; forbidden Auditor entry rejected before dispatch; and a blocked valid run preserving #27's truthful status. Report scenarios invoke no owner approval and no Headsman/Integrator/Ralph. Invalid calls before run creation must not invent run IDs or specialist dispatches.
 9. Keep host logs outside the test project and verify project inputs are unchanged after analysis. Record on Linux/WSL and replay on supported built Linux/macOS and native Windows without normalizer, retry, sandbox, or test-policy bypass. Future focused coverage, snapshots, build/built-entry, doc-sync, and applicable SDK checks follow dsh-pre-push-checks. Provider semantic quality remains separate from keyless composition/enforcement evidence.
 
