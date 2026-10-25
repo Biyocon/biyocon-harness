@@ -27,3 +27,5 @@ Meld `blocked`, hvis planen ikke kan vurderes på den angivne baseline. Foreslå
 ## Output
 
 Returnér et `ChallengeReport` i fælles handoff-format med konkrete modbeviser, rest-risici og gate-anbefaling.
+
+Ved `ready` foreslår du baseline-versioner, rollback-reference og `qualityCommandIds`. Udelad `allowedPaths` og `excludedPaths`; runtime indsætter ejerens autoriserede stier og exclusions uden udvidelse.

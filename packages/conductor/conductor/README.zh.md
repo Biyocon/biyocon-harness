@@ -8,6 +8,10 @@ Conductor runtime 拥有 run 状态、A–G gate、按缺陷类别的 rework 路
 
 Headsman 与 Auditor 必须精确引用当前 dispatch 产生的持久化 `QualityExecutionRecord` id，而不能引用命令文本或旧证据。Gate D 与 Gate E 都要求对应 gate 绑定的每个命令具有全新的通过证据，且 Gate E 只接受其独立 Auditor cycle 产生的证据。Gate G 记录 Arbiter 决策；GO 会保持 `awaiting_authorization`，直到 mandate owner 通过 host-owned closeout API 提供 outcome evidence 与 traceability。Runtime 只记录 closeout，不执行 commit、push、merge 或 deploy。`ConductorAuthority` 仅标识 mandate owner，不授予 execution 或 external-action capability。
 
+`maxReworkPerGate` 按各 `GateRecord.gate` 独立限制返工决策，默认值为 2。限制为 2 时，同一门禁第三次请求返工即升级；另一门禁的决策不消耗其预算。结构无效的 envelope、Arbiter 决策和 Gate C baseline 使用缺陷类别 `report` 返回报告角色；无效报告不保存为已验证的专家报告。身份、所评估 baseline、路由、证据或权限违规，以及宿主批准遭拒，立即升级。Ralph Round 保持自身独立且未变化的限制。
+
+Gate C 提案只包含版本、rollback reference 和请求的质量命令 id，不包含路径字段。运行时从所有者授权的运行提供 `allowedPaths` 和 `excludedPaths`，并拒绝专家编写的路径。完整解析 baseline 仍须获得精确宿主批准。`SpecialistExecutionFailure` 在保存已完成宿主质量记录的检查点后传播基础设施故障，不伪造专家报告或门禁决策。记录格式 2 持久化按门禁预算和同角色报告返工；旧记录以不支持版本的明确错误拒绝，不提供兼容层。[门禁稳健性决策](../../../.agents/notes/implemented/bug-fix/2026-10-25-conductor-gate-robustness.md)记录验证分类及验证证据。
+
 ## 已知限制与延期工作
 
 - 只有 host 挂载持久化 Session provider 时，checkpoint 才具备跨进程持久性；内存 Session 只在当前进程生命周期内保留记录。

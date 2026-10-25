@@ -114,8 +114,8 @@ export interface QualityCommandBinding {
  * may be reworked and how many fresh-worker Ralph rounds Headsman may run.
  */
 export interface ConductorBudget {
-  /** Maximum rework cycles before the run must escalate or abort. */
-  maxReworkCycles: number
+  /** Maximum rework decisions at each gate before that gate escalates. */
+  maxReworkPerGate: number
   /** Maximum Ralph iterations Headsman may run inside one approved baseline. */
   maxRalphRounds: number
 }
@@ -144,7 +144,7 @@ export interface ExecutionBaseline {
 }
 
 /** The model-authored Gate-C baseline proposal before host catalog resolution. */
-export interface ExecutionBaselineProposal extends Omit<ExecutionBaseline, 'qualityCommands'> {
+export interface ExecutionBaselineProposal extends Omit<ExecutionBaseline, 'qualityCommands' | 'allowedPaths' | 'excludedPaths'> {
   /** Deployment command ids requested for the immutable baseline. */
   qualityCommandIds: string[]
 }
@@ -211,7 +211,7 @@ export type ConductorRunStatus =
  */
 export interface ConductorRun {
   /** Pre-release durable record format; unsupported versions are rejected without migration. */
-  recordFormatVersion: 1
+  recordFormatVersion: 2
   /** The run's id. */
   runId: ConductorRunId
   /** The desired outcome. */
@@ -268,7 +268,7 @@ export type GateId = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'
 export type GateDecision = 'pass' | 'rework' | 'escalate' | 'abort'
 
 /** The class of defect a rework addresses, used to route the fix to the right stage. */
-export type DefectClass = 'scope' | 'plan' | 'implementation' | 'delivery'
+export type DefectClass = 'scope' | 'plan' | 'implementation' | 'delivery' | 'report'
 
 /**
  * One recorded gate decision. Conductor owns this record and appends it to
@@ -299,6 +299,14 @@ export interface GateRecord {
 
 /** A specialist's delivery readiness — never a gate pass (Conductor decides that). */
 export type SpecialistStatus = 'ready' | 'rework' | 'blocked' | 'failed'
+
+/** A repairable report defect or an authority violation that must stop immediately. */
+export interface SpecialistProblem {
+  /** Report defects retry the reporting role; authority violations never retry. */
+  kind: 'report' | 'authority'
+  /** Concrete validation failure recorded in the gate history. */
+  message: string
+}
 
 /** The kind of evidence an item points to. */
 export type EvidenceKind = 'command' | 'file' | 'test' | 'review' | 'external'
@@ -358,8 +366,8 @@ export type Confidence = 'low' | 'medium' | 'high'
 /**
  * The structured result a specialist returns, in the wire vocabulary the
  * `conductor-specialist` skill specifies. Fields are snake_case to match the
- * model-written YAML. A missing or malformed envelope is a `blocked` result,
- * never a silent pass.
+ * model-written YAML. A malformed envelope is repaired by the same role within
+ * its gate budget; authority violations escalate without retry.
  */
 export interface SpecialistEnvelope {
   /** The run id this result belongs to. */

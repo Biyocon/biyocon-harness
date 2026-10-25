@@ -13,7 +13,7 @@ Conductor indlæser den relevante rollefil og specialistkontrakten ved delegatio
 Før første specialist fastlægger Conductor en arbejdspakke med:
 
 ```yaml
-record_format_version: 1
+record_format_version: 2
 run_id: unique-id
 objective: concrete outcome
 scope: included work
@@ -67,6 +67,8 @@ confidence: low|medium|high
 ```
 
 Conductor bevarer hvert valideret specialistresultat som en del af run-recorden og sender de tidligere reports til den næste specialist og Arbiter. Conductor registrerer separat hver gate `A`–`G` med `stage`, `decision: pass|rework|escalate|abort`, en kort `basis`, `next_stage` og den aktive execution-baseline-hash, når en baseline gælder. `ready` bliver kun til et gate-pass, når runnet har acceptkriterier og specialisten leverer konkret evidens. Gate C kan foreslå opaque quality-command-id'er fra runtime-kataloget; hosten binder de valgte definition hashes og godkender den eksakte baseline, før Headsman starter. Headsman/Ralph og den uafhængige Auditor kan kun køre bindings gennem den private `conductor_quality_check`, som afviser rå kommandoer, kræver netværksforbud og fuld sandbox-håndhævelse. Gate D og E kræver hver deres friske, beståede records fra den aktuelle dispatch, citeret via `quality_evidence_ids`; Ralph kan kun bidrage til Gate D. Scope- eller plan-rework deaktiverer den aktive baseline og dens autorisation, men bevarer baselinehistorik og evidens til audit; historisk evidens kan ikke opfylde en ny baseline. Rework går til den ansvarlige for fejlen: scope til Detective, plan til Strategist, implementering til Headsman og leverancepakke til Integrator.
+
+En strukturelt ugyldig rapport sendes til samme rolle som `report`-rework. `maxReworkPerGate` begrænser rework pr. gate; presettet tillader to, og tredje afvisning eskaleres. Gate C-forslaget udelader `allowedPaths` og `excludedPaths`: runtime kopierer kun ejerens stier og exclusions. Identitets-, baseline- eller autoritetsbrud og afvist host-godkendelse eskaleres straks. Slutresultatet viser run-id, nået stage, gate-beslutninger med begrundelser og de specialister, der har leveret et gate-resultat, også når rapporten blev afvist.
 
 ## Rettigheder og stopregler
 

@@ -42,10 +42,13 @@ export function decisionForStatus(status: SpecialistStatus): GateDecision {
  * The stage that owns a defect class, and therefore the rework target for
  * that class.
  * @param defectClass - the class of defect the rework addresses.
+ * @param stage - the reporting stage, which owns repairs to its own report.
  * @returns the owning stage.
  */
-export function reworkTarget(defectClass: DefectClass): ConductorStage {
+export function reworkTarget(defectClass: DefectClass, stage: ConductorStage): ConductorStage {
   switch (defectClass) {
+    case 'report':
+      return stage
     case 'scope':
       return 'detective'
     case 'plan':
@@ -79,9 +82,8 @@ export interface RoutedGate {
  * Route a specialist result at one gate to a decision and the next stage.
  *
  * A `rework` at gates A through F routes to the stage owning the defect class.
- * At gate G (the Arbiter) a rework cannot name a specialist stage on the
- * router's own authority — the Arbiter's decision names the target or the run
- * escalates — so it is recorded as `escalate`.
+ * At gate G only a malformed report returns to the Arbiter. Other defects
+ * escalate for an owner decision rather than selecting another specialist.
  * @param gate - the gate being decided.
  * @param status - the specialist's envelope status.
  * @param defectClass - the defect class; required when `status` is `rework`.
@@ -99,11 +101,11 @@ export function routeGate(gate: GateId, status: SpecialistStatus, defectClass?: 
       if (defectClass === undefined) {
         throw new Error(`Conductor gate ${gate} rework requires a defect class`)
       }
-      if (gate === 'G') {
+      if (gate === 'G' && defectClass !== 'report') {
         decision = 'escalate'
         nextStage = undefined
       } else {
-        nextStage = reworkTarget(defectClass)
+        nextStage = reworkTarget(defectClass, stageOfGate(gate))
       }
       break
     }

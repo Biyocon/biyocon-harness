@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-25-conductor-gate-robustness.md
+2026-10-25-conductor-gate-robustness.md: 083a887d1f81335df1a22ad7ee247b971459e353
+2026-10-25-conductor-gate-robustness.zh.md: 251f8da99e4a1aaed80b34d8640901995d255d4f

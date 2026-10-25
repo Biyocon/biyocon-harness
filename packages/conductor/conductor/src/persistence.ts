@@ -54,7 +54,7 @@ const RUN_STATUSES = ['running', 'awaiting_authorization', 'rework', 'escalated'
 const STAGES = ['intake', 'detective', 'strategist', 'devils-advocate', 'headsman', 'ralph', 'auditor', 'integrator', 'arbiter', 'closeout'] as const satisfies readonly ConductorStage[]
 const GATE_IDS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'] as const satisfies readonly GateId[]
 const GATE_DECISIONS = ['pass', 'rework', 'escalate', 'abort'] as const satisfies readonly GateDecision[]
-const DEFECT_CLASSES = ['scope', 'plan', 'implementation', 'delivery'] as const satisfies readonly DefectClass[]
+const DEFECT_CLASSES = ['scope', 'plan', 'implementation', 'delivery', 'report'] as const satisfies readonly DefectClass[]
 const ACTIONS = ['read', 'write', 'commit', 'push', 'merge', 'release', 'publish', 'deploy'] as const satisfies readonly ConductorAction[]
 const CLOSEOUT_ACTIONS = ['record-only', ...ACTIONS] as const satisfies readonly ConductorCloseoutAction[]
 const ARBITER_DECISIONS = ['go', 'no-go'] as const satisfies readonly ArbiterDecision[]
@@ -87,7 +87,7 @@ const NEXT_AFTER_PASS: Readonly<Record<GateId, ConductorStage>> = {
   F: 'arbiter',
   G: 'closeout',
 }
-const REWORK_STAGE: Readonly<Record<DefectClass, ConductorStage>> = {
+const REWORK_STAGE: Readonly<Record<Exclude<DefectClass, 'report'>, ConductorStage>> = {
   scope: 'detective',
   plan: 'strategist',
   implementation: 'headsman',
@@ -462,8 +462,11 @@ export function parseRun(json: string): ConductorRun {
   requireNormalizedStringArray(record.constraints, 'constraints', true)
   requireNormalizedStringArray(record.acceptanceCriteria, 'acceptanceCriteria', true)
   const budget = asObject(record.budget, 'budget')
-  if (!Number.isSafeInteger(budget.maxReworkCycles) || Number(budget.maxReworkCycles) < 1) {
-    throw new Error('Conductor run record budget.maxReworkCycles must be a positive safe integer')
+  if (Object.keys(budget).some(key => key !== 'maxReworkPerGate' && key !== 'maxRalphRounds')) {
+    throw new Error('Conductor run record budget contains unsupported fields; a fresh run is required')
+  }
+  if (!Number.isSafeInteger(budget.maxReworkPerGate) || Number(budget.maxReworkPerGate) < 1) {
+    throw new Error('Conductor run record budget.maxReworkPerGate must be a positive safe integer')
   }
   if (!Number.isSafeInteger(budget.maxRalphRounds) || Number(budget.maxRalphRounds) < 0) {
     throw new Error('Conductor run record budget.maxRalphRounds must be a non-negative safe integer')
@@ -521,6 +524,7 @@ export function parseRun(json: string): ConductorRun {
   if (!Array.isArray(record.history)) {
     throw new Error('Conductor run record history must be an array')
   }
+  const reworksPerGate = new Map<GateId, number>()
   for (const entry of record.history) {
     if (typeof entry !== 'object' || entry === null) {
       throw new Error('Conductor run history entry must be an object')
@@ -551,9 +555,15 @@ export function parseRun(json: string): ConductorRun {
       throw new Error(`Conductor gate ${gate.gate} pass has invalid nextStage`)
     }
     if (gate.decision === 'rework') {
-      if (!isOneOf(gate.defectClass, DEFECT_CLASSES) || gate.nextStage !== REWORK_STAGE[gate.defectClass]) {
+      if (!isOneOf(gate.defectClass, DEFECT_CLASSES)
+        || gate.nextStage !== (gate.defectClass === 'report' ? gate.stage : REWORK_STAGE[gate.defectClass])) {
         throw new Error(`Conductor gate ${gate.gate} rework has invalid defectClass or nextStage`)
       }
+      const count = (reworksPerGate.get(gate.gate) ?? 0) + 1
+      if (count > Number(budget.maxReworkPerGate)) {
+        throw new Error(`Conductor gate ${gate.gate} exceeds its per-gate rework budget`)
+      }
+      reworksPerGate.set(gate.gate, count)
     }
     if (gate.decision === 'abort' && (gate.nextStage !== undefined || gate.defectClass !== undefined)) {
       throw new Error(`Conductor gate ${gate.gate} abort cannot carry rework routing`)

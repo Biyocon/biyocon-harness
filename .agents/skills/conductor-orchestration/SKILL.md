@@ -36,7 +36,7 @@ authority:
 constraints: []
 acceptance_criteria: []
 budget:
-  max_rework_cycles: 3
+  max_rework_per_gate: 2
   max_ralph_rounds: 0
 source_baseline: null
 execution_baseline: null

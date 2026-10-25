@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-11-conductor-runtime-layer.md
-2026-09-11-conductor-runtime-layer.md: d0e34bcb2b746a22f1c6bdd7bc44e06688e1c39a
-2026-09-11-conductor-runtime-layer.zh.md: 3baf3607a07bc2986db50e0c36b52021fd7b998e
+2026-09-11-conductor-runtime-layer.md: 789ca2ee6789a4027bd002019cbf42955d870af0
+2026-09-11-conductor-runtime-layer.zh.md: 785379bac2ce05f91a10f36500fd888ce1e270cf

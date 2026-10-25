@@ -35,3 +35,11 @@
     roots:
       - path: !!js process.cwd() + '/installed-presets'
         trust: system
+
+- id: conductor-gate-approval
+  name: '@deepseek-ai/dsh-user-approval'
+  config:
+    policy: ask
+
+- id: conductor-snapshot-approval
+  name: ./tests/fixtures/conductor-snapshot-approval.ts

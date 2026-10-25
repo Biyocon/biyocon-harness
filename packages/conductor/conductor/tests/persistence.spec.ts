@@ -17,7 +17,7 @@ import type { ConductorRun, GateRecord, QualityCommandBinding } from '../src/ind
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
-    recordFormatVersion: 1,
+    recordFormatVersion: 2,
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -28,7 +28,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: [],
-    budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
+    budget: { maxReworkPerGate: 3, maxRalphRounds: 0 },
     baselineHistory: [],
     baseline: null,
     executionAuthorization: null,
@@ -193,6 +193,26 @@ function specialistReport() {
 }
 
 describe('dsh-conductor persistence', () => {
+  it('rejects version 1 and removed budget fields instead of migrating them', () => {
+    expect(() => parseRun(JSON.stringify({ ...makeRun(), recordFormatVersion: 1 })))
+      .toThrow(/format 1 is unsupported; expected 2/)
+    expect(() => parseRun(JSON.stringify({
+      ...makeRun(), budget: { maxReworkPerGate: 2, maxReworkCycles: 3, maxRalphRounds: 0 },
+    }))).toThrow(/budget contains unsupported fields/)
+  })
+
+  it('round-trips same-role report repairs and rejects a forged third rework at a gate', () => {
+    let run = makeRun({ budget: { maxReworkPerGate: 2, maxRalphRounds: 0 } })
+    const verdict = {
+      decision: 'rework' as const, defectClass: 'report' as const, nextStage: 'detective' as const,
+      basis: ['malformed report'], evidenceReviewed: [], stateUpdate: 'repair Detective report',
+    }
+    run = recordGate(recordGate(run, verdict), verdict)
+    expect(parseRun(serializeRun(run))).toEqual(run)
+    expect(() => parseRun(JSON.stringify({ ...run, history: [...run.history, run.history[0]] })))
+      .toThrow(/exceeds its per-gate rework budget/)
+  })
+
   it('rejects malformed baseline history, bindings, and host authorizations', () => {
     const valid = makeQualityRun()
     const baseline = valid.baseline!
@@ -700,8 +720,8 @@ describe('dsh-conductor persistence', () => {
       [{ ...makeRun(), authority: { owner: '' } }, /authority.owner/],
       [{ ...makeRun(), authority: { owner: 'user', permittedActions: ['read', 'read'] } }, /attribution-only/],
       [{ ...makeRun(), constraints: [' '] }, /constraints/],
-      [{ ...makeRun(), budget: { maxReworkCycles: 0, maxRalphRounds: 0 } }, /maxReworkCycles/],
-      [{ ...makeRun(), budget: { maxReworkCycles: 1, maxRalphRounds: -1 } }, /maxRalphRounds/],
+      [{ ...makeRun(), budget: { maxReworkPerGate: 0, maxRalphRounds: 0 } }, /maxReworkPerGate/],
+      [{ ...makeRun(), budget: { maxReworkPerGate: 1, maxRalphRounds: -1 } }, /maxRalphRounds/],
       [{ ...makeRun(), baseline: [] }, /baseline must be an object/],
       [{ ...makeRun(), baseline: {
         scopeVersion: 1, planVersion: 'p', acceptanceVersion: 'a',
