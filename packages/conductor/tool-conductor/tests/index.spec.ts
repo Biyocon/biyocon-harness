@@ -4,7 +4,7 @@ import {
   ConductorRunId, createRun, executionBaselineHash, executionEffectProfile,
   QualityCommandId, recordGate, SessionConductorRunStore,
 } from '@deepseek-ai/dsh-conductor'
-import type { QualityCommandBinding } from '@deepseek-ai/dsh-conductor'
+import type { ConductorRun, QualityCommandBinding } from '@deepseek-ai/dsh-conductor'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
@@ -53,7 +53,7 @@ function readyEnvelope(runId: string, stage: string): Record<string, unknown> {
     ...(stage === 'devils-advocate' ? {
       execution_baseline: {
         scopeVersion: 'scope-v1', planVersion: 'plan-v1', acceptanceVersion: 'accept-v1',
-        allowedPaths: ['packages/conductor'], excludedPaths: [], rollbackReference: 'HEAD',
+        rollbackReference: 'HEAD',
         qualityCommandIds: [],
       },
     } : {}),
@@ -202,6 +202,59 @@ const baseArgs = {
 }
 
 describe('dsh-tool-conductor unit boundary', () => {
+  it('rejects specialist-written paths, retries Gate C, and binds only owner paths to the approved baseline', async () => {
+    let attempts = 0
+    const { ctx, parent, engine } = await setup({ factory(request) {
+      const result = successfulResult(request)
+      if ((request.args as { label?: string }).label === 'conductor-devils-advocate' && attempts++ === 0) {
+        const envelope = result.value as Record<string, unknown>
+        return { ...result, value: { ...envelope, execution_baseline: {
+          ...(envelope.execution_baseline as object), allowedPaths: ['.'], excludedPaths: [],
+        } } }
+      }
+      return result
+    } })
+    const excludedPaths = ['packages/conductor/private']
+    const result = await execute(ctx, { ...baseArgs, excludedPaths }, parent)
+    expect(result.isError, JSON.stringify(result)).toBe(false)
+    expect(result.value).toMatchObject({ status: 'awaiting_authorization', result: { run: {
+      specialistsRan: ['detective', 'strategist', 'devils-advocate', 'headsman', 'auditor', 'integrator', 'arbiter'],
+      gateHistory: expect.arrayContaining([expect.objectContaining({ gate: 'C', decision: 'rework', defectClass: 'report' })]) as unknown,
+    } } })
+    expect(engine.requests.filter(request => (request.args as { label?: string }).label === 'conductor-devils-advocate')).toHaveLength(2)
+    const checkpoint = parent.session.events.filter(event => event.type === 'conductor/checkpoint').at(-1)!
+    const run = JSON.parse(checkpoint.data.record!) as ConductorRun
+    expect(run.baseline?.allowedPaths).toEqual(baseArgs.allowedPaths)
+    expect(run.baseline?.excludedPaths).toEqual(excludedPaths)
+    expect(parent.session.events.filter(event => event.type === 'approval/asked')).toHaveLength(1)
+    const schema = engine.requests.find(request => (request.args as { label?: string }).label === 'conductor-devils-advocate')!.args as { schema: { properties: { execution_baseline: { properties: object } } } }
+    expect(schema.schema.properties.execution_baseline.properties).not.toHaveProperty('allowedPaths')
+    expect(schema.schema.properties.execution_baseline.properties).not.toHaveProperty('excludedPaths')
+  })
+
+  it('reports all reached gates and dispatched roles at blocking, and identifies rejection before run creation', async () => {
+    const { ctx, parent, engine } = await setup({ factory(request) {
+      const result = successfulResult(request)
+      if ((request.args as { label?: string }).label === 'conductor-devils-advocate') return { ...result, value: null }
+      return result
+    } })
+    const rejected = await execute(ctx, { ...baseArgs, objective: ' ' }, parent)
+    expect(rejected.isError).toBe(true)
+    expect(JSON.stringify(rejected.content)).toContain('No Conductor run was started')
+    expect(engine.requests).toHaveLength(0)
+    const result = await execute(ctx, baseArgs, parent)
+    expect(result.value).toMatchObject({ status: 'escalated', result: { run: {
+      stage: 'devils-advocate', specialistsRan: ['detective', 'strategist', 'devils-advocate'],
+      gateHistory: expect.arrayContaining([
+        expect.objectContaining({ gate: 'A', decision: 'pass' }),
+        expect.objectContaining({ gate: 'C', decision: 'rework' }),
+        expect.objectContaining({ gate: 'C', decision: 'escalate', basis: expect.arrayContaining(['Gate C exhausted its 2 reworks per gate']) as unknown }),
+      ]) as unknown,
+    } } })
+    expect(JSON.stringify(result.content)).toContain('specialistsRan')
+    expect(JSON.stringify(result.content)).toContain('gateHistory')
+  })
+
   it('enables parent routing only for an opted-in composition', async () => {
     const { ctx, parent } = await setup({ config: { subagentProvider: 'fresh', routeTasks: true } })
     expect((await execute(ctx, baseArgs, parent)).isError).toBe(false)
@@ -258,6 +311,73 @@ describe('dsh-tool-conductor unit boundary', () => {
     }
   })
 
+  it('immediately escalates specialist-authored host command bindings instead of retrying authority changes', async () => {
+    const { ctx, parent, engine } = await setup({ factory(request) {
+      const result = successfulResult(request)
+      if ((request.args as { label?: string }).label !== 'conductor-devils-advocate') return result
+      const envelope = result.value as Record<string, unknown>
+      return { ...result, value: { ...envelope, execution_baseline: {
+        ...(envelope.execution_baseline as object), qualityCommands: [],
+      } } }
+    } })
+    const result = await execute(ctx, baseArgs, parent)
+    expect(result.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked', run: {
+      gateHistory: [
+        expect.objectContaining({ gate: 'A', decision: 'pass' }),
+        expect.objectContaining({ gate: 'B', decision: 'pass' }),
+        expect.objectContaining({ gate: 'C', decision: 'escalate' }),
+      ] as unknown,
+    } } })
+    expect(engine.requests).toHaveLength(3)
+    expect(parent.session.events.filter(event => event.type === 'approval/asked')).toHaveLength(0)
+  })
+
+  it('reports a non-Error dispatch failure with the durable run identity', async () => {
+    const { ctx, parent } = await setup({ factory() { throw 'literal workflow fault' } })
+    const result = await execute(ctx, baseArgs, parent)
+    expect(result.isError).toBe(true)
+    expect(JSON.stringify(result.content)).toContain('literal workflow fault')
+    expect(JSON.stringify(result.content)).toContain('Run status:')
+    expect(JSON.stringify(result.content)).toContain('gateHistory')
+  })
+
+  it('includes a started Arbiter when infrastructure fails before any Gate G verdict', async () => {
+    const { ctx, parent } = await setup({ factory(request) {
+      return (request.args as { label?: string }).label === 'conductor-arbiter'
+        ? { stopReason: 'error', error: 'Arbiter unavailable', agentsStarted: 1, value: null }
+        : successfulResult(request)
+    } })
+    const result = await execute(ctx, baseArgs, parent)
+    expect(result.isError).toBe(true)
+    const rendered = result.content.filter(item => item.type === 'text').map(item => item.text).join('\n')
+    const summary = JSON.parse(rendered.split('Run status:\n')[1]!) as {
+      stage: string
+      gateHistory: { gate: string }[]
+      specialistsRan: string[]
+    }
+    expect(summary.stage).toBe('arbiter')
+    expect(summary.specialistsRan).toEqual(['detective', 'strategist', 'devils-advocate', 'headsman', 'auditor', 'integrator', 'arbiter'])
+    expect(summary.gateHistory.map(record => record.gate)).toEqual(['A', 'B', 'C', 'D', 'E', 'F'])
+  })
+
+  it('ignores failed child notifications from unrelated workflows', async () => {
+    const { ctx, parent, engine } = await setup()
+    const start = engine.start.bind(engine)
+    vi.spyOn(engine, 'start').mockImplementation((request) => {
+      const workflow = start(request)
+      queueMicrotask(() => {
+        const info = { id: WorkflowRunId(`unrelated-${workflow.id}`), meta: request.meta }
+        const child = { seq: 1, childId: SessionId(`unrelated-child-${workflow.id}`), label: 'unrelated' }
+        ctx.emit('workflow/agent-start', info, child)
+        ctx.emit('workflow/agent-end', info, { ...child, outcome: 'failed' })
+      })
+      return workflow
+    })
+    const result = await execute(ctx, baseArgs, parent)
+    expect(result.isError, JSON.stringify(result)).toBe(false)
+    expect(result.value).toMatchObject({ status: 'awaiting_authorization', result: { kind: 'decision' } })
+  })
+
   it('normalizes host approval exclusions and rejects catalog drift before a resumed dispatch', async () => {
     const command = {
       id: 'unit-check', modelSafeDescription: 'Run unit checks.', argv: ['node', '--version'], cwd: '.',
@@ -292,12 +412,7 @@ describe('dsh-tool-conductor unit boundary', () => {
     }
 
     const excludedPaths = ['packages/conductor/private']
-    const { ctx, parent } = await setup({ factory(request) {
-      const result = successfulResult(request)
-      if ((request.args as { label?: string }).label !== 'conductor-devils-advocate') return result
-      const envelope = result.value as Record<string, unknown>
-      return { ...result, value: { ...envelope, execution_baseline: { ...(envelope.execution_baseline as object), excludedPaths } } }
-    } })
+    const { ctx, parent } = await setup()
     const result = await execute(ctx, { ...baseArgs, excludedPaths }, parent)
     expect(result.value).toMatchObject({ status: 'awaiting_authorization' })
     const approval = parent.session.events.find(event => event.type === 'approval/asked')
@@ -306,8 +421,13 @@ describe('dsh-tool-conductor unit boundary', () => {
   })
 
   it('validates direct config and every fresh-provider capability before registration', async () => {
+    expect(() => { toolConductor.apply(new Context(), { maxReworkCycles: 2 } as unknown as toolConductor.Config) })
+      .toThrow(/maxReworkCycles is unsupported/)
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, 1.5]) {
+      expect(() => { toolConductor.apply(new Context(), { maxReworkPerGate: value }) }).toThrow(/positive safe integer/)
+    }
     expect(() => { toolConductor.apply(new Context(), { subagentProvider: ' ' }) }).toThrow(/normalized/)
-    expect(() => { toolConductor.apply(new Context(), { maxReworkCycles: 0 }) }).toThrow(/maxReworkCycles/)
+    expect(() => { toolConductor.apply(new Context(), { maxReworkPerGate: 0 }) }).toThrow(/maxReworkPerGate/)
     expect(() => { toolConductor.apply(new Context(), { maxRalphRounds: -1 }) }).toThrow(/maxRalphRounds/)
     expect(() => { toolConductor.apply(new Context(), { maxRalphHandoffChars: 0 }) }).toThrow(/maxRalphHandoffChars/)
 
@@ -491,7 +611,9 @@ describe('dsh-tool-conductor unit boundary', () => {
     const failed = await setup({
       factory: () => ({ stopReason: 'error', error: 'child failed', agentsStarted: 1, value: null }),
     })
-    const result = await execute(failed.ctx, baseArgs, failed.parent)
+    const result = await execute(failed.ctx, {
+      objective: 'Stop a failed child before establishing a baseline.', authority: { owner: 'user' },
+    }, failed.parent)
     expect(result.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked' } })
   })
 

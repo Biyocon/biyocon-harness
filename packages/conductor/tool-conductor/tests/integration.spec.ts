@@ -77,8 +77,6 @@ function readyEnvelope(
         scopeVersion: 'scope-1',
         planVersion: 'plan-1',
         acceptanceVersion: 'accept-1',
-        allowedPaths: ['packages/conductor'],
-        excludedPaths: [],
         rollbackReference: 'HEAD',
         qualityCommandIds,
       },
@@ -607,11 +605,12 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       history: { gate: string; decision: string; basis: string[] }[]
     }
     expect(record.status, JSON.stringify(record)).toBe('escalated')
-    expect(record.history.at(-1), JSON.stringify(record)).toMatchObject({
+    expect(record.history.find(gate => gate.gate === 'C'), JSON.stringify(record)).toMatchObject({
       gate: 'C',
-      decision: 'escalate',
-      basis: ['Gate C selected unknown quality command "unknown-check"'],
+      decision: 'rework',
+      basis: expect.arrayContaining(['Gate C selected unknown quality command "unknown-check"']) as unknown,
     })
+    expect(record.history.at(-1)).toMatchObject({ gate: 'C', decision: 'escalate' })
   }, realSpawnTimeoutMs)
 
   it.each(['transport', 'dispose'] as const)('durably checkpoints quality evidence after specialist %s failure', async (failure) => {

@@ -23,6 +23,7 @@ import type {
   QualityCommandBinding,
   QualityExecutionRecord,
   SpecialistEnvelope,
+  SpecialistProblem,
   SpecialistStatus,
 } from './types.ts'
 import { gateOfStage, recordGate } from './state.ts'
@@ -39,7 +40,7 @@ export interface SpecialistDispatchResult {
   /** Model-authored specialist envelope after boundary validation. */
   envelope: SpecialistEnvelope
   /** Model-boundary validation failure discovered while resolving host-owned fields. */
-  boundaryProblem?: string
+  boundaryProblem?: SpecialistProblem
   /** Host-produced records completed during this dispatch. */
   qualityExecutions: QualityExecutionRecord[]
   /** Stage-applicable baseline bindings that this gate requires. */
@@ -78,7 +79,7 @@ export interface ConductorDispatcher {
    * Run the Arbiter and return its GO/NO-GO decision.
    * @param run - the current run snapshot with its full gate history.
    */
-  dispatchArbiter(run: ConductorRun): Promise<DecisionRecord>
+  dispatchArbiter(run: ConductorRun): Promise<unknown>
 }
 
 /** Durable checkpoint writer called after every gate transition. */
@@ -94,9 +95,10 @@ export type ConductorOutcome =
  *
  * Each specialist is dispatched at the stage the run is currently at; a `pass`
  * advances along the linear path, a `rework` routes to the defect-owning stage
- * (bounded by {@link ConductorBudget.maxReworkCycles} inside {@link recordGate}),
+ * (bounded by {@link ConductorBudget.maxReworkPerGate} inside {@link recordGate}),
  * and a `blocked`/`failed` result parks the run for an owner decision. A
- * malformed envelope or decision is a blocker, never a silent pass.
+ * malformed report retries the reporting role within that gate's budget;
+ * authority violations and rejected approval escalate immediately.
  * @param run - the initial or resumed run.
  * @param dispatcher - the specialist and Arbiter spawner.
  * @param checkpoint - durable checkpoint writer called after every gate transition.
@@ -132,16 +134,21 @@ export async function drive(
       : { envelope: dispatched as SpecialistEnvelope, qualityExecutions: [], requiredQualityCommands: [] }
     const envelope = dispatch.envelope
     const qualityExecutions = [...current.qualityExecutions, ...structuredClone(dispatch.qualityExecutions)]
-    const malformed = dispatch.boundaryProblem ?? envelopeProblem(envelope, stage, current)
-    if (malformed !== undefined) {
+    const malformed = envelopeProblem(envelope, stage, current)
+    const problem = envelopeAuthorityProblem(envelope, stage, current)
+      ?? dispatch.boundaryProblem
+      ?? (malformed === undefined ? undefined : { kind: 'report' as const, message: malformed })
+    if (problem !== undefined) {
       current = recordGate({ ...current, qualityExecutions }, {
-        decision: 'escalate',
-        basis: [malformed],
+        decision: problem.kind === 'report' ? 'rework' : 'escalate',
+        ...problem.kind === 'report' ? { defectClass: 'report' as const, nextStage: stage } : {},
+        basis: [problem.message],
         evidenceReviewed: [],
-        stateUpdate: `reject malformed ${stage} envelope`,
+        stateUpdate: `reject ${problem.kind} problem in ${stage} envelope`,
       })
       await checkpoint(current)
-      return { kind: 'blocked', blocker: malformed, run: current }
+      if (current.status === 'rework') continue
+      return { kind: 'blocked', blocker: problem.message, run: current }
     }
     const evidenceProblem = dispatchEvidenceProblem(envelope, dispatch.qualityExecutions, current.qualityExecutions)
     if (evidenceProblem !== undefined) {
@@ -167,18 +174,6 @@ export async function drive(
       return { kind: 'blocked', blocker: passProblem, run: current }
     }
 
-    const authorityRequest = authorityChangeRequest(envelope)
-    if (authorityRequest !== undefined) {
-      current = recordGate({ ...current, specialistReports, qualityExecutions }, {
-        decision: 'escalate',
-        basis: [authorityRequest.reason],
-        evidenceReviewed: envelope.evidence.map(item => item.reference),
-        stateUpdate: `authority change requested by ${stage}`,
-      })
-      await checkpoint(current)
-      return { kind: 'blocked', blocker: `authority change requested: ${authorityRequest.reason}`, run: current }
-    }
-
     let baseline: ExecutionBaseline | null = current.baseline
     let baselineHistory = current.baselineHistory
     let executionAuthorization = current.executionAuthorization
@@ -189,13 +184,16 @@ export async function drive(
     if (gate === 'C' && envelope.status === 'ready') {
       const baselineProblem = executionBaselineProblem(envelope.execution_baseline, current)
       if (baselineProblem !== undefined) {
-        current = recordGate({ ...current, specialistReports }, {
-          decision: 'escalate',
+        current = recordGate(current, {
+          decision: 'rework',
+          defectClass: 'report',
+          nextStage: stage,
           basis: [baselineProblem],
           evidenceReviewed: envelope.evidence.map(item => item.reference),
           stateUpdate: 'reject Gate C result without a valid execution baseline',
         })
         await checkpoint(current)
+        if (current.status === 'rework') continue
         return { kind: 'blocked', blocker: baselineProblem, run: current }
       }
       baseline = snapshotBaseline(envelope.execution_baseline as ExecutionBaseline)
@@ -271,47 +269,86 @@ export async function drive(
 
 /** Record the Arbiter's decision and either move to closeout (GO) or escalate (NO-GO). */
 async function settleArbiter(
-  current: ConductorRun,
+  initial: ConductorRun,
   dispatcher: ConductorDispatcher,
   checkpoint: ConductorCheckpoint,
 ): Promise<ConductorOutcome> {
-  const decision = await dispatcher.dispatchArbiter(current)
-  const malformed = decisionProblem(decision, current)
-  if (malformed !== undefined) {
+  let current = initial
+  while (true) {
+    const rawDecision = await dispatcher.dispatchArbiter(current)
+    const malformed = decisionProblem(rawDecision, current)
+    if (malformed !== undefined) {
+      const run = recordGate(current, {
+        decision: isObject(rawDecision) && nonEmptyText(rawDecision['run_id'])
+          && rawDecision['run_id'] !== current.runId ? 'escalate' : 'rework',
+        defectClass: 'report',
+        nextStage: 'arbiter',
+        basis: [malformed],
+        evidenceReviewed: [],
+        stateUpdate: 'reject malformed arbiter decision',
+      })
+      await checkpoint(run)
+      if (run.status === 'rework') {
+        current = run
+        continue
+      }
+      return { kind: 'blocked', blocker: malformed, run }
+    }
+    const decision = rawDecision as DecisionRecord
+    if (decision.decision === 'go') {
+      const run = {
+        ...recordGate(current, {
+          decision: 'pass',
+          basis: decision.basis,
+          evidenceReviewed: decision.evidence_reviewed,
+          stateUpdate: 'arbiter GO — move to closeout',
+        }),
+        decision,
+      }
+      await checkpoint(run)
+      return { kind: 'decision', decision, run }
+    }
     const run = recordGate(current, {
       decision: 'escalate',
-      basis: [malformed],
-      evidenceReviewed: [],
-      stateUpdate: 'reject malformed arbiter decision',
+      basis: decision.basis,
+      evidenceReviewed: decision.evidence_reviewed,
+      stateUpdate: 'arbiter NO-GO — escalate to owner',
     })
     await checkpoint(run)
-    return { kind: 'blocked', blocker: malformed, run }
+    return { kind: 'blocked', blocker: 'arbiter returned NO-GO', run }
   }
-  if (decision.decision === 'go') {
-    const run = {
-      ...recordGate(current, {
-        decision: 'pass',
-        basis: decision.basis,
-        evidenceReviewed: decision.evidence_reviewed,
-        stateUpdate: 'arbiter GO — move to closeout',
-      }),
-      decision,
-    }
-    await checkpoint(run)
-    return { kind: 'decision', decision, run }
-  }
-  const run = recordGate(current, {
-    decision: 'escalate',
-    basis: decision.basis,
-    evidenceReviewed: decision.evidence_reviewed,
-    stateUpdate: 'arbiter NO-GO — escalate to owner',
-  })
-  await checkpoint(run)
-  return { kind: 'blocked', blocker: 'arbiter returned NO-GO', run }
 }
 
 const SPECIALIST_STATUSES: readonly SpecialistStatus[] = ['ready', 'rework', 'blocked', 'failed']
 const ARBITER_DECISIONS: readonly ArbiterDecision[] = ['go', 'no-go']
+
+/** Detect identity, source, routing, and authority violations before attempting report repair. */
+function envelopeAuthorityProblem(envelope: unknown, stage: ConductorStage, run: ConductorRun): SpecialistProblem | undefined {
+  if (typeof envelope !== 'object' || envelope === null || Array.isArray(envelope)) return undefined
+  const value = envelope as Record<string, unknown>
+  for (const [key, expected] of [['run_id', run.runId], ['stage', stage]] as const) {
+    if (nonEmptyText(value[key]) && value[key] !== expected) {
+      return { kind: 'authority', message: `envelope ${key} does not match ${expected}` }
+    }
+  }
+  const baseline = run.baseline?.rollbackReference ?? run.sourceBaseline
+  if (baseline !== null && nonEmptyText(value['baseline_ref']) && value['baseline_ref'] !== baseline) {
+    return { kind: 'authority', message: `envelope baseline_ref does not match assessed baseline ${baseline}` }
+  }
+  const transition = value['recommended_transition']
+  if (typeof transition === 'object' && transition !== null && 'target' in transition
+    && nonEmptyText(transition.target) && transition.target !== 'conductor') {
+    return { kind: 'authority', message: 'envelope recommended_transition must target "conductor"' }
+  }
+  if (Array.isArray(value['change_requests'])) {
+    for (const request of value['change_requests'] as unknown[]) {
+      if (isObject(request) && request['target'] === 'authority') {
+        return { kind: 'authority', message: `authority change requested: ${String(request['reason'])}` }
+      }
+    }
+  }
+  return undefined
+}
 
 function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {
   return typeof value === 'string' && (allowed as readonly string[]).includes(value)
@@ -359,12 +396,34 @@ function envelopeProblem(envelope: unknown, stage: ConductorStage, run: Conducto
     || !isStringArray(value['quality_evidence_ids'])) {
     return 'envelope list fields must be arrays'
   }
+  for (const field of ['assumptions', 'blockers', 'artifacts']) {
+    if (!isStringArray(value[field])) return `envelope ${field} must contain normalized strings`
+  }
+  for (const item of value['evidence']) {
+    if (!isObject(item) || !isOneOf(item['kind'], ['command', 'file', 'test', 'review', 'external'])
+      || !nonEmptyText(item['reference']) || !nonEmptyText(item['outcome'])) {
+      return 'envelope evidence must contain a valid kind and normalized reference and outcome'
+    }
+  }
+  for (const item of value['findings']) {
+    if (!isObject(item) || !isOneOf(item['severity'], ['low', 'medium', 'high', 'critical'])
+      || !['id', 'description', 'impact'].every(key => nonEmptyText(item[key]))) {
+      return 'envelope findings must contain an id, severity, description, and impact'
+    }
+  }
+  for (const item of value['change_requests']) {
+    if (!isObject(item) || !isOneOf(item['target'], ['scope', 'plan', 'baseline', 'authority'])
+      || !nonEmptyText(item['reason']) || !nonEmptyText(item['impact'])) {
+      return 'envelope change_requests must contain a target, reason, and impact'
+    }
+  }
   const transition = value['recommended_transition']
   if (typeof transition !== 'object' || transition === null
-    || (transition as Record<string, unknown>)['target'] !== 'conductor') {
+    || (transition as Record<string, unknown>)['target'] !== 'conductor'
+    || !nonEmptyText((transition as Record<string, unknown>)['rationale'])) {
     return 'envelope recommended_transition must target "conductor"'
   }
-  if (value['confidence'] !== undefined && !isOneOf(value['confidence'], ['low', 'medium', 'high'])) {
+  if (!isOneOf(value['confidence'], ['low', 'medium', 'high'])) {
     return 'envelope confidence is invalid'
   }
   return undefined
@@ -478,11 +537,6 @@ function gatePassProblem(
     return 'a gate pass requires at least one normalized acceptance criterion'
   }
   if (envelope.evidence.length === 0) return 'a ready specialist must provide fresh evidence before Conductor can pass the gate'
-  for (const evidence of envelope.evidence) {
-    if (!nonEmptyText(evidence.reference) || !nonEmptyText(evidence.outcome)) {
-      return 'ready specialist evidence must include a normalized reference and outcome'
-    }
-  }
   if ((run.currentStage === 'headsman' || run.currentStage === 'auditor') && requiredQualityCommands.length > 0) {
     const baseline = run.baseline as ExecutionBaseline
     const gate = run.currentStage === 'headsman' ? 'D' : 'E'
@@ -538,12 +592,8 @@ function isArray(value: unknown): value is unknown[] {
   return Array.isArray(value)
 }
 
-/** The first authority change request, when the specialist asked for more authority. */
-function authorityChangeRequest(envelope: SpecialistEnvelope): { reason: string } | undefined {
-  for (const request of envelope.change_requests) {
-    if (request.target === 'authority') return { reason: request.reason }
-  }
-  return undefined
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /** Derive a rework defect class from the envelope's change requests, else from the stage. */

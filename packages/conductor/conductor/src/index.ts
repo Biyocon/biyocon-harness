@@ -42,6 +42,7 @@ export type {
   QualityPolicyStage,
   RecommendedTransition,
   SpecialistEnvelope,
+  SpecialistProblem,
   SpecialistStatus,
 } from './types.ts'
 export {

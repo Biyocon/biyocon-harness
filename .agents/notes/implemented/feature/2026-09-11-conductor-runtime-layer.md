@@ -61,7 +61,7 @@ interface ConductorRun {
   constraints: string[]
   acceptanceCriteria: string[]
   budget: {
-    maxReworkCycles: number
+    maxReworkPerGate: number
     maxRalphRounds: number
   }
   baseline: {
@@ -96,7 +96,7 @@ interface GateRecord {
   decision: 'pass' | 'rework' | 'escalate' | 'abort'
   basis: string[]
   evidenceReviewed: string[]
-  defectClass?: 'scope' | 'plan' | 'implementation' | 'delivery'
+  defectClass?: 'scope' | 'plan' | 'implementation' | 'delivery' | 'report'
   nextStage?: ConductorStage
   stateUpdate: string
 }
@@ -203,7 +203,7 @@ interface SpecialistEnvelope {
 }
 ```
 
-A missing or malformed envelope is a `blocked` result, not a silent pass.
+The [gate-robustness decision](../bug-fix/2026-10-25-conductor-gate-robustness.md) returns missing or malformed completed reports to the same role within the per-gate budget; authority and evidence violations escalate immediately. A rejected report never becomes a silent pass.
 
 ## Alternatives considered
 

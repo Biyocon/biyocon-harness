@@ -1,6 +1,6 @@
 # Execution baseline
 
-Create this record after Gate C. It is immutable until the Conductor explicitly approves a change.
+Runtime constructs this record at Gate C, copying allowedPaths and excludedPaths from the owner's run authorization. The specialist proposes versions, rollback reference, and quality-command ids without path fields. The host approves the complete resolved record before it becomes active; a change requires fresh approval.
 
 ```yaml
 scopeVersion: <version>

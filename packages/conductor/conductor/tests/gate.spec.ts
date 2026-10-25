@@ -11,7 +11,7 @@ import type {
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
-    recordFormatVersion: 1,
+    recordFormatVersion: 2,
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -22,7 +22,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: ['feature works'],
-    budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
+    budget: { maxReworkPerGate: 3, maxRalphRounds: 0 },
     baselineHistory: [],
     baseline: null,
     executionAuthorization: null,
@@ -78,7 +78,7 @@ describe('dsh-conductor gate invariants', () => {
   it('the Auditor never routes a rework back to itself', () => {
     const classes: DefectClass[] = ['scope', 'plan', 'implementation', 'delivery']
     for (const defectClass of classes) {
-      expect(reworkTarget(defectClass)).not.toBe('auditor')
+      expect(reworkTarget(defectClass, 'headsman')).not.toBe('auditor')
       expect(routeGate('E', 'rework', defectClass).nextStage).not.toBe('auditor')
     }
   })

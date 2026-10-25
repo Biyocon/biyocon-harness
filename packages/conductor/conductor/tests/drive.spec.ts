@@ -25,7 +25,7 @@ const QUALITY_BINDING: QualityCommandBinding = {
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
-    recordFormatVersion: 1,
+    recordFormatVersion: 2,
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -36,7 +36,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: ['feature works'],
-    budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
+    budget: { maxReworkPerGate: 3, maxRalphRounds: 0 },
     baselineHistory: [],
     baseline: null,
     executionAuthorization: null,
@@ -107,11 +107,82 @@ function dispatcherFor(envelope: unknown, decision: unknown = makeDecision()): C
   return {
     authorizeExecution: authorize,
     async dispatchSpecialist() { return envelope as SpecialistEnvelope },
-    async dispatchArbiter() { return decision as DecisionRecord },
+    async dispatchArbiter() { return decision },
   }
 }
 
 describe('dsh-conductor drive', () => {
+  it.each(['detective', 'strategist', 'devils-advocate', 'headsman', 'auditor', 'integrator'] as const)(
+    'repairs malformed %s output at the same role and continues after correction', async (target) => {
+      let repairs = 0
+      const seen: ConductorStage[] = []
+      const result = await drive(makeRun(), {
+        authorizeExecution: authorize,
+        async dispatchSpecialist(stage) {
+          seen.push(stage)
+          if (stage === target && repairs++ === 0) {
+            return makeEnvelope(stage, { findings: [{ id: 'broken' }] as never })
+          }
+          return makeEnvelope(stage, { findings: [{
+            id: 'verified', severity: 'low', description: 'Report corrected.', impact: 'Safe to evaluate.',
+          }] })
+        },
+        async dispatchArbiter() { return makeDecision() },
+      })
+      expect(result.kind).toBe('decision')
+      expect(seen.filter(stage => stage === target)).toHaveLength(2)
+      expect(result.run.history.find(record => record.decision === 'rework')).toMatchObject({
+        stage: target, defectClass: 'report', nextStage: target,
+      })
+    },
+  )
+
+  it('repairs an invalid Gate C baseline before asking for approval without changing owner paths', async () => {
+    let attempts = 0
+    let approvals = 0
+    const run = makeRun()
+    const result = await drive(run, {
+      async authorizeExecution(current, baseline) {
+        approvals += 1
+        expect(baseline.allowedPaths).toEqual(run.allowedPaths)
+        expect(baseline.excludedPaths).toEqual(run.excludedPaths)
+        return authorize(current, baseline)
+      },
+      async dispatchSpecialist(stage) {
+        const envelope = makeEnvelope(stage)
+        if (stage === 'devils-advocate' && attempts++ === 0) {
+          envelope.execution_baseline!.allowedPaths = ['unauthorized-root']
+        }
+        return envelope
+      },
+      async dispatchArbiter() { return makeDecision() },
+    })
+    expect(result.kind).toBe('decision')
+    expect(result.run.history.filter(record => record.gate === 'C').map(record => record.decision)).toEqual(['rework', 'pass'])
+    expect(result.run.specialistReports.filter(report => report.stage === 'devils-advocate')).toHaveLength(1)
+    expect(approvals).toBe(1)
+    expect(run.allowedPaths).toEqual(['packages/conductor'])
+  })
+
+  it('retries malformed Arbiter output but immediately escalates cross-run authority claims', async () => {
+    for (const forged of [false, true]) {
+      let attempts = 0
+      const result = await drive(makeRun(), {
+        authorizeExecution: authorize,
+        async dispatchSpecialist(stage) { return makeEnvelope(stage) },
+        async dispatchArbiter() {
+          attempts += 1
+          if (attempts === 1) return forged ? { ...makeDecision(), run_id: 'CON-2026-9999' } : null
+          return makeDecision()
+        },
+      })
+      expect(result.kind).toBe(forged ? 'blocked' : 'decision')
+      expect(attempts).toBe(forged ? 1 : 2)
+      expect(result.run.history.filter(record => record.gate === 'G').map(record => record.decision))
+        .toEqual(forged ? ['escalate'] : ['rework', 'pass'])
+    }
+  })
+
   it('drives through every gate to a GO decision and closeout', async () => {
     const dispatcher: ConductorDispatcher = {
       authorizeExecution: authorize,
@@ -382,7 +453,7 @@ describe('dsh-conductor drive', () => {
       },
       async dispatchArbiter() { return makeDecision('go') },
     }
-    const outcome = await drive(makeRun({ currentStage: 'detective', budget: { maxReworkCycles: 1, maxRalphRounds: 0 } }), dispatcher)
+    const outcome = await drive(makeRun({ currentStage: 'detective', budget: { maxReworkPerGate: 1, maxRalphRounds: 0 } }), dispatcher)
     expect(outcome.kind).toBe('blocked')
     if (outcome.kind === 'blocked') {
       expect(outcome.run.status).toBe('escalated')
@@ -605,6 +676,10 @@ describe('dsh-conductor drive', () => {
       [{ ...valid, evidence: null }, /list fields/],
       [{ ...valid, findings: null }, /list fields/],
       [{ ...valid, assumptions: null }, /list fields/],
+      [{ ...valid, assumptions: [' '] }, /normalized strings/],
+      [{ ...valid, evidence: [{ kind: 'test', reference: '', outcome: 'passed' }] }, /envelope evidence/],
+      [{ ...valid, findings: [{ id: 'finding', severity: 'low', description: '', impact: 'review' }] }, /envelope findings/],
+      [{ ...valid, change_requests: [{ target: 'plan', reason: '', impact: 'review' }] }, /envelope change_requests/],
       [{ ...valid, blockers: null }, /list fields/],
       [{ ...valid, artifacts: null }, /list fields/],
       [{ ...valid, change_requests: null }, /list fields/],

@@ -42,7 +42,7 @@
             config:
               subagentProvider: spawn
               routeTasks: true
-              maxReworkCycles: 3
+              maxReworkPerGate: 2
               maxRalphRounds: !!js Number(process.env.DSH_CONDUCTOR_RALPH_ROUNDS ?? 0)
               maxRalphHandoffChars: 16384
               qualityCommands:

@@ -60,7 +60,7 @@
       config:
         subagentProvider: spawn
         routeTasks: true
-        maxReworkCycles: 3
+        maxReworkPerGate: 2
         maxRalphRounds: 3
         maxRalphHandoffChars: 16384
         qualityCommands: []
