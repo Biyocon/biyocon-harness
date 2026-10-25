@@ -2413,6 +2413,8 @@ Requires: `tools` · `subagents` · `skills` · `sessions` · `workflowEngine` �
 ```ts config-catalog
 /** Deployment policy for the Conductor tool. */
 export interface Config {
+  /** Require parent tasks to start with Conductor and prohibit solo fallback (default false). */
+  routeTasks?: boolean
   /** Fresh structured-output subagent provider (default `spawn`). */
   subagentProvider?: string
   /** Default rework budget when a call names none (default 3). */
@@ -2452,7 +2454,7 @@ export interface QualityCommandConfig {
 
 Depends on: [`QualityPolicyStage`](../packages/conductor/conductor/src/index.ts)
 
-Source: [`packages/conductor/tool-conductor/src/index.ts:67`](../packages/conductor/tool-conductor/src/index.ts)
+Source: [`packages/conductor/tool-conductor/src/index.ts:68`](../packages/conductor/tool-conductor/src/index.ts)
 
 <a id="deepseek-aidsh-tool-fs"></a>
 

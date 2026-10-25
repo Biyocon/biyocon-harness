@@ -14,7 +14,7 @@ Conductor 的角色路径相对于启动目录解析，协议发现则依赖任�
 
 [预设](../../../../apps/cli/config/agent-presets/conductor/agent.cordis.yml)使用 `!!js` 相对于自身的 `baseUrl` 解析资源位置，并为其 Conductor 运行时创建私有 skill 注册表。[预设安装器](../../../../packages/conductor/conductor-presets/README.md)挂载通过宿主读取随附文件的文件系统提供方，并在发布 agent（智能体）之前验证全部七个角色名以及 specialist、Ralph 和 closeout 协议。它还要求共享协议可读且非空，并将其作为内联参考附加在每个预备角色定义之前，使专家无需从任务工作区读取安装或仓库链接。预备定义保留角色元数据和资源路径；临时角色提供方随即释放，不留下重复候选。任务 cwd、工作区文件系统权限、项目 skills 和用户 skill 优先级不参与这些指令的选择。缺失、格式错误或正文为空的必需指令会阻止挂载，并给出重新构建或安装的诊断；释放预设会移除其注册。
 
-父级角色指令要求报告 Conductor 错误和阻塞并停止，不得接管专家任务。这是模型行为指引，不是新的写入工具限制。[运行时决策](../feature/2026-09-11-conductor-runtime-layer.md)仍负责门禁、子级策略与授权；[角色资料资源决策](../feature/2026-10-24-conductor-role-profile-assets.md)仍负责图像关联。两项决策均未被取代。
+父级角色指令要求报告 Conductor 错误和阻塞并停止，不得接管专家任务。[模式路由决策](2026-10-25-conductor-mode-routing.md)负责强制父级分派，以及执行器对独立替代执行的限制；指令交付不会永久移除父级写入工具。[运行时决策](../feature/2026-09-11-conductor-runtime-layer.md)仍负责门禁、子级策略与授权；[角色资料资源决策](../feature/2026-10-24-conductor-role-profile-assets.md)仍负责图像关联。两项决策均未被取代。
 
 ## 曾考虑的替代方案
 

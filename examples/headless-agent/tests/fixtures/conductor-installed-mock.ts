@@ -44,10 +44,15 @@ class InstalledConductorAdapter extends LlmAdapter {
       return
     }
     if (result === undefined) {
+      // Prefer the project's requested solo read whenever the runtime exposes it.
+      if (options.tools?.some(tool => tool.name === 'read') === true) {
+        yield* call('read', { file_path: 'probe.txt' })
+        return
+      }
       yield* call('conductor', {
-        objective: 'Read probe.txt through the installed Detective.',
+        objective: 'Analyze probe.txt and report the three most important improvements. Do not modify files.',
         sourceBaseline: 'HEAD', authority: { owner: 'snapshot-user' },
-        scope: ['probe.txt'], allowedPaths: ['probe.txt'],
+        scope: ['probe.txt'],
         acceptanceCriteria: ['Detective reads the external marker and reports a blocker.'],
       })
       return

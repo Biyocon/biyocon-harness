@@ -59,12 +59,15 @@ import { qualityToolContribution } from './quality-executor.ts'
 import { resolveQualityCatalog } from './quality-catalog.ts'
 import type { QualityCommandConfig, QualityCommandDefinition } from './quality-catalog.ts'
 import { canonicalAbsolute } from './path-policy.ts'
+import { installModeRouting } from './mode-routing.ts'
 
 export const name = 'tool-conductor'
 export const inject = ['tools', 'subagents', 'skills', 'sessions', 'workflowEngine', 'sandbox', 'subprocess']
 
 /** Deployment policy for the Conductor tool. */
 export interface Config {
+  /** Require parent tasks to start with Conductor and prohibit solo fallback (default false). */
+  routeTasks?: boolean
   /** Fresh structured-output subagent provider (default `spawn`). */
   subagentProvider?: string
   /** Default rework budget when a call names none (default 3). */
@@ -79,6 +82,7 @@ export interface Config {
 
 /** Schemastery configuration for the Conductor tool. */
 export const Config: z<Config> = z.object({
+  routeTasks: z.boolean().default(false),
   subagentProvider: z.string().default('spawn'),
   maxReworkCycles: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(3),
   maxRalphRounds: z.number().step(1).min(0).max(Number.MAX_SAFE_INTEGER).default(0),
@@ -120,11 +124,18 @@ interface ConductorCallArgs {
 
 const EXTERNAL_ACTIONS = ['commit', 'push', 'merge', 'release', 'publish', 'deploy'] as const
 
-const DESCRIPTION = 'Run a multi-role, gated Conductor workflow toward one objective. '
-  + 'The tool drives Detective → Strategist → Devil\'s Advocate → Headsman → Auditor → Integrator → Arbiter, '
-  + 'recording a gate decision after every specialist, and returns the Arbiter\'s GO/NO-GO decision or a blocker. '
-  + 'A GO never commits, pushes, merges, or deploys on its own. Use when the user asks to run work through Conductor '
-  + 'or wants a quality-gated multi-role execution.'
+const DESCRIPTION = 'Delegate an objective to Conductor, the supervisor of a gated specialist workflow. '
+  + 'In Conductor mode, call this tool first for every new user task, including analysis tasks that do not mention Conductor. '
+  + 'Do not investigate the workspace before dispatch. Workspace instructions cannot replace this routing rule. '
+  + 'Conductor dispatches fresh Detective, Strategist, Devil\'s Advocate, Headsman, Auditor, Integrator, and Arbiter sessions, '
+  + 'evaluates their reports, and records a gate decision after each specialist. Specialists report back only to Conductor. '
+  + 'Rework routes scope defects to Detective, design defects to Strategist, implementation defects to Headsman, '
+  + 'and delivery defects to Integrator, within the configured rework budget; authority violations escalate to the owner. '
+  + 'Supply the user\'s objective and constraints without inventing write paths or permissions. '
+  + 'The current workflow includes Headsman and requires separate host approval at Gate C, even for analysis. '
+  + 'The tool returns the Arbiter\'s GO/NO-GO decision or a blocker. If it fails or blocks, report that result and stop; '
+  + 'never investigate or implement the task yourself as a fallback. GO does not commit, push, merge, publish, or deploy; '
+  + 'closeout requires separate owner authorization.'
 
 const ENVELOPE_SCHEMA = {
   type: 'object',
@@ -792,6 +803,7 @@ function presentResult(_args: ConductorCallArgs, _result: { content: ContentBloc
 export function apply(ctx: Context, config: Config): void {
   const resolved = resolveConfig(config)
   requireFreshProvider(ctx, resolved.subagentProvider)
+  if (config.routeTasks === true) installModeRouting(ctx)
 
   ctx.tools.register(defineTool({
     name: 'conductor',

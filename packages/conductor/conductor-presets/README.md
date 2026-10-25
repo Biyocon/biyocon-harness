@@ -16,7 +16,7 @@ The CLI build copies [the canonical role directory](../../../.agents/conductor/r
 
 The app resolves these paths relative to the preset's `baseUrl` with `!!js`. Its private `skills` registry is shared with the Conductor tool, not with the task's project or user skill catalogs. Installation files are read on the host rather than through the task filesystem. Loading rejects relative paths, missing or malformed required skills, and unreadable or empty instructions before the preset can publish an agent. Validated roles become prepared definitions with the exact shared protocol prepended as reference; specialists use their dispatch and structured schema instead of reading repository links from the task workspace. Registrations unwind with the preset.
 
-The parent persona instructs the agent to report Conductor errors or blockers and stop instead of implementing the task independently. Its filesystem tools remain available; this instruction is not a replacement for executor permissions. [The installation decision](../../../.agents/notes/implemented/bug-fix/2026-10-24-conductor-installed-skills.md) explains distribution and ownership.
+The app enables the tool's `routeTasks` policy: each new parent task starts with `conductor`, including analysis that does not name the mode. Before dispatch, other tools are hidden and executor-denied. After any result, including an Arbiter GO, all parent tools remain hidden and denied; only a final report is permitted, not solo investigation, implementation, or automatic redispatch. Workspace instructions remain available to specialists but cannot bypass this executor policy. The next user task allows only another Conductor dispatch. [The routing decision](../../../.agents/notes/implemented/bug-fix/2026-10-25-conductor-mode-routing.md) explains this policy; [the installation decision](../../../.agents/notes/implemented/bug-fix/2026-10-24-conductor-installed-skills.md) owns instruction delivery.
 
 ## Model Experience
 
@@ -30,3 +30,4 @@ The shared protocol contributes a stable prefix to every role. Editing it change
 
 - Canonical instruction edits require rebuilding and restarting the app; the running preset does not watch or reload installation assets.
 - Mount validation establishes availability, not that a model will obey the instructions; stage executors own capability enforcement.
+- Analysis uses the same A–G workflow and host approval at Gate C; the preset has no analysis-only completion stage.
