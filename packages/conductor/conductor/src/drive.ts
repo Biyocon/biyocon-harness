@@ -47,10 +47,30 @@ export interface SpecialistDispatchResult {
   requiredQualityCommands: QualityCommandBinding[]
 }
 
+/** An execution fault, carrying host evidence without claiming a specialist report or gate verdict. */
+export class SpecialistExecutionFailure extends Error {
+  /**
+   * @param cause - the original infrastructure failure.
+   * @param stage - the dispatch stage at the time of failure.
+   * @param childStarted - whether runtime observed that stage's child start.
+   * @param qualityExecutions - completed host-owned command records to checkpoint before propagation.
+   */
+  constructor(
+    cause: unknown,
+    readonly stage: ConductorStage,
+    readonly childStarted: boolean,
+    readonly qualityExecutions: readonly QualityExecutionRecord[] = [],
+  ) {
+    super(String(cause), { cause })
+  }
+}
+
 /**
  * Spawns specialists and the Arbiter. A dispatcher rejects only on an
- * infrastructure fault; an ordinary specialist failure resolves with a
- * `blocked`/`failed` envelope, which the driver routes to escalation.
+ * infrastructure fault; completed host records travel in
+ * {@link SpecialistExecutionFailure} and are checkpointed before propagation.
+ * An ordinary specialist-reported failure resolves with a `blocked`/`failed`
+ * envelope, which the driver routes to escalation.
  */
 export interface ConductorDispatcher {
   /**
@@ -128,7 +148,16 @@ export async function drive(
       throw new Error(`Conductor stage "${stage}" owns no gate`)
     }
 
-    const dispatched: unknown = await dispatcher.dispatchSpecialist(stage, current)
+    let dispatched: unknown
+    try {
+      dispatched = await dispatcher.dispatchSpecialist(stage, current)
+    } catch (cause) {
+      if (cause instanceof SpecialistExecutionFailure && cause.qualityExecutions.length > 0) {
+        current = { ...current, qualityExecutions: [...current.qualityExecutions, ...structuredClone(cause.qualityExecutions)] }
+        await checkpoint(current)
+      }
+      throw cause
+    }
     const dispatch: SpecialistDispatchResult = typeof dispatched === 'object' && dispatched !== null && 'envelope' in dispatched
       ? dispatched as SpecialistDispatchResult
       : { envelope: dispatched as SpecialistEnvelope, qualityExecutions: [], requiredQualityCommands: [] }

@@ -93,13 +93,26 @@ class StubEngine extends WorkflowEngine {
   requests: WorkflowStartRequest[] = []
   disposed = 0
   factory: ResultFactory = successfulResult
+  publishChildren = true
 
   start(request: WorkflowStartRequest): WorkflowRun {
     this.requests.push(request)
+    const id = WorkflowRunId(`conductor-test-${this.requests.length}`)
+    const result = this.factory(request)
     return {
-      id: WorkflowRunId(`conductor-test-${this.requests.length}`),
+      id,
       meta: request.meta,
-      result: Promise.resolve(this.factory(request)),
+      result: Promise.resolve().then(() => {
+        if (this.publishChildren && result.agentsStarted > 0) {
+          const info = { id, meta: request.meta }
+          const child = { seq: 1, label: (request.args as { label: string }).label, childId: SessionId(`child-${id}`) }
+          this.ctx.emit('workflow/agent-start', info, child)
+          this.ctx.emit('workflow/agent-end', info, {
+            ...child, outcome: result.stopReason === 'completed' ? 'completed' : 'failed',
+          })
+        }
+        return result
+      }),
       cancel: () => {},
       dispose: () => {
         this.disposed += 1
@@ -360,6 +373,18 @@ describe('dsh-tool-conductor unit boundary', () => {
     expect(summary.gateHistory.map(record => record.gate)).toEqual(['A', 'B', 'C', 'D', 'E', 'F'])
   })
 
+  it('does not count an accepted agent call as a specialist that actually started', async () => {
+    const { ctx, parent, engine } = await setup({
+      factory: () => ({ stopReason: 'error', error: 'Provider failed before publishing a child', agentsStarted: 1, value: null }),
+    })
+    engine.publishChildren = false
+    const result = await execute(ctx, baseArgs, parent)
+    expect(result.isError).toBe(true)
+    const rendered = result.content.filter(item => item.type === 'text').map(item => item.text).join('\n')
+    const summary = JSON.parse(rendered.split('Run status:\n')[1]!) as { specialistsRan: string[] }
+    expect(summary.specialistsRan).toEqual([])
+  })
+
   it('ignores failed child notifications from unrelated workflows', async () => {
     const { ctx, parent, engine } = await setup()
     const start = engine.start.bind(engine)
@@ -614,7 +639,12 @@ describe('dsh-tool-conductor unit boundary', () => {
     const result = await execute(failed.ctx, {
       objective: 'Stop a failed child before establishing a baseline.', authority: { owner: 'user' },
     }, failed.parent)
-    expect(result.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked' } })
+    expect(result.isError).toBe(true)
+    expect(JSON.stringify(result.content)).toContain('Conductor detective child failed')
+    const checkpoint = failed.parent.session.events.filter(event => event.type === 'conductor/checkpoint').at(-1)!
+    const run = JSON.parse(checkpoint.data.record!) as ConductorRun
+    expect(run.history).toEqual([])
+    expect(run.specialistReports).toEqual([])
   })
 
   it('retries a colliding minted id and rejects early closeout authorization', async () => {

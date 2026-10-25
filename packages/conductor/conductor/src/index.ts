@@ -67,7 +67,7 @@ export {
 export type { ConductorCheckpointData, ConductorRunStore } from './persistence.ts'
 export { decisionForStatus, reworkTarget, routeGate } from './routing.ts'
 export type { RoutedGate } from './routing.ts'
-export { drive } from './drive.ts'
+export { drive, SpecialistExecutionFailure } from './drive.ts'
 export type { ConductorCheckpoint, ConductorDispatcher, ConductorOutcome, SpecialistDispatchResult } from './drive.ts'
 export { executionBaselineHash, executionEffectProfile, nextQualityCycle, snapshotQualityBindings } from './quality.ts'
 export { isValidRunId, mintRunId } from './run-id.ts'

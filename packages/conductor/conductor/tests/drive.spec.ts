@@ -4,6 +4,7 @@ import {
   ConductorRunId,
   QualityCommandId,
   QualityEvidenceId,
+  SpecialistExecutionFailure,
   drive,
   executionBaselineHash,
 } from '../src/index.ts'
@@ -112,6 +113,22 @@ function dispatcherFor(envelope: unknown, decision: unknown = makeDecision()): C
 }
 
 describe('dsh-conductor drive', () => {
+  it.each([
+    new Error('specialist transport failed'),
+    new SpecialistExecutionFailure('specialist transport failed', 'detective', true),
+  ])('propagates execution faults without inventing a report or a gate verdict: %s', async (failure) => {
+    const run = makeRun()
+    const checkpoints: ConductorRun[] = []
+    await expect(drive(run, {
+      authorizeExecution: authorize,
+      async dispatchSpecialist() { throw failure },
+      async dispatchArbiter() { return makeDecision() },
+    }, async (checkpoint) => { checkpoints.push(checkpoint) })).rejects.toBe(failure)
+    expect(run.history).toEqual([])
+    expect(run.specialistReports).toEqual([])
+    expect(checkpoints).toEqual([])
+  })
+
   it.each(['detective', 'strategist', 'devils-advocate', 'headsman', 'auditor', 'integrator'] as const)(
     'repairs malformed %s output at the same role and continues after correction', async (target) => {
       let repairs = 0

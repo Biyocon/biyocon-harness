@@ -2456,7 +2456,7 @@ export interface QualityCommandConfig {
 
 依赖：[`QualityPolicyStage`](../packages/conductor/conductor/src/index.ts)
 
-来源：[`packages/conductor/tool-conductor/src/index.ts:69`](../packages/conductor/tool-conductor/src/index.ts)
+来源：[`packages/conductor/tool-conductor/src/index.ts:70`](../packages/conductor/tool-conductor/src/index.ts)
 
 <a id="deepseek-aidsh-tool-fs"></a>
 

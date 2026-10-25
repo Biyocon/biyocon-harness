@@ -22,6 +22,7 @@ import {
   mintRunId,
   resumeRun,
   SessionConductorRunStore,
+  SpecialistExecutionFailure,
 } from '@deepseek-ai/dsh-conductor'
 import type {
   ConductorAuthority,
@@ -424,12 +425,6 @@ async function requireSkill(ctx: Context, parent: Agent, signal: AbortSignal, na
   return skill.content
 }
 
-class SpecialistWorkflowFailure extends Error {
-  constructor(cause: unknown, readonly stage: ConductorStage, readonly childStarted: boolean) {
-    super(String(cause), { cause })
-  }
-}
-
 /** Run one fresh structured child through the existing workflow engine. */
 async function runWorkflowChild(
   ctx: Context,
@@ -478,7 +473,6 @@ async function runWorkflowChild(
   try {
     try {
       const result: WorkflowResult = await workflow.result
-      childStarted ||= result.agentsStarted > 0
       if (childFailure !== undefined) throw new Error(childFailure)
       if (result.stopReason !== 'completed') {
         throw new Error(`Conductor ${stage} workflow stopped: ${result.stopReason}`)
@@ -493,7 +487,7 @@ async function runWorkflowChild(
       }
     }
   } catch (cause) {
-    throw new SpecialistWorkflowFailure(cause, stage, childStarted)
+    throw new SpecialistExecutionFailure(cause, stage, childStarted)
   }
 }
 
@@ -701,23 +695,10 @@ async function runSpecialist(
     const resolved = resolveSpecialistEnvelope(structured, stage, run, catalog)
     return { ...resolved, qualityExecutions, requiredQualityCommands }
   } catch (error) {
-    if (qualityExecutions.length === 0 && !(error instanceof SpecialistWorkflowFailure && error.childStarted)) throw error
-    return { envelope: {
-      run_id: run.runId,
-      stage,
-      status: 'failed',
-      baseline_ref: run.baseline?.rollbackReference ?? run.sourceBaseline ?? 'unestablished',
-      summary: 'specialist workflow failed; preserve host evidence and stop',
-      evidence: [],
-      findings: [],
-      assumptions: [],
-      blockers: ['specialist workflow did not complete successfully'],
-      artifacts: [],
-      change_requests: [],
-      recommended_transition: { target: 'conductor', rationale: 'preserve execution evidence and stop the gate' },
-      confidence: 'low',
-      quality_evidence_ids: qualityExecutions.map(record => record.evidenceId),
-    }, qualityExecutions, requiredQualityCommands }
+    if (qualityExecutions.length === 0) throw error
+    throw new SpecialistExecutionFailure(
+      error, stage, error instanceof SpecialistExecutionFailure && error.childStarted, qualityExecutions,
+    )
   }
 }
 
@@ -1026,7 +1007,7 @@ export function apply(ctx: Context, config: Config): void {
         }
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : String(cause)
-        const failedStage = cause instanceof SpecialistWorkflowFailure && cause.childStarted ? cause.stage : undefined
+        const failedStage = cause instanceof SpecialistExecutionFailure && cause.childStarted ? cause.stage : undefined
         throw new Error(activeRun === undefined
           ? `No Conductor run was started: ${message}`
           : `Conductor run blocked: ${message}\nRun status:\n${JSON.stringify(runSummary(activeRun, failedStage), null, 2)}`, { cause })

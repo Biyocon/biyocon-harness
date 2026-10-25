@@ -529,11 +529,10 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     const script: ((options: GenerateOptions) => ReturnType<typeof toolCallResponse>)[] = [
       ...(['detective', 'strategist'] as const).map(stage => (options: GenerateOptions) =>
         toolCallResponse(stage, STRUCTURED_OUTPUT_TOOL, readyEnvelope(extractRunId(options), stage))),
-      (options: GenerateOptions) => toolCallResponse(
-        'devils-advocate',
-        STRUCTURED_OUTPUT_TOOL,
+      ...Array.from({ length: 3 }, (_unused, attempt) => (options: GenerateOptions) => toolCallResponse(
+        `devils-advocate-${attempt}`, STRUCTURED_OUTPUT_TOOL,
         readyEnvelope(extractRunId(options), 'devils-advocate', [], ['unknown-check']),
-      ),
+      )),
     ]
     const ctx = new Context()
     const adapter = new MockAdapter(script)
@@ -611,6 +610,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       basis: expect.arrayContaining(['Gate C selected unknown quality command "unknown-check"']) as unknown,
     })
     expect(record.history.at(-1)).toMatchObject({ gate: 'C', decision: 'escalate' })
+    expect(record.history.filter(gate => gate.gate === 'C').map(gate => gate.decision)).toEqual(['rework', 'rework', 'escalate'])
   }, realSpawnTimeoutMs)
 
   it.each(['transport', 'dispose'] as const)('durably checkpoints quality evidence after specialist %s failure', async (failure) => {
@@ -707,7 +707,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       agent: parent,
     })
 
-    expect(result.isError, JSON.stringify(result)).toBe(false)
+    expect(result.isError, JSON.stringify(result)).toBe(true)
     const checkpoint = parent.session.events.filter(event => event.type === 'conductor/checkpoint').at(-1)
     if (checkpoint?.type !== 'conductor/checkpoint' || checkpoint.data.record === null) {
       throw new Error('missing failed-specialist Conductor checkpoint')
@@ -717,8 +717,10 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       history: { gate: string; decision: string }[]
       qualityExecutions: { gate: string; executorStage: string; outcome: string }[]
     }
-    expect(record.status).toBe('escalated')
-    expect(record.history.at(-1)).toMatchObject({ gate: 'D', decision: 'escalate' })
+    expect(record.status).toBe('running')
+    expect(record.history.map(entry => entry.gate)).toEqual(['A', 'B', 'C'])
+    expect(JSON.stringify(result.content)).toContain('Run status:')
+    expect(JSON.stringify(result.content)).toContain('headsman')
     expect(record.qualityExecutions).toMatchObject([
       { gate: 'D', executorStage: 'ralph', outcome: 'passed' },
     ])

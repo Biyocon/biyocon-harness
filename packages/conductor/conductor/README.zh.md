@@ -10,7 +10,7 @@ Headsman 与 Auditor 必须精确引用当前 dispatch 产生的持久化 `Quali
 
 `maxReworkPerGate` 按各 `GateRecord.gate` 独立限制返工决策，默认值为 2。限制为 2 时，同一门禁第三次请求返工即升级；另一门禁的决策不消耗其预算。结构无效的 envelope、Arbiter 决策和 Gate C baseline 使用缺陷类别 `report` 返回报告角色；无效报告不保存为已验证的专家报告。身份、所评估 baseline、路由、证据或权限违规，以及宿主批准遭拒，立即升级。Ralph Round 保持自身独立且未变化的限制。
 
-Gate C 提案只包含版本、rollback reference 和请求的质量命令 id，不包含路径字段。运行时从所有者授权的运行提供 `allowedPaths` 和 `excludedPaths`，并拒绝专家编写的路径。完整解析 baseline 仍须获得精确宿主批准。记录格式 2 持久化按门禁预算和同角色报告返工；旧记录以不支持版本的明确错误拒绝，不提供兼容层。[门禁稳健性决策](../../../.agents/notes/implemented/bug-fix/2026-10-25-conductor-gate-robustness.md)记录验证分类及验证证据。
+Gate C 提案只包含版本、rollback reference 和请求的质量命令 id，不包含路径字段。运行时从所有者授权的运行提供 `allowedPaths` 和 `excludedPaths`，并拒绝专家编写的路径。完整解析 baseline 仍须获得精确宿主批准。`SpecialistExecutionFailure` 在保存已完成宿主质量记录的检查点后传播基础设施故障，不伪造专家报告或门禁决策。记录格式 2 持久化按门禁预算和同角色报告返工；旧记录以不支持版本的明确错误拒绝，不提供兼容层。[门禁稳健性决策](../../../.agents/notes/implemented/bug-fix/2026-10-25-conductor-gate-robustness.md)记录验证分类及验证证据。
 
 ## 已知限制与延期工作
 
