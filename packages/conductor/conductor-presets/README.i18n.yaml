@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/conductor/conductor-presets/README.md
-README.md: 621a2699494a669b304ca19846eb98c390b96b24
-README.zh.md: dc3f3e0525412125ae77fdb7b12cbbd4007d3593
+README.md: 6c6d29da3bb33ddcb7d9d33b2d536696f3dbd235
+README.zh.md: 70a3555c8eaa5dda4c61c53172c6556336a7bac3

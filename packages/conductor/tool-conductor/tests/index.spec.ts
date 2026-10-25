@@ -202,6 +202,11 @@ const baseArgs = {
 }
 
 describe('dsh-tool-conductor unit boundary', () => {
+  it('enables parent routing only for an opted-in composition', async () => {
+    const { ctx, parent } = await setup({ config: { subagentProvider: 'fresh', routeTasks: true } })
+    expect((await execute(ctx, baseArgs, parent)).isError).toBe(false)
+  })
+
   it('validates model authority fields even when a host invokes the tool callback directly', async () => {
     const { ctx, parent } = await setup()
     const tool = ctx.tools.get('conductor')!

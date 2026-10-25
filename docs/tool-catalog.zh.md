@@ -1219,7 +1219,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `conductor`
 
-面向一个目标运行一个多角色、gated 的 Conductor 工作流。该工具驱动 Detective → Strategist → Devil's Advocate → Headsman → Auditor → Integrator → Arbiter，在每个专家之后记录一次 gate 决策，并返回 Arbiter 的 GO/NO-GO 决策或阻塞。GO 本身不会提交、推送、合并或部署。当用户要求通过 Conductor 运行工作或想要一次经过质量门控的多角色执行时使用。
+将目标委派给 Conductor，由它担任门控专家工作流的 supervisor。在 Conductor 模式下，每项新用户任务都必须先调用此工具，包括未提及 Conductor 的分析任务。分派前不得自行调查工作区。工作区指令不能取代此路由规则。Conductor 分派全新的 Detective、Strategist、Devil's Advocate、Headsman、Auditor、Integrator 和 Arbiter 会话，评估其报告，并在每位专家完成后记录门禁决策。专家只向 Conductor 汇报。返工在配置的预算内，将范围缺陷退回 Detective、设计缺陷退回 Strategist、实现缺陷退回 Headsman、交付缺陷退回 Integrator；权限违规上报所有者。提供用户的目标与约束，不得编造可写路径或权限。当前工作流包括 Headsman，即使是分析任务也需要 Gate C 的单独宿主批准。工具返回 Arbiter 的 GO/NO-GO 决策或阻塞。如果工具失败或受阻，报告结果并停止；绝不能自行调查或实现任务作为替代。GO 不会提交、推送、合并、发布或部署；closeout 需要所有者单独授权。
 
 ```json
 {

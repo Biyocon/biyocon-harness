@@ -10,6 +10,10 @@
 
 当 `maxRalphRounds` 为正时，Headsman 使用相同 child policy 调用共享 Ralph workflow runner。每个全新 Round 都会收到已批准的 execution baseline、验收标准、约束，以及已绑定的 Gate-D command id 和对应的模型安全描述，随后 Headsman 仍返回 ImplementationReport，进入 Gate D 和独立 Auditor review。Gate-G GO 以 `awaiting_authorization` 持久化。面向模型的工具不能关闭运行，也不能提供结构化 closeout authorization；host 可以稍后调用 core `closeRun` API，并提供明确 authorization 与 evidence。Conductor 本身不执行 release 操作。
 
+`routeTasks` 默认为 `false`；随附的 Conductor 预设将其启用。对于父级的每项新任务，分派前只向模型提供 `conductor`，执行器守卫会拒绝其他调用，不受工作区指令影响。未分派就结束的轮次会明确报错。分派运行期间，以及返回受阻、失败或非决策结果之后，父级工具和自动重新分派都被禁止；父级报告结果后停止。GO 恢复父级原有的能力，而不授予新权限。新的用户轮次或 steering（中途引导）消息重置路由；仅有插件上下文不会重置。专家会话保留各阶段的策略。其他预设与通用指令 loader 不受影响。
+
+Conductor 在每位专家完成后作出门禁决策，并在配置的预算内，将范围、设计、实现和交付问题分别退回 Detective、Strategist、Headsman 和 Integrator。分析任务仍经过 A–G，包括 Headsman 和 Gate C 的显式宿主批准；空 `allowedPaths` 不授权任何写入。系统没有专用的分析终止阶段。[路由决策](../../../.agents/notes/implemented/bug-fix/2026-10-25-conductor-mode-routing.md)记录这一限制及后续设计。
+
 ## 已知限制与延期工作
 
 Skill 查找选择父 agent 的 scope key，因此其预设安装的角色和协议提供方不依赖任务工作区而保持可见。随附预设在挂载前验证这些资源；自定义组合必须提供完整的 skill catalog。
