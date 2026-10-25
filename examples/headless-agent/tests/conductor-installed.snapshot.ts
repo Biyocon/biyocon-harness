@@ -137,7 +137,9 @@ describe('installed Conductor through the headless example', () => {
           expect(run.baseline?.allowedPaths).toEqual(run.allowedPaths)
           expect(run.baseline?.excludedPaths).toEqual(run.excludedPaths)
           const approval = parent.events.find(row => row.type === 'approval/asked')!
-          const payload = JSON.parse(approval.data.reason.slice(approval.data.reason.indexOf('\n') + 1)) as {
+          const reason = approval.data.reason
+          if (reason === undefined) throw new Error('Gate C approval must explain its baseline')
+          const payload = JSON.parse(reason.slice(reason.indexOf('\n') + 1)) as {
             allowed_paths: string[]
             excluded_paths: string[]
           }
@@ -156,11 +158,13 @@ describe('installed Conductor through the headless example', () => {
           // handles it; serialized Windows paths otherwise have extra escaping.
           const fixtureLog = index === 0 ? [JSON.stringify(parent.header), ...parent.events.map((event) => {
             if (event.type !== 'approval/asked') return JSON.stringify(event)
-            const separator = event.data.reason.indexOf('\n')
-            const payload = event.data.reason.slice(separator + 1)
+            const reason = event.data.reason
+            if (reason === undefined) throw new Error('Gate C approval must explain its baseline')
+            const separator = reason.indexOf('\n')
+            const payload = reason.slice(separator + 1)
             const normalizedPayload = JSON.parse(normalizeSessionLog(JSON.stringify(JSON.parse(payload)), context)) as unknown
             return JSON.stringify({ ...event, data: { ...event.data,
-              reason: `${event.data.reason.slice(0, separator)}\n${JSON.stringify(normalizedPayload, null, 2)}`,
+              reason: `${reason.slice(0, separator)}\n${JSON.stringify(normalizedPayload, null, 2)}`,
             } })
           })].join('\n') + '\n' : log
           const normalized = scrubRequestHeaders(normalizeSessionLog(fixtureLog, context))
