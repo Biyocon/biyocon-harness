@@ -2417,8 +2417,8 @@ export interface Config {
   routeTasks?: boolean
   /** Fresh structured-output subagent provider (default `spawn`). */
   subagentProvider?: string
-  /** Default rework budget when a call names none (default 3). */
-  maxReworkCycles?: number
+  /** Maximum rework decisions per gate before escalation (default 2). */
+  maxReworkPerGate?: number
   /** Default Ralph round budget; 0 disables the Headsman sub-phase (default 0). */
   maxRalphRounds?: number
   /** Maximum serialized characters in one Ralph handoff (default 16384). */
@@ -2454,7 +2454,7 @@ export interface QualityCommandConfig {
 
 Depends on: [`QualityPolicyStage`](../packages/conductor/conductor/src/index.ts)
 
-Source: [`packages/conductor/tool-conductor/src/index.ts:68`](../packages/conductor/tool-conductor/src/index.ts)
+Source: [`packages/conductor/tool-conductor/src/index.ts:70`](../packages/conductor/tool-conductor/src/index.ts)
 
 <a id="deepseek-aidsh-tool-fs"></a>
 

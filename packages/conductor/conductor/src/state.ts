@@ -27,7 +27,7 @@ import type {
 import { executionBaselineHash, executionEffectProfile } from './quality.ts'
 
 /** Current pre-release durable Conductor record format. */
-export const CONDUCTOR_RECORD_FORMAT_VERSION = 1
+export const CONDUCTOR_RECORD_FORMAT_VERSION = 2
 
 /**
  * The initial, dispatch-ready run state. The run starts at `detective` with an
@@ -52,7 +52,7 @@ export interface CreateRunInput {
   constraints?: string[]
   /** The measurable criteria each gate's pass is judged against. */
   acceptanceCriteria?: string[]
-  /** Rework and Ralph round limits; defaults to `{ maxReworkCycles: 3, maxRalphRounds: 0 }`. */
+  /** Rework and Ralph round limits; defaults to `{ maxReworkPerGate: 2, maxRalphRounds: 0 }`. */
   budget?: ConductorBudget
 }
 
@@ -77,7 +77,7 @@ export function createRun(runId: ConductorRunId, input: CreateRunInput): Conduct
     acceptanceCriteria: [...(input.acceptanceCriteria ?? [])],
     budget:
       input.budget === undefined
-        ? { maxReworkCycles: 3, maxRalphRounds: 0 }
+        ? { maxReworkPerGate: 2, maxRalphRounds: 0 }
         : { ...input.budget },
     baselineHistory: [],
     baseline: null,
@@ -154,14 +154,15 @@ export function nextStageAfterPass(stage: ConductorStage): ConductorStage | unde
 }
 
 /**
- * How many rework decisions this run has already recorded.
+ * How many rework decisions this run has already recorded at one gate.
  * @param run - the run to count.
- * @returns the number of {@link GateRecord} entries with decision `rework`.
+ * @param gate - the gate whose independent budget is being checked.
+ * @returns the number of matching gate records with decision `rework`.
  */
-export function reworkCycles(run: ConductorRun): number {
+export function reworkCycles(run: ConductorRun, gate: GateId): number {
   let count = 0
   for (const record of run.history) {
-    if (record.decision === 'rework') count += 1
+    if (record.gate === gate && record.decision === 'rework') count += 1
   }
   return count
 }
@@ -193,7 +194,7 @@ export interface GateVerdict {
  * Record one gate decision against the run's current stage and advance state.
  * The gate letter is derived from {@link ConductorRun.currentStage}; a
  * specialist cannot name it. A `pass` advances along the linear pass path; a
- * `rework` within {@link ConductorBudget.maxReworkCycles} routes to the
+ * `rework` within {@link ConductorBudget.maxReworkPerGate} routes to the
  * supplied target; a `rework` past that budget is recorded as `escalate`
  * instead of silently reworking again.
  *
@@ -248,8 +249,11 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
       if (verdict.nextStage === undefined) {
         throw new Error(`Conductor gate ${gate} rework requires a rework target stage`)
       }
+      if (verdict.defectClass === 'report' && verdict.nextStage !== run.currentStage) {
+        throw new Error(`Conductor gate ${gate} report rework must return to its reporting stage`)
+      }
       nextStage = verdict.nextStage
-      if (reworkCycles(run) >= run.budget.maxReworkCycles) {
+      if (reworkCycles(run, gate) >= run.budget.maxReworkPerGate) {
         decision = 'escalate'
       }
       break
@@ -290,7 +294,9 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
     gate,
     stage: run.currentStage,
     decision,
-    basis: verdict.basis,
+    basis: verdict.decision === 'rework' && decision === 'escalate'
+      ? [...verdict.basis, `Gate ${gate} exhausted its ${run.budget.maxReworkPerGate} reworks per gate`]
+      : verdict.basis,
     evidenceReviewed: verdict.evidenceReviewed,
     stateUpdate: verdict.stateUpdate,
   }

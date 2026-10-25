@@ -14,7 +14,7 @@ import type { ConductorRun, ConductorStage, GateId, GateRecord, GateVerdict } fr
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
-    recordFormatVersion: 1,
+    recordFormatVersion: 2,
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -25,7 +25,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: [],
-    budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
+    budget: { maxReworkPerGate: 2, maxRalphRounds: 0 },
     baselineHistory: [],
     baseline: null,
     executionAuthorization: null,
@@ -58,7 +58,7 @@ describe('dsh-conductor gate engine', () => {
     const authority: ConductorRun['authority'] = { owner: 'user' }
     const constraints = ['no release']
     const acceptanceCriteria = ['coverage passes']
-    const budget = { maxReworkCycles: 2, maxRalphRounds: 1 }
+    const budget = { maxReworkPerGate: 2, maxRalphRounds: 1 }
     const run = createRun(ConductorRunId('CON-2026-0002'), {
       objective: 'cover the explicit input path',
       scope,
@@ -79,7 +79,7 @@ describe('dsh-conductor gate engine', () => {
     authority.owner = 'other'
     constraints.push('outside constraint')
     acceptanceCriteria.push('outside criterion')
-    budget.maxReworkCycles = 99
+    budget.maxReworkPerGate = 99
 
     expect(run).toMatchObject({
       scope: ['packages/conductor'],
@@ -90,7 +90,7 @@ describe('dsh-conductor gate engine', () => {
       authority: { owner: 'user' },
       constraints: ['no release'],
       acceptanceCriteria: ['coverage passes'],
-      budget: { maxReworkCycles: 2, maxRalphRounds: 1 },
+      budget: { maxReworkPerGate: 2, maxRalphRounds: 1 },
     })
 
     const defaulted = createRun(ConductorRunId('CON-2026-0003'), {
@@ -105,16 +105,16 @@ describe('dsh-conductor gate engine', () => {
       sourceBaseline: null,
       constraints: [],
       acceptanceCriteria: [],
-      budget: { maxReworkCycles: 3, maxRalphRounds: 0 },
+      budget: { maxReworkPerGate: 2, maxRalphRounds: 0 },
     })
     defaulted.scope.push('outside')
-    defaulted.budget.maxReworkCycles = 99
+    defaulted.budget.maxReworkPerGate = 99
     const secondDefaulted = createRun(ConductorRunId('CON-2026-0004'), {
       objective: 'prove defaults are per-run',
       authority: { owner: 'user' },
     })
     expect(secondDefaulted.scope).toEqual([])
-    expect(secondDefaulted.budget).toEqual({ maxReworkCycles: 3, maxRalphRounds: 0 })
+    expect(secondDefaulted.budget).toEqual({ maxReworkPerGate: 2, maxRalphRounds: 0 })
   })
 
   it('maps each gated stage to its gate letter and back', () => {
@@ -215,7 +215,7 @@ describe('dsh-conductor gate engine', () => {
       evidenceReviewed: ['verification report'],
       stateUpdate: 'fix implementation',
     })
-    expect(reworkCycles(next)).toBe(1)
+    expect(reworkCycles(next, 'E')).toBe(1)
     expect(next.history[0]).toMatchObject({ gate: 'E', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' })
     expect(next.currentStage).toBe('headsman')
     expect(next.status).toBe('rework')
@@ -245,9 +245,10 @@ describe('dsh-conductor gate engine', () => {
   it('escalates a rework once the rework budget is exhausted', () => {
     const run = makeRun({
       currentStage: 'auditor',
-      budget: { maxReworkCycles: 2, maxRalphRounds: 0 },
+      budget: { maxReworkPerGate: 2, maxRalphRounds: 0 },
       history: [
         gateRecord({ gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
+        gateRecord({ gate: 'E', stage: 'auditor', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
         gateRecord({ gate: 'E', stage: 'auditor', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
       ],
     })
@@ -261,7 +262,36 @@ describe('dsh-conductor gate engine', () => {
     })
     expect(next.history.at(-1)).toMatchObject({ gate: 'E', decision: 'escalate', nextStage: 'headsman' })
     expect(next.status).toBe('escalated')
-    expect(reworkCycles(next)).toBe(2)
+    expect(reworkCycles(next, 'E')).toBe(2)
+  })
+
+  it('allows the second rework at one gate despite two reworks at another gate, then escalates the third', () => {
+    expect(() => recordGate(makeRun({ currentStage: 'auditor' }), {
+      decision: 'rework', defectClass: 'report', nextStage: 'headsman', basis: ['invalid report'],
+      evidenceReviewed: [], stateUpdate: 'wrong report owner',
+    })).toThrow(/report rework must return to its reporting stage/)
+    const run = makeRun({
+      currentStage: 'auditor',
+      budget: { maxReworkPerGate: 2, maxRalphRounds: 4 },
+      history: [
+        gateRecord({ gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
+        gateRecord({ gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
+        gateRecord({ gate: 'E', stage: 'auditor', decision: 'rework', defectClass: 'report', nextStage: 'auditor' }),
+      ],
+    })
+    const repair = {
+      decision: 'rework' as const, defectClass: 'report' as const, nextStage: 'auditor' as const,
+      basis: ['repair Auditor envelope'], evidenceReviewed: [], stateUpdate: 'retry Auditor',
+    }
+    const second = recordGate(run, repair)
+    expect(second.status).toBe('rework')
+    expect(reworkCycles(second, 'D')).toBe(2)
+    expect(reworkCycles(second, 'E')).toBe(2)
+    expect(reworkCycles(second, 'A')).toBe(0)
+    const third = recordGate(second, repair)
+    expect(third.status).toBe('escalated')
+    expect(third.history.at(-1)?.basis).toContain('Gate E exhausted its 2 reworks per gate')
+    expect(third.budget.maxRalphRounds).toBe(4)
   })
 
   it('records an abort as terminal and stops at the current stage', () => {

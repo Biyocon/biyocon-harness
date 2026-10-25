@@ -3,7 +3,7 @@
 Create or resume this record before Detective. The Conductor owns it; specialists never mutate it directly.
 
 ```yaml
-record_format_version: 1
+record_format_version: 2
 run_id: CON-YYYY-NNNN
 objective: <concrete outcome>
 scope: []
@@ -15,7 +15,7 @@ authority:
 constraints: []
 acceptance_criteria: []
 budget:
-  max_rework_cycles: 3
+  max_rework_per_gate: 2
   max_ralph_rounds: 0
 source_baseline: null
 execution_baseline: null

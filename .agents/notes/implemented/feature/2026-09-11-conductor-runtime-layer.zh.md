@@ -61,7 +61,7 @@ interface ConductorRun {
   constraints: string[]
   acceptanceCriteria: string[]
   budget: {
-    maxReworkCycles: number
+    maxReworkPerGate: number
     maxRalphRounds: number
   }
   baseline: {
@@ -96,7 +96,7 @@ interface GateRecord {
   decision: 'pass' | 'rework' | 'escalate' | 'abort'
   basis: string[]
   evidenceReviewed: string[]
-  defectClass?: 'scope' | 'plan' | 'implementation' | 'delivery'
+  defectClass?: 'scope' | 'plan' | 'implementation' | 'delivery' | 'report'
   nextStage?: ConductorStage
   stateUpdate: string
 }
@@ -203,7 +203,7 @@ interface SpecialistEnvelope {
 }
 ```
 
-缺失或格式错误的 envelope 被视为 `blocked` 结果，而不是静默通过。
+[门禁稳健性决策](../bug-fix/2026-10-25-conductor-gate-robustness.md)将已完成但缺失或格式错误的报告，在按门禁预算内返回同一角色；权限和证据违规立即升级。被拒绝的报告绝不静默通过。
 
 ## Alternatives considered
 

@@ -18,7 +18,7 @@ describe('dsh-conductor routing', () => {
       ['delivery', 'integrator'],
     ]
     for (const [defectClass, stage] of pairs) {
-      expect(reworkTarget(defectClass)).toBe(stage)
+      expect(reworkTarget(defectClass, 'auditor')).toBe(stage)
     }
   })
 
@@ -26,6 +26,14 @@ describe('dsh-conductor routing', () => {
     expect(routeGate('A', 'ready')).toEqual({ decision: 'pass', nextStage: 'strategist' })
     expect(routeGate('D', 'ready')).toEqual({ decision: 'pass', nextStage: 'auditor' })
     expect(routeGate('G', 'ready')).toEqual({ decision: 'pass', nextStage: 'closeout' })
+  })
+
+  it('repairs malformed reports at their reporting role rather than the implementation owner', () => {
+    for (const stage of ['detective', 'devils-advocate', 'auditor', 'arbiter'] as const) {
+      expect(reworkTarget('report', stage)).toBe(stage)
+    }
+    expect(routeGate('C', 'rework', 'report')).toEqual({ decision: 'rework', defectClass: 'report', nextStage: 'devils-advocate' })
+    expect(routeGate('G', 'rework', 'report')).toEqual({ decision: 'rework', defectClass: 'report', nextStage: 'arbiter' })
   })
 
   it('routes a rework to the stage owning the defect class', () => {

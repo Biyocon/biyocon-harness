@@ -14,6 +14,10 @@
 
 Conductor 在每位专家完成后作出门禁决策，并在配置的预算内，将范围、设计、实现和交付问题分别退回 Detective、Strategist、Headsman 和 Integrator。分析任务仍经过 A–G，包括 Headsman 和 Gate C 的显式宿主批准；空 `allowedPaths` 不授权任何写入。系统没有专用的分析终止阶段。[路由决策](../../../.agents/notes/implemented/bug-fix/2026-10-25-conductor-mode-routing.md)记录这一限制及后续设计。
 
+`maxReworkPerGate` 是经验证的正安全整数，默认值为 2；随附预设也设置为 2。报告格式和 baseline 提案错误在该门禁预算内重试同一角色，包括 Arbiter 报告修复。专家 schema 省略 `allowedPaths` 和 `excludedPaths`；运行时插入该运行的所有者路径和排除项，不扩大权限。专家编写路径属于报告错误，伪造宿主绑定或权限则立即停止。Workflow 或传输故障在保存已完成宿主质量记录的检查点后传播，不编造专家 envelope 或门禁决策。只有已完成但没有有效报告的工作才进入报告修复。
+
+决策和阻塞结果包含 `runId`、已达 `stage`、生命周期状态、含理由的完整 `gateHistory`，以及从运行时门禁尝试推导的 `specialistsRan`，包括被拒绝的报告。运行创建前的错误明确说明没有启动 Conductor 运行；创建后的错误包含最后持久化运行状态及已确认启动但失败的子级，不编造门禁决策。这些诊断不将报告、受阻运行或 Arbiter GO 转变为执行权限。
+
 ## 已知限制与延期工作
 
 Skill 查找选择父 agent 的 scope key，因此其预设安装的角色和协议提供方不依赖任务工作区而保持可见。随附预设在挂载前验证这些资源；自定义组合必须提供完整的 skill catalog。
