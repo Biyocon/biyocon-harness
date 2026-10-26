@@ -57,7 +57,7 @@ export function installModeRouting(ctx: Context): void {
     const value = result.value
     const outcome = value !== null && typeof value === 'object' && !Array.isArray(value) ? value['result'] : undefined
     const completed = !result.isError && outcome !== null && typeof outcome === 'object' && !Array.isArray(outcome)
-      && outcome['kind'] === 'decision'
+      && (outcome['kind'] === 'decision' || outcome['kind'] === 'report')
     phases.set(exec.agent, completed ? 'complete' : 'stopped')
   })
 

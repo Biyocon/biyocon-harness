@@ -1,11 +1,12 @@
+import { toolAdmission } from './intake-fixtures.ts'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import {
   ConductorRunId, createRun, executionBaselineHash, executionEffectProfile,
   QualityCommandId, recordGate, SessionConductorRunStore,
 } from '@deepseek-ai/dsh-conductor'
-import type { ConductorRun, QualityCommandBinding } from '@deepseek-ai/dsh-conductor'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import type { ConductorAdmission, ConductorRun, CapturedReport, QualityCommandBinding } from '@deepseek-ai/dsh-conductor'
+import { CallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
@@ -188,6 +189,7 @@ async function setup(options: {
     ...options.workspace === false ? {} : { meta: { cwd: process.cwd() } },
   })
   session.append('turn/start', { turn: 1 })
+  session.append('user/message', createUserMessage({ content: [{ type: 'text', text: baseArgs.objective }], source: { kind: 'user' } }), { surfaceOp: 'append' })
   const parent = { ctx, session } as unknown as Agent
   return { ctx, engine, parent }
 }
@@ -202,7 +204,9 @@ function execute(ctx: Context, args: unknown, agent?: Agent) {
   })
 }
 
+const intakeArgs = { purpose: 'implementation', entry: 'detective', rationale: 'Explicit implementation mandate.' }
 const baseArgs = {
+  ...intakeArgs,
   objective: 'Repair Conductor CI.',
   scope: ['packages/conductor'],
   inputArtifacts: ['coverage.txt'],
@@ -213,6 +217,103 @@ const baseArgs = {
   acceptanceCriteria: ['focused checks pass'],
   authority: { owner: 'user' },
 }
+
+const { rationale: _intakeRationale, ...resumeArgs } = baseArgs
+
+function analysisResult(request: WorkflowStartRequest): WorkflowResult {
+  const prompt = (request.args as { prompt: string }).prompt
+  const arbiter = prompt.includes('Analysis record:\n')
+  const dispatch = JSON.parse(prompt.split(arbiter ? 'Analysis record:\n' : 'Dispatch package:\n')[1]!.split('\n\nReturn the structured result')[0]!) as {
+    run_id: string
+    stage: string
+    admission: ConductorAdmission
+    current_report: CapturedReport
+    report: CapturedReport
+    audit_hash: string
+    acceptance_criteria: string[]
+  }
+  if (dispatch.admission.purpose !== 'analysis') throw new Error('Expected analysis dispatch')
+  const ids = dispatch.admission.materials.map(material => material.id)
+  return { stopReason: 'completed', agentsStarted: 1, value: arbiter ? {
+    run_id: dispatch.run_id, purpose: 'analysis', candidate_hash: dispatch.report.hash, audit_hash: dispatch.audit_hash,
+    decision: 'accept', basis: ['An independent audit assessed this report.'], evidence_reviewed: [dispatch.report.hash], open_risks: [],
+  } : {
+    run_id: dispatch.run_id, purpose: 'analysis', stage: dispatch.stage, deliverable: dispatch.admission.deliverable,
+    status: 'ready', summary: `${dispatch.stage} reviewed the material.`, material_ids: ids, blockers: [], assumptions: [], limitations: [],
+    ...dispatch.stage === 'auditor' ? { candidate_hash: dispatch.current_report.hash } : { candidate: {
+      version: 'v1', deliverable: dispatch.admission.deliverable, content: 'A documentation gap was found. No tests were executed.',
+      criteria: dispatch.acceptance_criteria.map(criterion => ({ criterion, outcome: 'Assessed from the captured input.' })),
+      material_ids: ids, assumptions: [], limitations: ['Static review only.'],
+    } },
+  } }
+}
+
+describe('Conductor analysis tool admission and execution policy', () => {
+  it('runs fresh report sessions with no execution tools, contribution, Ralph or approval', async () => {
+    const h = await setup({ factory: analysisResult })
+    h.ctx.on('approval/request', () => { throw new Error('Analysis must never request approval') })
+    const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }, h.parent)
+    expect(result.isError, JSON.stringify(result)).toBe(false)
+    expect(result.value).toMatchObject({ status: 'reported', stage: 'report-complete', result: { kind: 'report' } })
+    expect(h.engine.requests).toHaveLength(3)
+    for (const request of h.engine.requests) {
+      expect(request.childToolFilter).toEqual({ allow: ['read', 'read_image', 'grep', 'glob'] })
+      expect(request.childToolContribution).toBeUndefined()
+      const attempt = (name: string) => request.childToolGuard!({ name } as never)
+      expect(attempt('read')).toBeUndefined()
+      expect(attempt('structured_output')).toBeUndefined()
+      for (const tool of ['write', 'bash', 'conductor_quality_check', 'approval', 'conductor']) expect(attempt(tool)).toMatch(/read-only/)
+    }
+    const tool = h.ctx.tools.get('conductor')!
+    const value = result.value
+    if (value === undefined) throw new Error('Expected a structured report result')
+    const rendered = tool.output.render({}, value)[0]
+    expect(rendered?.type).toBe('text')
+    expect(rendered?.type === 'text' ? rendered.text : '').toContain('report')
+    const runId = (result.value as { runId: string }).runId
+    const repeated = await execute(h.ctx, { ...resumeArgs, purpose: 'analysis', deliverable: 'answer', runId }, h.parent)
+    expect(JSON.stringify(repeated)).toContain('terminal')
+  })
+
+  it('rejects a changed admission on resume and reuses captured material without rereading it', async () => {
+    const h = await setup({ factory: () => { throw new Error('interrupted before the child') } })
+    const args = { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }
+    await execute(h.ctx, args, h.parent)
+    const checkpoint = h.parent.session.events.findLast(event => event.type === 'conductor/checkpoint')!
+    const run = JSON.parse(checkpoint.data.record!) as ConductorRun
+    const again = { ...resumeArgs, purpose: 'analysis', deliverable: 'answer', runId: run.runId }
+    for (const changed of [{ ...again, entry: 'strategist' }, { ...again, purpose: 'implementation' },
+      { ...again, rationale: 'Reclassify' }, { ...again, materialFiles: [] }, { ...again, scopeSources: [] },
+      { ...again, plan: [] }, { ...again, planSources: [] }, { ...again, deliverable: 'recommendations' }]) {
+      expect(JSON.stringify(await execute(h.ctx, changed, h.parent))).toMatch(/immutable admission|reuses captured admission/)
+    }
+    h.engine.factory = analysisResult
+    const resumed = await execute(h.ctx, again, h.parent)
+    expect(resumed.isError, JSON.stringify(resumed)).toBe(false)
+    expect(resumed.value).toMatchObject({ status: 'reported' })
+  })
+
+  it('enforces positive material limits and the serialized admission limit', async () => {
+    for (const name of ['maxMaterialFiles', 'maxMaterialBytes', 'maxMaterialTotalBytes']) {
+      await expect(setup({ config: { subagentProvider: 'fresh', [name]: 0 } })).rejects.toThrow(/expected number >= 1/)
+      const ctx = await services()
+      expect(() =>{  toolConductor.apply(ctx, { subagentProvider: 'fresh', [name]: 0 }) }).toThrow(/positive safe integer/)
+    }
+    const h = await setup({ config: { subagentProvider: 'fresh', maxMaterialTotalBytes: 550 } })
+    const result = await execute(h.ctx, { ...baseArgs, rationale: 'large rationale '.repeat(60).trim() }, h.parent)
+    expect(JSON.stringify(result)).toContain('admission exceeds')
+    expect(h.engine.requests).toEqual([])
+  })
+
+  it('admits supplied scope and plan selectors on new runs', async () => {
+    const h = await setup({ factory: analysisResult })
+    const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', entry: 'devils-advocate', deliverable: 'answer',
+      scopeSources: ['current-request'], plan: ['Review the supplied task.'], planSources: ['current-request'],
+    }, h.parent)
+    expect(result.isError, JSON.stringify(result)).toBe(false)
+    expect(h.engine.requests).toHaveLength(3)
+  })
+})
 
 describe('dsh-tool-conductor unit boundary', () => {
   it('rejects specialist-written paths, retries Gate C, and binds only owner paths to the approved baseline', async () => {
@@ -232,7 +333,7 @@ describe('dsh-tool-conductor unit boundary', () => {
     expect(result.isError, JSON.stringify(result)).toBe(false)
     expect(result.value).toMatchObject({ status: 'awaiting_authorization', result: { run: {
       specialistsRan: ['detective', 'strategist', 'devils-advocate', 'headsman', 'auditor', 'integrator', 'arbiter'],
-      gateHistory: expect.arrayContaining([expect.objectContaining({ gate: 'C', decision: 'rework', defectClass: 'report' })]) as unknown,
+      gateHistory: expect.arrayContaining([expect.objectContaining({ kind: 'evaluated', gate: 'C', decision: 'rework', defectClass: 'report' })]) as unknown,
     } } })
     expect(engine.requests.filter(request => (request.args as { label?: string }).label === 'conductor-devils-advocate')).toHaveLength(2)
     const checkpoint = parent.session.events.filter(event => event.type === 'conductor/checkpoint').at(-1)!
@@ -259,9 +360,9 @@ describe('dsh-tool-conductor unit boundary', () => {
     expect(result.value).toMatchObject({ status: 'escalated', result: { run: {
       stage: 'devils-advocate', specialistsRan: ['detective', 'strategist', 'devils-advocate'],
       gateHistory: expect.arrayContaining([
-        expect.objectContaining({ gate: 'A', decision: 'pass' }),
-        expect.objectContaining({ gate: 'C', decision: 'rework' }),
-        expect.objectContaining({ gate: 'C', decision: 'escalate', basis: expect.arrayContaining(['Gate C exhausted its 2 reworks per gate']) as unknown }),
+        expect.objectContaining({ kind: 'evaluated', gate: 'A', decision: 'pass' }),
+        expect.objectContaining({ kind: 'evaluated', gate: 'C', decision: 'rework' }),
+        expect.objectContaining({ kind: 'evaluated', gate: 'C', decision: 'escalate', basis: expect.arrayContaining(['Gate C exhausted its 2 reworks per gate']) as unknown }),
       ]) as unknown,
     } } })
     expect(JSON.stringify(result.content)).toContain('specialistsRan')
@@ -336,9 +437,9 @@ describe('dsh-tool-conductor unit boundary', () => {
     const result = await execute(ctx, baseArgs, parent)
     expect(result.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked', run: {
       gateHistory: [
-        expect.objectContaining({ gate: 'A', decision: 'pass' }),
-        expect.objectContaining({ gate: 'B', decision: 'pass' }),
-        expect.objectContaining({ gate: 'C', decision: 'escalate' }),
+        expect.objectContaining({ kind: 'evaluated', gate: 'A', decision: 'pass' }),
+        expect.objectContaining({ kind: 'evaluated', gate: 'B', decision: 'pass' }),
+        expect.objectContaining({ kind: 'evaluated', gate: 'C', decision: 'escalate' }),
       ] as unknown,
     } } })
     expect(engine.requests).toHaveLength(3)
@@ -417,7 +518,7 @@ describe('dsh-tool-conductor unit boundary', () => {
       { requiredGates: ['E', 'D'] },
     ]) {
       const { ctx, parent, engine } = await setup({ config: { subagentProvider: 'fresh', qualityCommands: [command] } })
-      let run = createRun(ConductorRunId('CON-2026-0042'), baseArgs)
+      let run = createRun(ConductorRunId('CON-2026-0042'), { ...baseArgs, admission: toolAdmission() })
       const pass = { decision: 'pass' as const, basis: ['verified'], evidenceReviewed: ['review'], stateUpdate: 'advance' }
       run = recordGate(recordGate(run, pass), pass)
       const baseline = {
@@ -430,7 +531,7 @@ describe('dsh-tool-conductor unit boundary', () => {
         executionBaselineHash: hash, effectProfile: executionEffectProfile(baseline),
       } }, { ...pass, executionBaselineHash: hash })
       await new SessionConductorRunStore(parent.session, () => Promise.resolve()).save(run)
-      const result = await execute(ctx, { ...baseArgs, runId: run.runId }, parent)
+      const result = await execute(ctx, { ...resumeArgs, runId: run.runId }, parent)
       expect(result.isError).toBe(true)
       expect((result.content[0] as { text: string }).text).toMatch(/no longer configured|resume is refused/)
       expect(engine.requests).toHaveLength(0)
@@ -487,10 +588,10 @@ describe('dsh-tool-conductor unit boundary', () => {
     if (tool?.presentCall === undefined || tool.presentResult === undefined || tool.output?.render === undefined) {
       throw new Error('Conductor tool presentation must be registered')
     }
-    expect(tool.presentCall({ objective: 'Repair it.' })).toEqual({
+    expect(tool.presentCall({ ...intakeArgs, objective: 'Repair it.' })).toEqual({
       card: 'generic', title: 'conductor', rawInput: 'Repair it.',
     })
-    expect(tool.presentResult({ objective: 'Repair it.' }, { content: [], isError: false })).toEqual({ card: 'generic' })
+    expect(tool.presentResult({ ...intakeArgs, objective: 'Repair it.' }, { content: [], isError: false })).toEqual({ card: 'generic' })
     expect(tool.output.render({}, { result: { kind: 'blocked', blocker: 'owner input' } })[0]).toMatchObject({
       type: 'text', text: 'Conductor run blocked: owner input',
     })
@@ -499,11 +600,10 @@ describe('dsh-tool-conductor unit boundary', () => {
     })
 
     const runId = (result.value as { runId: string }).runId
-    const waiting = await execute(ctx, { ...baseArgs, runId }, parent)
+    const waiting = await execute(ctx, { ...resumeArgs, runId }, parent)
     expect(waiting.value).toMatchObject({ result: { kind: 'blocked' } })
     const closed = await execute(ctx, {
-      ...baseArgs,
-      runId,
+      ...resumeArgs, runId,
       closeoutAuthorization: {
         authorizedBy: 'user', action: 'record-only', actionsTaken: ['recorded'], outcomeEvidence: ['Gate G'],
         unverifiedItems: [], openRisks: [], followUp: [],
@@ -572,7 +672,7 @@ describe('dsh-tool-conductor unit boundary', () => {
   it('defaults omitted lists and rejects a missing durability listener', async () => {
     const { ctx, parent } = await setup({ flush: false })
     const result = await execute(ctx, {
-      objective: 'Use defaults.',
+      ...intakeArgs, objective: 'Use defaults.',
       authority: { owner: 'user' },
     }, parent)
     expect(result.isError).toBe(true)
@@ -585,12 +685,12 @@ describe('dsh-tool-conductor unit boundary', () => {
     if (created.isError) throw new Error('expected initial run')
     const runId = (created.value as { runId: string }).runId
     const cases: Array<[unknown, RegExp]> = [
-      [{ ...baseArgs, runId: 'bad' }, /not a valid/],
-      [{ ...baseArgs, runId: 'CON-9999-9999' }, /not found/],
-      [{ ...baseArgs, runId, objective: 'Different.' }, /objective does not match/],
-      [{ ...baseArgs, runId, authority: { owner: 'other' } }, /authority does not match/],
-      [{ ...baseArgs, runId, allowedPaths: [] }, /allowedPaths do not match/],
-      [{ ...baseArgs, runId, excludedPaths: ['private'] }, /excludedPaths do not match/],
+      [{ ...resumeArgs, runId: 'bad' }, /not a valid/],
+      [{ ...resumeArgs, runId: 'CON-9999-9999' }, /not found/],
+      [{ ...resumeArgs, runId, objective: 'Different.' }, /objective does not match/],
+      [{ ...resumeArgs, runId, authority: { owner: 'other' } }, /authority does not match/],
+      [{ ...resumeArgs, runId, allowedPaths: [] }, /allowedPaths do not match/],
+      [{ ...resumeArgs, runId, excludedPaths: ['private'] }, /excludedPaths do not match/],
     ]
     for (const [args, message] of cases) {
       const result = await execute(ctx, args, parent)
@@ -618,7 +718,7 @@ describe('dsh-tool-conductor unit boundary', () => {
       factory: () => ({ stopReason: 'completed', agentsStarted: 1, value: null }),
     })
     const unestablishedResult = await execute(unestablished.ctx, {
-      objective: 'Establish the baseline.', authority: { owner: 'user' },
+      ...intakeArgs, objective: 'Establish the baseline.', authority: { owner: 'user' },
     }, unestablished.parent)
     expect(unestablishedResult.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked' } })
 
@@ -637,6 +737,7 @@ describe('dsh-tool-conductor unit boundary', () => {
       factory: () => ({ stopReason: 'error', error: 'child failed', agentsStarted: 1, value: null }),
     })
     const result = await execute(failed.ctx, {
+      ...intakeArgs,
       objective: 'Stop a failed child before establishing a baseline.', authority: { owner: 'user' },
     }, failed.parent)
     expect(result.isError).toBe(true)
@@ -650,7 +751,7 @@ describe('dsh-tool-conductor unit boundary', () => {
   it('retries a colliding minted id and rejects early closeout authorization', async () => {
     const collision = await setup()
     const load = vi.spyOn(SessionConductorRunStore.prototype, 'load')
-      .mockResolvedValueOnce(createRun(ConductorRunId('CON-2026-9999'), {
+      .mockResolvedValueOnce(createRun(ConductorRunId('CON-2026-9999'), { admission: toolAdmission(),
         objective: 'occupied', authority: { owner: 'user' },
       }))
     const created = await execute(collision.ctx, baseArgs, collision.parent)
@@ -660,13 +761,13 @@ describe('dsh-tool-conductor unit boundary', () => {
 
     const running = await setup()
     const runId = ConductorRunId('CON-2026-0042')
-    const run = createRun(runId, {
+    const run = createRun(runId, { admission: toolAdmission(),
       objective: 'Reject premature closeout.',
       authority: { owner: 'user' },
     })
     await new SessionConductorRunStore(running.parent.session, () => Promise.resolve()).save(run)
     const premature = await execute(running.ctx, {
-      objective: run.objective,
+      purpose: 'implementation', entry: 'detective', objective: run.objective,
       runId,
       authority: run.authority,
       closeoutAuthorization: {

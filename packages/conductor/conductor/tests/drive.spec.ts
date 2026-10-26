@@ -1,3 +1,4 @@
+import { implementationAdmission } from './intake-fixtures.ts'
 import { describe, expect, it } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import {
@@ -26,7 +27,8 @@ const QUALITY_BINDING: QualityCommandBinding = {
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
-    recordFormatVersion: 2,
+    recordFormatVersion: 3,
+    admission: implementationAdmission(), repairReturns: [], analysisReports: [], reportCandidates: [],
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -107,7 +109,7 @@ function makeDecision(decision: 'go' | 'no-go' = 'go'): DecisionRecord {
 function dispatcherFor(envelope: unknown, decision: unknown = makeDecision()): ConductorDispatcher {
   return {
     authorizeExecution: authorize,
-    async dispatchSpecialist() { return envelope as SpecialistEnvelope },
+    async dispatchSpecialist() { return envelope },
     async dispatchArbiter() { return decision },
   }
 }
@@ -286,7 +288,7 @@ describe('dsh-conductor drive', () => {
     expect(dispatched).toEqual(['detective', 'strategist', 'devils-advocate'])
     expect(outcome.run.baseline).toBeNull()
     expect(outcome.run.executionAuthorization).toBeNull()
-    expect(outcome.run.history.at(-1)).toMatchObject({ gate: 'C', decision: 'escalate' })
+    expect(outcome.run.history.at(-1)).toMatchObject({ kind: 'evaluated', gate: 'C', decision: 'escalate' })
   })
 
   it('turns unavailable or mismatched Gate C authorization into a controlled blocker', async () => {
@@ -313,7 +315,7 @@ describe('dsh-conductor drive', () => {
         async dispatchArbiter() { return makeDecision('go') },
       })
       expect(outcome.kind).toBe('blocked')
-      expect(outcome.run.history.at(-1)).toMatchObject({ gate: 'C', decision: 'escalate' })
+      expect(outcome.run.history.at(-1)).toMatchObject({ kind: 'evaluated', gate: 'C', decision: 'escalate' })
       expect(outcome.run.baseline).toBeNull()
     }
   })
@@ -389,7 +391,7 @@ describe('dsh-conductor drive', () => {
           baseline_ref: 'HEAD',
           evidence: [], findings: [], assumptions: [], blockers: [], artifacts: [], change_requests: [],
           recommended_transition: { target: 'strategist', rationale: '' }, confidence: 'high',
-        } as unknown as SpecialistEnvelope
+        }
       },
       async dispatchArbiter() { return makeDecision('go') },
     }

@@ -22,7 +22,7 @@ Status: implemented
 
 `maxReworkPerGate` 取代整次运行预算。它是经验证的正安全整数；工具默认值和随附预设均为 2。`reworkCycles(run, gate)` 只计算 `GateRecord.gate` 匹配且决策为 rework 的历史记录。同一门禁允许两次返工，下一次请求转为 escalate，并在记录理由中注明已耗尽限制。其他门禁保持独立。Ralph Round 保持其单独的现有限制。
 
-记录格式 2 保存重命名预算和 `report` 缺陷路由。解析器拒绝过时记录版本、已移除预算字段、超出各门禁限制的返工，以及被路由到另一角色的报告修复。不通过兼容层翻译旧的未完成运行。#30 设计可在此布局之后分配下一格式；此处不实现 intake 选择、分析终止、界面元数据或源码启动生成。
+记录格式 3 保留逐 gate 预算和 `report` 缺陷路由，并加入[准入与报告完成](../feature/2026-10-25-conductor-intake-and-report-completion.md)。解析器明确拒绝版本 2 及更旧记录、已移除预算字段、超额逐 gate 返工和返回其他角色的报告修复，没有兼容层。Intake、分析终态、UI 元数据和 source-launch 生成不属于本预算决策；后两项仍未在此实现。
 
 ### 结果证据
 

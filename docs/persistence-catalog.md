@@ -403,7 +403,7 @@ Source: [`packages/compaction/compaction/src/types.ts:33`](../packages/compactio
 'conductor/checkpoint': ConductorCheckpointData
 ```
 
-Source: [`packages/conductor/conductor/src/persistence.ts:49`](../packages/conductor/conductor/src/persistence.ts)
+Source: [`packages/conductor/conductor/src/persistence.ts:52`](../packages/conductor/conductor/src/persistence.ts)
 
 ### `feedback/*`
 

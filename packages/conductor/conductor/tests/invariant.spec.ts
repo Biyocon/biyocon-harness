@@ -1,3 +1,4 @@
+import { implementationAdmission } from './intake-fixtures.ts'
 import { Context } from '@deepseek-ai/cordis'
 import InvariantRegistry, { InvariantError } from '@deepseek-ai/dsh-invariants'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
@@ -6,7 +7,7 @@ import * as ConductorInvariant from '../src/invariant.ts'
 import { ConductorRunId, createRun, serializeRun } from '../src/index.ts'
 
 function record(runId = ConductorRunId('CON-2026-0001')): string {
-  return serializeRun(createRun(runId, {
+  return serializeRun(createRun(runId, { admission: implementationAdmission(),
     objective: 'validate durable checkpoints',
     authority: { owner: 'user' },
   }))

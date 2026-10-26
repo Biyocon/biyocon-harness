@@ -18,9 +18,7 @@ The tool description names the supervisor, seven fresh specialists, gate decisio
 
 ### Analysis tasks and the stage model
 
-Analysis has no separate successful terminal state. It follows Detective, Strategist, Devil's Advocate, Gate-C host approval, Headsman, Auditor, Integrator, and Arbiter. Empty `allowedPaths` produce a read-only effect profile and no write tools for Headsman or Integrator. A full analysis can reach the ordinary Arbiter decision using reports without file changes if each role satisfies its stage; roles that require unavailable implementation input or a denied Gate-C approval instead return a blocker. The parent reports that limitation rather than doing the analysis itself. This routing change does not promise analysis-only completion or skip implementation stages.
-
-A future design can add an explicit read-only objective kind with a reviewed analysis deliverable and an analysis-specific transition to independent evaluation and Arbiter. That requires an owner-approved stage/report and persistence design, including completion criteria and snapshots; it is not implemented here. The current stages, host approval, rework budgets, Ralph rounds, and closeout authorization remain unchanged.
+Analysis uses the purpose/deliverable-specific routes and terminal `reported` result owned by the [intake and read-only report decision](../feature/2026-10-25-conductor-intake-and-report-completion.md), without implementation stages or Gate C approval. Parent routing treats a report, GO and a blocker alike: report the result without executing tools. Implementation retains its existing host approval and separate closeout authorization.
 
 ## Alternatives considered
 

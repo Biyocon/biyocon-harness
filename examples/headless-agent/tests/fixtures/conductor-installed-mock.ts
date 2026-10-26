@@ -1,5 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { CallId, LlmAdapter, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { CapturedReport, ConductorAdmission } from '@deepseek-ai/dsh-conductor'
 
 function* call(name: string, value: unknown): Generator<StreamChunk> {
   const id = CallId(`installed-${name}`)
@@ -13,8 +14,14 @@ function* call(name: string, value: unknown): Generator<StreamChunk> {
 /** Stop after a real Detective read, before any write-capable stage. */
 class InstalledConductorAdapter extends LlmAdapter {
   private gateCAttempts = 0
+  private reportVersions = 0
 
   async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    const intake = process.env['DSH_CONDUCTOR_INTAKE_SCENARIO']
+    if (intake !== undefined) {
+      yield* this.intakeScenario(options, intake)
+      return
+    }
     const scenario = process.env['DSH_CONDUCTOR_GATE_SCENARIO']
     if (scenario !== undefined) {
       yield* this.gateScenario(options, scenario)
@@ -57,6 +64,7 @@ class InstalledConductorAdapter extends LlmAdapter {
         return
       }
       yield* call('conductor', {
+        purpose: 'implementation', entry: 'detective', rationale: 'Exercise the installed Detective before execution.',
         objective: 'Analyze probe.txt and report the three most important improvements. Do not modify files.',
         sourceBaseline: 'HEAD', authority: { owner: 'snapshot-user' },
         scope: ['probe.txt'],
@@ -125,6 +133,7 @@ class InstalledConductorAdapter extends LlmAdapter {
     if (result?.isError === true) throw new Error(`Conductor fixture failed: ${JSON.stringify(result)}`)
     if (result === undefined) {
       yield* call('conductor', {
+        purpose: 'implementation', entry: 'detective', rationale: 'Verify owner path handling through the implementation route.',
         objective: 'Check Gate C report repair and preserve the owner paths. Do not change files.',
         sourceBaseline: 'HEAD', authority: { owner: 'snapshot-user' },
         scope: ['probe.txt'], allowedPaths: ['owner-allowed'], excludedPaths: ['owner-allowed/protected'],
@@ -133,6 +142,92 @@ class InstalledConductorAdapter extends LlmAdapter {
       return
     }
     yield* text('Conductor returned its recorded gate history and final status.')
+  }
+
+  private * intakeScenario(options: GenerateOptions, scenario: string): Generator<StreamChunk> {
+    const child = options.tools?.some(tool => tool.name === 'structured_output') === true
+    const result = options.messages.at(-1)?.content.find(block => block.type === 'tool-result')
+    if (child) {
+      if (result?.toolCallId === 'installed-structured_output') {
+        yield* text('The specialist returned its report to Conductor.')
+        return
+      }
+      const source = options.messages.flatMap(message => message.content)
+        .find(block => block.type === 'text' && (block.text.includes('Dispatch package:\n') || block.text.includes('Analysis record:\n')))
+      if (source?.type !== 'text') throw new Error('No typed Conductor dispatch in fixture')
+      const arbiter = source.text.includes('Analysis record:\n')
+      const json = source.text.split(arbiter ? 'Analysis record:\n' : 'Dispatch package:\n')[1]!.split('\n\nReturn the structured result')[0]!
+      const input = JSON.parse(json) as {
+        run_id: string
+        stage: string
+        admission: ConductorAdmission
+        current_report: CapturedReport | null
+        report: CapturedReport
+        audit_hash: string
+        acceptance_criteria: string[]
+      }
+      if (input.admission.purpose !== 'analysis') throw new Error('Fixture expects an analysis dispatch')
+      if (arbiter) {
+        yield* call('structured_output', {
+          run_id: input.run_id, purpose: 'analysis', candidate_hash: input.report.hash, audit_hash: input.audit_hash,
+          decision: 'accept', basis: ['The independent audit reviewed the exact report and its sources.'],
+          evidence_reviewed: [input.report.hash, input.audit_hash], open_risks: ['Static review is not command verification.'],
+        })
+        return
+      }
+      if (scenario === 'authority' && input.stage === 'strategist' && result === undefined) {
+        // Deliberately attempt a hidden tool: the real executor must refuse it.
+        yield* call('write', { file_path: 'plan.md', content: 'UNAUTHORIZED_REPLACEMENT' })
+        return
+      }
+      if (scenario === 'authority' && input.stage === 'strategist' && result?.isError !== true) {
+        throw new Error('An analysis write unexpectedly succeeded')
+      }
+      const ids = input.admission.materials.map(material => material.id)
+      const producer = input.admission.entry === 'detective' && input.admission.deliverable === 'recommendations'
+        ? 'strategist' : input.admission.entry
+      const rework = scenario === 'rework' && input.stage === 'devils-advocate' && this.gateCAttempts++ === 0
+      const blocked = scenario === 'authority' && input.stage === 'strategist'
+      yield* call('structured_output', {
+        run_id: input.run_id, purpose: 'analysis', stage: input.stage, deliverable: input.admission.deliverable,
+        status: blocked ? 'blocked' : rework ? 'rework' : 'ready',
+        summary: blocked ? 'The analysis write was refused; no implementation or approval occurred.'
+          : rework ? 'The supplied plan needs a planning repair.' : `${input.stage} assessed the captured owner material.`,
+        material_ids: ids, blockers: blocked ? ['Read-only analysis cannot implement recommendations.'] : [],
+        assumptions: [], limitations: ['Static analysis only; no commands were run.'],
+        ...rework ? { defect: 'plan' } : {},
+        ...input.stage === 'auditor' ? { candidate_hash: input.current_report!.hash } : {},
+        ...input.stage === producer && !rework && !blocked ? { candidate: {
+          version: `report-${++this.reportVersions}`, deliverable: input.admission.deliverable,
+          content: input.admission.deliverable === 'recommendations'
+            ? '1. Document ownership first because it removes ambiguity. 2. Add examples next because they make the plan reviewable.'
+            : 'The supplied plan has a clear scope but needs explicit ownership. This is a report, not implementation approval.',
+          criteria: input.acceptance_criteria.map(criterion => ({ criterion, outcome: 'Assessed from the captured input.' })),
+          material_ids: ids, assumptions: [], limitations: ['No implementation or test verification was performed.'],
+        } } : {},
+      })
+      return
+    }
+    if (result === undefined) {
+      const later = ['plan', 'rework'].includes(scenario)
+      yield* call('conductor', {
+        purpose: 'analysis', entry: scenario === 'forbidden' ? 'auditor' : later ? 'devils-advocate' : 'detective',
+        deliverable: ['recommendations', 'authority'].includes(scenario) ? 'recommendations' : 'answer',
+        rationale: later ? 'The owner supplied a plan for review.' : 'Answer or recommend improvements from the current request.',
+        objective: 'Analyze the supplied plan.md and report the findings without modifying files.',
+        scope: ['plan.md'], scopeSources: ['current-request'], materialFiles: ['plan.md'],
+        ...later ? { plan: ['Review the supplied plan.'], planSources: ['plan.md'] } : {},
+        authority: { owner: 'snapshot-user' }, acceptanceCriteria: ['Answer the owner task using the supplied evidence.'],
+      })
+      return
+    }
+    if (scenario === 'answer') {
+      if (result.toolCallId === 'installed-conductor' && !result.isError) { yield* call('read', { file_path: 'plan.md' }); return }
+      if (result.toolCallId === 'installed-read' && result.isError) { yield* call('write', { file_path: 'plan.md', content: 'NO' }); return }
+      if (result.toolCallId === 'installed-write' && result.isError) { yield* call('conductor', {}); return }
+      if (!result.isError) throw new Error('Parent analysis fallback unexpectedly succeeded')
+    } else if (result.isError && scenario !== 'forbidden') throw new Error(`Unexpected intake failure: ${JSON.stringify(result)}`)
+    yield* text('Conductor returned its recorded report or explicit rejection; no implementation was performed.')
   }
 }
 

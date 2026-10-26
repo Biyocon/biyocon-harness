@@ -909,7 +909,10 @@ describe('headless stream-json snapshots', () => {
           })
           .join('\n')
         const stageLog = (stage: string): PersistedLog => {
-          const match = children.find(child => promptText(child).includes(`"stage": "${stage}",\n  "objective"`))
+          const match = children.find((child) => {
+            const dispatch = promptText(child).split('Dispatch package:\n')[1]?.split('\n\nReturn the structured result')[0]?.split('\n\nHeadsman-internal Ralph result')[0]
+            return dispatch !== undefined && (JSON.parse(dispatch) as { stage: string }).stage === stage
+          })
           if (match === undefined) throw new Error(`missing Conductor ${stage} child log`)
           return match
         }

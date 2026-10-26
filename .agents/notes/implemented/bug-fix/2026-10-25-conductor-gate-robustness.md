@@ -22,7 +22,7 @@ Identity, assessed-source, routing, quality-evidence, or authority violations es
 
 `maxReworkPerGate` replaces the total-run budget. It is a validated positive safe integer; both the tool default and shipped preset use 2. `reworkCycles(run, gate)` counts only history records whose `GateRecord.gate` matches and decision is rework. Two reworks at one gate are allowed; its next requested rework becomes escalate with the exhausted limit in the recorded basis. Other gates remain independent. Ralph rounds retain their separate existing limit.
 
-Record format 2 stores the renamed budget and `report` defect routing. The parser rejects obsolete record versions, removed budget fields, excess per-gate reworks, and a report repair routed to another role. No compatibility layer translates unfinished old runs. The #30 design can allocate its next format after this layout; no intake selection, analysis terminal, UI metadata, or source-launch generation is implemented here.
+Record format 3 retains the per-gate budget and report-defect routing alongside [intake and report completion](../feature/2026-10-25-conductor-intake-and-report-completion.md). The parser rejects format 2 and older records, removed budget fields, excess per-gate reworks and report repair routed to another role, without compatibility migration. Intake, analysis terminal, UI metadata and source-launch generation are separate decisions; the latter two remain outside this work.
 
 ### Outcome evidence
 

@@ -2,21 +2,77 @@
   {
     "kind": "chunks",
     "chunks": [
-      { "type": "block-start", "index": 0, "blockType": "tool-call" },
-      { "type": "tool-call-delta", "index": 0, "id": "call_conductor_quality", "name": "conductor", "argumentsDelta": "{\"objective\":\"Verify bounded quality execution through every Conductor gate.\",\"scope\":[\"packages/conductor\"],\"allowedPaths\":[\".\"],\"sourceBaseline\":\"HEAD\",\"acceptanceCriteria\":[\"Headsman and Auditor produce independent passing quality evidence\"],\"authority\":{\"owner\":\"snapshot-owner\"}}" },
-      { "type": "block-end", "index": 0, "block": { "type": "tool-call", "id": "call_conductor_quality", "name": "conductor", "arguments": "{\"objective\":\"Verify bounded quality execution through every Conductor gate.\",\"scope\":[\"packages/conductor\"],\"allowedPaths\":[\".\"],\"sourceBaseline\":\"HEAD\",\"acceptanceCriteria\":[\"Headsman and Auditor produce independent passing quality evidence\"],\"authority\":{\"owner\":\"snapshot-owner\"}}" } },
-      { "type": "usage", "usage": { "inputTokens": 20, "outputTokens": 8 } },
-      { "type": "finish", "reason": { "kind": "tool-calls" } }
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "tool-call-delta",
+        "index": 0,
+        "id": "call_conductor_quality",
+        "name": "conductor",
+        "argumentsDelta": "{\"purpose\":\"implementation\",\"entry\":\"detective\",\"rationale\":\"Exercise the implementation workflow with an explicit owner mandate.\",\"objective\":\"Verify bounded quality execution through every Conductor gate.\",\"scope\":[\"packages/conductor\"],\"allowedPaths\":[\".\"],\"sourceBaseline\":\"HEAD\",\"acceptanceCriteria\":[\"Headsman and Auditor produce independent passing quality evidence\"],\"authority\":{\"owner\":\"snapshot-owner\"}}"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call_conductor_quality",
+          "name": "conductor",
+          "arguments": "{\"purpose\":\"implementation\",\"entry\":\"detective\",\"rationale\":\"Exercise the implementation workflow with an explicit owner mandate.\",\"objective\":\"Verify bounded quality execution through every Conductor gate.\",\"scope\":[\"packages/conductor\"],\"allowedPaths\":[\".\"],\"sourceBaseline\":\"HEAD\",\"acceptanceCriteria\":[\"Headsman and Auditor produce independent passing quality evidence\"],\"authority\":{\"owner\":\"snapshot-owner\"}}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 20,
+          "outputTokens": 8
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
     ]
   },
   {
     "kind": "chunks",
     "chunks": [
-      { "type": "block-start", "index": 0, "blockType": "text" },
-      { "type": "text-delta", "index": 0, "text": "CONDUCTOR QUALITY SNAPSHOT COMPLETE" },
-      { "type": "block-end", "index": 0, "block": { "type": "text", "text": "CONDUCTOR QUALITY SNAPSHOT COMPLETE" } },
-      { "type": "usage", "usage": { "inputTokens": 30, "outputTokens": 4 } },
-      { "type": "finish", "reason": { "kind": "stop" } }
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "text"
+      },
+      {
+        "type": "text-delta",
+        "index": 0,
+        "text": "CONDUCTOR QUALITY SNAPSHOT COMPLETE"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "text",
+          "text": "CONDUCTOR QUALITY SNAPSHOT COMPLETE"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 30,
+          "outputTokens": 4
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "stop"
+        }
+      }
     ]
   }
 ]

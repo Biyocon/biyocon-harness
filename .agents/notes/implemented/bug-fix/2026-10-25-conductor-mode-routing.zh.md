@@ -18,9 +18,7 @@ Conductor 专用策略使用现有的 agent（智能体）、提示词组装和�
 
 ### 分析任务与阶段模型
 
-分析没有单独的成功终止状态。它依次经过 Detective、Strategist、Devil's Advocate、Gate C 宿主批准、Headsman、Auditor、Integrator 和 Arbiter。空 `allowedPaths` 产生只读效果配置，不向 Headsman 或 Integrator 提供写入工具。如果每个角色均满足其阶段要求，完整分析可以仅通过报告、不修改文件，达到普通 Arbiter 决策；需要但缺少实现输入的角色，或遭拒绝的 Gate C 批准，则返回阻塞。父级报告这一限制，而不是自行完成分析。本次路由变更不承诺专用分析完成方式，也不跳过实现阶段。
-
-后续设计可以引入显式只读目标类别，提供经评审的分析交付物，并通过专用分析转换进入独立评估和 Arbiter。这需要所有者批准阶段、报告与持久化设计，包括完成标准和快照；此处未实现。现有阶段、宿主批准、返工预算、Ralph Round 和 closeout 授权保持不变。
+分析通过[准入与只读报告决策](../feature/2026-10-25-conductor-intake-and-report-completion.md)使用 purpose/deliverable 专用路线，终止为 `reported`，不经实现阶段或 Gate C 批准。父级路由对报告、GO 和阻塞一视同仁：只报告结果，不执行工具。实现路线仍要求原有宿主批准和独立 closeout 授权。
 
 ## 曾考虑的替代方案
 

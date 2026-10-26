@@ -4,7 +4,7 @@
  * The tool mints or resumes a run, then drives the gated specialist state
  * machine by spawning one fresh structured-output specialist per stage (role
  * skill injected from the mounted role loader), and returns the Arbiter's
- * {@link DecisionRecord} or a blocker. It never performs a commit, push, merge,
+ * {@link DecisionRecord}, an audited report, or a blocker. It never performs a commit, push, merge,
  * or deploy — a GO only records the decision and moves the run to closeout.
  *
  * @module @deepseek-ai/dsh-tool-conductor
@@ -23,6 +23,9 @@ import {
   resumeRun,
   SessionConductorRunStore,
   SpecialistExecutionFailure,
+  admitIntake,
+  admittedRoute,
+  currentAuditHash,
 } from '@deepseek-ai/dsh-conductor'
 import type {
   ConductorAuthority,
@@ -38,8 +41,13 @@ import type {
   SpecialistEnvelope,
   SpecialistDispatchResult,
   SpecialistProblem,
+  AnalysisEnvelope,
+  ReportDecision,
 } from '@deepseek-ai/dsh-conductor'
-import { toolGuardForStage, toolRestrictionForStage } from './capability.ts'
+import { analysisToolGuard, READ_TOOLS, toolGuardForStage, toolRestrictionForStage } from './capability.ts'
+import { captureMaterials } from './materials.ts'
+import type { MaterialLimits } from './materials.ts'
+import { ANALYSIS_SCHEMA, REPORT_DECISION_SCHEMA } from './analysis-schema.ts'
 import { ralphDirective } from './ralph.ts'
 import { ROLE_SKILL } from '@deepseek-ai/dsh-conductor-presets'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -68,6 +76,12 @@ export const inject = ['tools', 'subagents', 'skills', 'sessions', 'workflowEngi
 
 /** Deployment policy for the Conductor tool. */
 export interface Config {
+  /** Maximum explicitly cited workspace files per intake (default 16). */
+  maxMaterialFiles?: number
+  /** Maximum bytes in one complete text input (default 65536). */
+  maxMaterialBytes?: number
+  /** Maximum serialized admission bytes, including provenance (default 262144). */
+  maxMaterialTotalBytes?: number
   /** Require parent tasks to start with Conductor and prohibit solo fallback (default false). */
   routeTasks?: boolean
   /** Fresh structured-output subagent provider (default `spawn`). */
@@ -84,6 +98,9 @@ export interface Config {
 
 /** Schemastery configuration for the Conductor tool. */
 export const Config: z<Config> = z.object({
+  maxMaterialFiles: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(16),
+  maxMaterialBytes: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(65_536),
+  maxMaterialTotalBytes: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(262_144),
   routeTasks: z.boolean().default(false),
   subagentProvider: z.string().default('spawn'),
   maxReworkPerGate: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(2),
@@ -103,7 +120,7 @@ export const Config: z<Config> = z.object({
   })).default([]),
 })
 
-interface ResolvedConfig {
+interface ResolvedConfig extends MaterialLimits {
   readonly subagentProvider: string
   readonly maxReworkPerGate: number
   readonly maxRalphRounds: number
@@ -112,6 +129,14 @@ interface ResolvedConfig {
 }
 
 interface ConductorCallArgs {
+  purpose: string
+  entry: string
+  deliverable?: string
+  rationale?: string
+  materialFiles?: string[]
+  scopeSources?: string[]
+  plan?: string[]
+  planSources?: string[]
   objective: string
   scope?: string[]
   inputArtifacts?: string[]
@@ -135,8 +160,13 @@ const DESCRIPTION = 'Delegate an objective to Conductor, the supervisor of a gat
   + 'and delivery defects to Integrator. Malformed reports return to the same specialist within the configured per-gate rework limit; '
   + 'authority violations escalate to the owner immediately. '
   + 'Supply the user\'s objective and constraints without inventing write paths or permissions. '
-  + 'The current workflow includes Headsman and requires separate host approval at Gate C, even for analysis. '
-  + 'The tool returns the Arbiter\'s GO/NO-GO decision or a blocker, with run id, reached stage, gate history and the specialists that ran. '
+  + 'Propose purpose implementation or analysis and entry detective, strategist or devils-advocate, with an intake rationale. '
+  + 'Analysis requires deliverable answer or recommendations. Answer runs its producer, Auditor and Arbiter; recommendations entering Detective also require Strategist. '
+  + 'Analysis is read-only: no Headsman, Ralph, Integrator, commands or Gate C approval. The Arbiter returns accept/revise/blocked; only accept ends in reported, never implementation GO. '
+  + 'Implementation still requires execution Gate C review and separate host approval before writing. '
+  + 'Use current-request and explicitly cited workspace-relative materialFiles as sources; never inspect files before this call or invent source ids. '
+  + 'Scope and plan sources must reference current-request or those material paths. A supplied plan may enter devils-advocate; insufficient material receives bounded rework. '
+  + 'The tool returns a report, GO/NO-GO decision or blocker, with run id, reached stage, evaluated/skipped gates and the specialists that actually ran. '
   + 'If it fails or blocks, report that result and stop; '
   + 'never investigate or implement the task yourself as a fallback. GO does not commit, push, merge, publish, or deploy; '
   + 'closeout requires separate owner authorization.'
@@ -252,6 +282,14 @@ function resolveConfig(config: Config): ResolvedConfig {
   const maxRalphRounds = config.maxRalphRounds ?? 0
   const maxRalphHandoffChars = config.maxRalphHandoffChars ?? 16_384
   const qualityCommands = resolveQualityCatalog(config.qualityCommands ?? [])
+  const limits: MaterialLimits = {
+    maxMaterialFiles: config.maxMaterialFiles ?? 16,
+    maxMaterialBytes: config.maxMaterialBytes ?? 65_536,
+    maxMaterialTotalBytes: config.maxMaterialTotalBytes ?? 262_144,
+  }
+  for (const [field, value] of Object.entries(limits)) {
+    if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`${field} must be a positive safe integer`)
+  }
   if (subagentProvider.length === 0 || subagentProvider !== subagentProvider.trim()) {
     throw new TypeError('subagentProvider must be a non-empty normalized string')
   }
@@ -264,7 +302,7 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(maxRalphHandoffChars) || maxRalphHandoffChars < 1) {
     throw new TypeError('maxRalphHandoffChars must be a positive safe integer')
   }
-  return { subagentProvider, maxReworkPerGate, maxRalphRounds, maxRalphHandoffChars, qualityCommands }
+  return { subagentProvider, maxReworkPerGate, maxRalphRounds, maxRalphHandoffChars, qualityCommands, ...limits }
 }
 
 /** Require a genuinely fresh structured-output provider for specialists. */
@@ -345,6 +383,11 @@ function composeSpecialistPrompt(
     'Dispatch package:\n' + JSON.stringify({
       run_id: run.runId,
       stage,
+      admission: run.admission,
+      admitted_route: admittedRoute(run.admission),
+      analysis_reports: run.analysisReports,
+      current_report: run.reportCandidates.at(-1) ?? null,
+      current_audit_hash: currentAuditHash(run) ?? null,
       objective: run.objective,
       scope: run.scope,
       previous_specialist_reports: run.specialistReports,
@@ -363,7 +406,7 @@ function composeSpecialistPrompt(
       input_artifacts: run.inputArtifacts,
       questions_to_resolve: [],
       required_evidence: [],
-      quality_command_catalog: [...catalog.values()].map(command => ({
+      quality_command_catalog: (run.admission.purpose === 'analysis' ? [] : [...catalog.values()]).map(command => ({
         id: command.id,
         description: command.modelSafeDescription,
         allowed_stages: command.allowedStages,
@@ -386,6 +429,14 @@ function composeSpecialistPrompt(
 
 /** Compose the Arbiter child prompt from the complete delivery record and gate history. */
 function composeArbiterPrompt(run: ConductorRun): string {
+  if (run.admission.purpose === 'analysis') {
+    return [
+      'You are The Arbiter reviewing a read-only analysis. Return accept, revise or blocked for the exact report and independent audit. Never grant GO, request approval or authorize execution.',
+      'Analysis record:\n' + JSON.stringify({ run_id: run.runId, admission: run.admission,
+        report: run.reportCandidates.at(-1), audit_hash: currentAuditHash(run), analysis_reports: run.analysisReports,
+        history: run.history, acceptance_criteria: run.acceptanceCriteria }, null, 2),
+    ].join('\n\n')
+  }
   return [
     'You are The Arbiter in a Conductor run. Review the full gate history and delivery package, then return a GO/NO-GO decision. A GO never grants commit, push, merge, or deploy authority by itself.',
     'Run, specialist reports, and gate history:\n' + JSON.stringify({
@@ -446,8 +497,8 @@ async function runWorkflowChild(
     maxTotalAgents: 1,
     parent,
     signal,
-    childToolFilter: toolRestrictionForStage(stage, run.executionAuthorization),
-    childToolGuard: toolGuardForStage(stage, run.baseline, run.executionAuthorization),
+    childToolFilter: run.admission.purpose === 'analysis' ? { allow: [...READ_TOOLS] } : toolRestrictionForStage(stage, run.executionAuthorization),
+    childToolGuard: run.admission.purpose === 'analysis' ? analysisToolGuard : toolGuardForStage(stage, run.baseline, run.executionAuthorization),
     childPersona: persona,
     ...childToolContribution === undefined ? {} : { childToolContribution },
   })
@@ -586,7 +637,7 @@ async function runSpecialist(
   run: ConductorRun,
   maxRalphHandoffChars: number,
   catalog: ReadonlyMap<string, QualityCommandDefinition>,
-): Promise<SpecialistDispatchResult> {
+): Promise<SpecialistDispatchResult | AnalysisEnvelope> {
   const roleName = ROLE_SKILL[stage]
   /* v8 ignore next -- runSpecialist receives only stages covered by the complete ROLE_SKILL mapping. */
   if (roleName === undefined) throw new Error(`Conductor stage "${stage}" has no role skill`)
@@ -602,6 +653,10 @@ async function runSpecialist(
     ralphBody = ralphDirective(run.budget.maxRalphRounds, ralphSkill)
   }
   const persona = [roleBody, specialistBody, ralphBody].filter(value => value !== undefined).join('\n\n')
+  if (run.admission.purpose === 'analysis') {
+    return await runWorkflowChild(ctx, providerName, parent, signal, stage, run,
+      composeSpecialistPrompt(stage, run, new Map(), []), ANALYSIS_SCHEMA, persona) as AnalysisEnvelope
+  }
   assertCatalogBindings(run, catalog)
   const qualityExecutions: QualityExecutionRecord[] = []
   const policyStage: QualityPolicyStage | undefined = stage === 'headsman' || stage === 'auditor' ? stage : undefined
@@ -709,19 +764,19 @@ async function runArbiter(
   parent: Agent,
   signal: AbortSignal,
   run: ConductorRun,
-): Promise<DecisionRecord> {
+): Promise<DecisionRecord | ReportDecision> {
   const arbiterRole = ROLE_SKILL['arbiter']
   /* v8 ignore next -- the preset's typed ROLE_SKILL constant always declares the Arbiter role. */
   if (arbiterRole === undefined) throw new Error('Conductor Arbiter role skill mapping is unavailable')
   const [roleBody, closeoutBody] = await Promise.all([
     requireSkill(ctx, parent, signal, arbiterRole),
-    requireSkill(ctx, parent, signal, 'conductor-closeout'),
+    requireSkill(ctx, parent, signal, run.admission.purpose === 'analysis' ? 'conductor-specialist' : 'conductor-closeout'),
   ])
   const structured = await runWorkflowChild(
     ctx, providerName, parent, signal, 'arbiter', run,
-    composeArbiterPrompt(run), DECISION_SCHEMA, `${roleBody}\n\n${closeoutBody}`,
+    composeArbiterPrompt(run), run.admission.purpose === 'analysis' ? REPORT_DECISION_SCHEMA : DECISION_SCHEMA, `${roleBody}\n\n${closeoutBody}`,
   )
-  return structured as DecisionRecord
+  return structured as DecisionRecord | ReportDecision
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -790,6 +845,9 @@ function renderOutcome(value: unknown): string {
   if (isRecord(value) && value['kind'] === 'decision') {
     return `Conductor reached the Arbiter.\nDecision:\n${JSON.stringify(value['decision'], null, 2)}${status}`
   }
+  if (isRecord(value) && value['kind'] === 'report') {
+    return `Conductor analysis reported.\nReport:\n${JSON.stringify(value['report'], null, 2)}\nReport decision:\n${JSON.stringify(value['decision'], null, 2)}${status}`
+  }
   if (isRecord(value) && value['kind'] === 'blocked') {
     return `Conductor run blocked: ${String(value['blocker'])}${status}`
   }
@@ -807,7 +865,7 @@ function runSummary(run: ConductorRun, failedStage?: ConductorStage) {
     status: run.status,
     gateHistory: run.history,
     specialistsRan: [...new Set([
-      ...run.history.map(record => record.stage),
+      ...run.history.filter(record => record.kind === 'evaluated' && record.origin !== 'intake-validation').map(record => record.stage),
       ...failedStage === undefined ? [] : [failedStage],
     ])],
   }
@@ -831,6 +889,14 @@ export function apply(ctx: Context, config: Config): void {
     name: 'conductor',
     description: DESCRIPTION,
     parameters: {
+      purpose: { type: 'string', enum: ['implementation', 'analysis'], required: true, description: 'Implementation or read-only analysis; verification is not supported.' },
+      entry: { type: 'string', enum: ['detective', 'strategist', 'devils-advocate'], required: true, description: 'Entry justified by the supplied work; never grants execution authority.' },
+      deliverable: { type: 'string', enum: ['answer', 'recommendations'], description: 'Required for analysis and forbidden for implementation.' },
+      rationale: { type: 'string', description: 'Required intake rationale for a new run.' },
+      materialFiles: { type: 'array', items: { type: 'string' }, description: 'Workspace-relative text files explicitly cited in the current user message.' },
+      scopeSources: { type: 'array', items: { type: 'string' }, description: 'Supplied scope sources: current-request or cited material file paths.' },
+      plan: { type: 'array', items: { type: 'string' }, description: 'Supplied plan steps, when present in the owner material; do not invent them.' },
+      planSources: { type: 'array', items: { type: 'string' }, description: 'Supplied plan sources: current-request or cited material file paths.' },
       objective: {
         type: 'string',
         required: true,
@@ -919,6 +985,12 @@ export function apply(ctx: Context, config: Config): void {
         if (call.runId !== undefined) {
           if (!isValidRunId(call.runId)) throw new Error(`Conductor runId "${call.runId}" is not a valid CON-YYYY-NNNN id`)
           run = await resumeRun(store, ConductorRunId(call.runId))
+          if (call.purpose !== run.admission.purpose || call.entry !== run.admission.entry
+            || call.deliverable !== (run.admission.purpose === 'analysis' ? run.admission.deliverable : undefined)) {
+            throw new Error('Conductor resume purpose, entry and deliverable must match the immutable admission')
+          }
+          if (call.materialFiles !== undefined || call.scopeSources !== undefined || call.plan !== undefined
+            || call.planSources !== undefined || call.rationale !== undefined) throw new Error('Conductor resume reuses captured admission; new material requires a new run')
           if (run.objective !== objective) throw new Error('Conductor resume objective does not match the persisted run')
           if (run.authority.owner !== authority.owner) {
             throw new Error('Conductor resume authority does not match the persisted run')
@@ -930,11 +1002,20 @@ export function apply(ctx: Context, config: Config): void {
             throw new Error('Conductor resume excludedPaths do not match the persisted run')
           }
         } else {
+          const materials = await captureMaterials(ctx, parent, resolveStringList(call.materialFiles, 'materialFiles'), resolved, exec.signal)
+          const admission = admitIntake({ purpose: call.purpose, entry: call.entry,
+            ...call.deliverable === undefined ? {} : { deliverable: call.deliverable }, rationale: call.rationale,
+            ...call.scopeSources === undefined ? {} : { scopeSources: call.scopeSources },
+            ...call.plan === undefined ? {} : { plan: call.plan },
+            ...call.planSources === undefined ? {} : { planSources: call.planSources },
+          }, materials)
+          if (Buffer.byteLength(JSON.stringify(admission)) > resolved.maxMaterialTotalBytes) throw new Error('Conductor admission exceeds maxMaterialTotalBytes')
           let runId = mintRunId()
           for (let attempt = 0; attempt < 8 && (await store.load(runId)) !== undefined; attempt += 1) {
             runId = mintRunId()
           }
           run = createRun(runId, {
+            admission,
             objective,
             scope: resolveStringList(call.scope, 'scope'),
             inputArtifacts: resolveStringList(call.inputArtifacts, 'inputArtifacts'),
@@ -1001,7 +1082,7 @@ export function apply(ctx: Context, config: Config): void {
           runId: outcome.run.runId,
           stage: outcome.run.currentStage,
           status: outcome.run.status,
-          result: (outcome.kind === 'decision'
+          result: (outcome.kind === 'report' ? { kind: 'report', report: outcome.report, decision: outcome.decision, run: runSummary(outcome.run) } : outcome.kind === 'decision'
             ? { kind: 'decision', decision: outcome.decision, run: runSummary(outcome.run) }
             : { kind: 'blocked', blocker: outcome.blocker, run: runSummary(outcome.run) }) as unknown as JsonValue,
         }

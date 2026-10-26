@@ -47,6 +47,8 @@ export function decisionForStatus(status: SpecialistStatus): GateDecision {
  */
 export function reworkTarget(defectClass: DefectClass, stage: ConductorStage): ConductorStage {
   switch (defectClass) {
+    case 'analysis':
+      throw new Error('Analysis defects require the admitted report producer')
     case 'report':
       return stage
     case 'scope':

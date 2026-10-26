@@ -44,7 +44,22 @@ export type {
   SpecialistEnvelope,
   SpecialistProblem,
   SpecialistStatus,
+  AnalysisEnvelope,
+  CapturedReport,
+  ConductorAdmission,
+  ConductorEntry,
+  ConductorMaterialId,
+  EvaluatedGateRecord,
+  IntakeMaterial,
+  IntakeSelection,
+  RepairReturn,
+  ReportCandidate,
+  ReportDecision,
+  ReportDeliverable,
+  SkippedGateRecord,
 } from './types.ts'
+export { admitIntake, admittedRoute, captureIntakeMaterial, CONDUCTOR_ENTRIES, contentHash, reportProducer } from './intake.ts'
+export { currentAuditHash, reportHash } from './analysis.ts'
 export {
   closeRun,
   CONDUCTOR_RECORD_FORMAT_VERSION,

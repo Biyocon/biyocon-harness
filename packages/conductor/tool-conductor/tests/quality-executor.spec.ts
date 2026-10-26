@@ -1,3 +1,4 @@
+import { toolAdmission } from './intake-fixtures.ts'
 import { PassThrough } from 'node:stream'
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -154,7 +155,7 @@ async function setup(commandOverrides: Partial<QualityCommandConfig> = {}, cwd =
     definitionHash: definition.definitionHash,
     requiredGates: ['D', 'E'] as Array<'D' | 'E'>,
   }
-  const base = createRun(ConductorRunId('CON-2026-0001'), {
+  const base = createRun(ConductorRunId('CON-2026-0001'), { admission: toolAdmission(),
     objective: 'verify',
     authority: { owner: 'user' },
     acceptanceCriteria: ['checks pass'],

@@ -58,9 +58,18 @@ export function toolRestrictionForStage(
     case 'intake':
     case 'ralph':
     case 'closeout':
+    case 'report-complete':
       throw new Error(`stage "${stage}" owns no specialist capability policy`)
   }
 }
+
+/**
+ * Deny execution side effects even when an analysis child bypasses schema filtering.
+ * @param exec - actual attempted child tool execution.
+ * @returns a denial for every operation except reads/search and structured handoff.
+ */
+export const analysisToolGuard: ToolGuard = exec => [...READ_TOOLS, 'structured_output'].includes(exec.name)
+  ? undefined : 'Conductor analysis is read-only; writing, commands, approval and external actions are prohibited.'
 
 /**
  * Build the argument-aware write guard for one specialist child. Reads are

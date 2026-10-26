@@ -23,17 +23,22 @@ import type {
   GateDecision,
   GateId,
   GateRecord,
+  ConductorAdmission,
+  EvaluatedGateRecord,
 } from './types.ts'
 import { executionBaselineHash, executionEffectProfile } from './quality.ts'
+import { admittedRoute, GATED_STAGES, transitionRoute } from './intake.ts'
 
 /** Current pre-release durable Conductor record format. */
-export const CONDUCTOR_RECORD_FORMAT_VERSION = 2
+export const CONDUCTOR_RECORD_FORMAT_VERSION = 3
 
 /**
- * The initial, dispatch-ready run state. The run starts at `detective` with an
- * empty gate history and no execution baseline (baseline lands after Gate C).
+ * The initial, dispatch-ready run state. The run starts at its admitted A/B/C entry with
+ * explicit prior skips and no execution baseline (implementation authorizes one at C).
  */
 export interface CreateRunInput {
+  /** Host-captured, validated purpose, entry and material provenance. */
+  admission: ConductorAdmission
   /** The desired outcome. */
   objective: string
   /** Files, components, or concerns included in the run. */
@@ -57,21 +62,25 @@ export interface CreateRunInput {
 }
 
 /**
- * Build a fresh, dispatch-ready run at the Detective stage.
+ * Build a fresh run at its admitted entry, recording supplied-work skips.
  * @param runId - the minted run id.
  * @param input - the mandate that bounds the run.
  * @returns the initial run.
  */
 export function createRun(runId: ConductorRunId, input: CreateRunInput): ConductorRun {
-  return {
+  const run: ConductorRun = {
     recordFormatVersion: CONDUCTOR_RECORD_FORMAT_VERSION,
+    admission: structuredClone(input.admission),
+    repairReturns: [],
+    analysisReports: [],
+    reportCandidates: [],
     runId,
     objective: input.objective,
     scope: [...(input.scope ?? [])],
     inputArtifacts: [...(input.inputArtifacts ?? [])],
     allowedPaths: [...(input.allowedPaths ?? [])],
     excludedPaths: [...(input.excludedPaths ?? [])],
-    sourceBaseline: input.sourceBaseline ?? null,
+    sourceBaseline: input.sourceBaseline ?? (input.admission.entry === 'detective' ? null : `intake:${input.admission.materials[0].sha256}`),
     authority: { owner: input.authority.owner },
     constraints: [...(input.constraints ?? [])],
     acceptanceCriteria: [...(input.acceptanceCriteria ?? [])],
@@ -88,6 +97,7 @@ export function createRun(runId: ConductorRunId, input: CreateRunInput): Conduct
     qualityExecutions: [],
     status: 'running',
   }
+  return skipUntil(run, input.admission.entry, 'supplied-work')
 }
 
 const GATE_OF_STAGE: Record<ConductorStage, GateId | undefined> = {
@@ -101,6 +111,7 @@ const GATE_OF_STAGE: Record<ConductorStage, GateId | undefined> = {
   integrator: 'F',
   arbiter: 'G',
   closeout: undefined,
+  'report-complete': undefined,
 }
 
 const STAGE_OF_GATE: Record<GateId, ConductorStage> = {
@@ -125,7 +136,7 @@ const NEXT_AFTER_PASS: Partial<Record<ConductorStage, ConductorStage>> = {
 
 /**
  * The gate letter a stage owns, or undefined for non-gated stages
- * (`intake`, `ralph`, `closeout`).
+ * (`intake`, `ralph`, `closeout`, `report-complete`).
  * @param stage - the stage to look up.
  * @returns the gate letter, or undefined when the stage owns no gate.
  */
@@ -174,6 +185,8 @@ export function reworkCycles(run: ConductorRun, gate: GateId): number {
  * explicit `escalate` and ignored for `pass`/`abort`.
  */
 export interface GateVerdict {
+  /** Runtime admission repair before a specialist has started. */
+  origin?: 'intake-validation'
   /** Conductor's decision. */
   decision: GateDecision
   /** The concrete evidence and reasoning behind the decision. */
@@ -204,7 +217,7 @@ export interface GateVerdict {
  * @returns the updated run with the record appended to `history`.
  */
 export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRun {
-  if (run.status === 'closed' || run.status === 'aborted') {
+  if (run.status === 'closed' || run.status === 'aborted' || run.status === 'reported') {
     throw new Error(`Conductor run ${run.runId} is ${run.status}; no further gate decisions`)
   }
 
@@ -214,7 +227,11 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
   }
 
   const activeBaselineHash = run.baseline === null ? undefined : executionBaselineHash(run.baseline)
-  if (gate === 'C' && verdict.decision === 'pass') {
+  if (run.admission.purpose === 'analysis' && (run.baseline !== null || run.executionAuthorization !== null
+    || run.baselineHistory.length > 0 || run.qualityExecutions.length > 0)) {
+    throw new Error('Conductor analysis cannot carry execution authority or command evidence')
+  }
+  if (run.admission.purpose === 'implementation' && gate === 'C' && verdict.decision === 'pass') {
     if (activeBaselineHash === undefined || run.executionAuthorization === null) {
       throw new Error('Conductor Gate C pass requires a host-authorized execution baseline')
     }
@@ -240,7 +257,6 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
 
   switch (verdict.decision) {
     case 'pass':
-      nextStage = nextStageAfterPass(run.currentStage)
       break
     case 'rework': {
       if (verdict.defectClass === undefined) {
@@ -270,10 +286,16 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
     /* v8 ignore stop */
   }
 
+  const transition = transitionRoute(run, decision, verdict.defectClass, nextStage)
+  const destination = transition.nextStage
+  const fromIndex = (GATED_STAGES as readonly string[]).indexOf(run.currentStage)
+  const toIndex = (GATED_STAGES as readonly string[]).indexOf(destination ?? '')
+  nextStage = decision === 'pass' && toIndex > fromIndex + 1 ? GATED_STAGES[fromIndex + 1] : destination
+
   let status: ConductorRunStatus
   switch (decision) {
     case 'pass':
-      status = gate === 'G' ? 'awaiting_authorization' : 'running'
+      status = gate === 'G' ? (run.admission.purpose === 'analysis' ? 'reported' : 'awaiting_authorization') : 'running'
       break
     case 'rework':
       status = 'rework'
@@ -290,7 +312,9 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
     /* v8 ignore stop */
   }
 
-  const record: GateRecord = {
+  const record: EvaluatedGateRecord = {
+    kind: 'evaluated',
+    ...verdict.origin === undefined ? {} : { origin: verdict.origin },
     gate,
     stage: run.currentStage,
     decision,
@@ -300,7 +324,7 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
     evidenceReviewed: verdict.evidenceReviewed,
     stateUpdate: verdict.stateUpdate,
   }
-  const requiredBaselineHash = gate === 'C' && decision === 'pass'
+  const requiredBaselineHash = run.admission.purpose === 'analysis' ? undefined : gate === 'C' && decision === 'pass'
     ? verdict.executionBaselineHash
     : gate === 'D' || gate === 'E' || gate === 'F' || gate === 'G'
       ? activeBaselineHash
@@ -313,7 +337,7 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
     record.nextStage = nextStage
   }
 
-  return {
+  const updated: ConductorRun = {
     ...run,
     ...decision === 'rework' && (verdict.defectClass === 'scope' || verdict.defectClass === 'plan')
       ? { baseline: null, executionAuthorization: null }
@@ -321,7 +345,30 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
     currentStage: nextStage ?? run.currentStage,
     status,
     history: [...run.history, record],
+    repairReturns: transition.repairReturns,
   }
+  return decision === 'pass' && destination !== undefined ? skipUntil(updated, destination, 'profile-not-applicable') : updated
+}
+
+function skipUntil(run: ConductorRun, target: ConductorStage, reason: 'supplied-work' | 'profile-not-applicable'): ConductorRun {
+  let current = run
+  const order = GATED_STAGES as readonly ConductorStage[]
+  // Admission and transitionRoute supply only initial-entry or forward-gap intervals.
+  for (const stage of order.slice(order.indexOf(run.currentStage), order.indexOf(target))) {
+    const nextStage = order[order.indexOf(stage) + 1] as ConductorStage
+    const gate = gateOfStage(stage) as GateId
+    const record: GateRecord = {
+      kind: 'skipped', gate, stage: current.currentStage, decision: 'skipped', reason,
+      basis: [current.admission.rationale],
+      evidenceReviewed: current.admission.materials.map(material => material.id),
+      nextStage, stateUpdate: `skip ${gate}: ${reason}`,
+      purpose: current.admission.purpose,
+      ...current.admission.purpose === 'analysis' ? { deliverable: current.admission.deliverable } : {},
+      route: admittedRoute(current.admission),
+    }
+    current = { ...current, currentStage: nextStage, history: [...current.history, record] }
+  }
+  return current
 }
 
 /**
@@ -333,6 +380,7 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
  * @returns a new terminal run carrying its closeout record.
  */
 export function closeRun(run: ConductorRun, authorization: CloseoutAuthorization): ConductorRun {
+  if (run.admission.purpose === 'analysis') throw new Error('Conductor analysis cannot close out an execution or grant GO')
   if (run.currentStage !== 'closeout' || run.status !== 'awaiting_authorization') {
     throw new Error(`Conductor run ${run.runId} is not awaiting closeout authorization`)
   }

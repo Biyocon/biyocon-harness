@@ -1,3 +1,4 @@
+import { implementationAdmission } from './intake-fixtures.ts'
 import { describe, expect, it } from 'vitest'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import {
@@ -13,11 +14,12 @@ import {
   serializeRun,
   validateResumable,
 } from '../src/index.ts'
-import type { ConductorRun, GateRecord, QualityCommandBinding } from '../src/index.ts'
+import type { ConductorRun, EvaluatedGateRecord as GateRecord, QualityCommandBinding } from '../src/index.ts'
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
-    recordFormatVersion: 2,
+    recordFormatVersion: 3,
+    admission: implementationAdmission(), repairReturns: [], analysisReports: [], reportCandidates: [],
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -42,7 +44,14 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
 }
 
 function gateRecord(partial: Pick<GateRecord, 'gate' | 'stage' | 'decision'> & Partial<GateRecord>): GateRecord {
-  return { basis: [], evidenceReviewed: [], stateUpdate: '', ...partial }
+  return { kind: 'evaluated', basis: [], evidenceReviewed: [], stateUpdate: '', ...partial }
+}
+
+function scopeAndPlan(): GateRecord[] {
+  return [
+    gateRecord({ gate: 'A', stage: 'detective', decision: 'pass', nextStage: 'strategist' }),
+    gateRecord({ gate: 'B', stage: 'strategist', decision: 'pass', nextStage: 'devils-advocate' }),
+  ]
 }
 
 function makeClosedRun(): ConductorRun {
@@ -62,12 +71,17 @@ function makeClosedRun(): ConductorRun {
     },
     currentStage: 'closeout',
     history: [
-      gateRecord({
+      ...scopeAndPlan(),
+      gateRecord({ kind: 'evaluated',
         gate: 'C', stage: 'devils-advocate', decision: 'pass', nextStage: 'headsman',
         basis: ['baseline approved'], evidenceReviewed: ['plan'], stateUpdate: 'authorize execution',
         executionBaselineHash: baselineHash,
       }),
-      gateRecord({
+      ...([
+        ['D', 'headsman', 'auditor'], ['E', 'auditor', 'integrator'], ['F', 'integrator', 'arbiter'],
+      ] as const).map(([gate, stage, nextStage]) => gateRecord({ gate, stage, decision: 'pass', nextStage,
+        executionBaselineHash: baselineHash })),
+      gateRecord({ kind: 'evaluated',
         gate: 'G', stage: 'arbiter', decision: 'pass', nextStage: 'closeout',
         basis: ['verified'], evidenceReviewed: ['report'], stateUpdate: 'move to closeout',
         executionBaselineHash: baselineHash,
@@ -118,11 +132,12 @@ function makeQualityRun(): ConductorRun {
     },
     currentStage: 'auditor',
     history: [
-      gateRecord({
+      ...scopeAndPlan(),
+      gateRecord({ kind: 'evaluated',
         gate: 'C', stage: 'devils-advocate', decision: 'pass', nextStage: 'headsman',
         evidenceReviewed: ['approved plan'], executionBaselineHash: executionBaselineHash(baseline),
       }),
-      gateRecord({
+      gateRecord({ kind: 'evaluated',
         gate: 'D', stage: 'headsman', decision: 'pass', nextStage: 'auditor', evidenceReviewed: [evidenceId],
         executionBaselineHash: executionBaselineHash(baseline),
       }),
@@ -195,7 +210,7 @@ function specialistReport() {
 describe('dsh-conductor persistence', () => {
   it('rejects version 1 and removed budget fields instead of migrating them', () => {
     expect(() => parseRun(JSON.stringify({ ...makeRun(), recordFormatVersion: 1 })))
-      .toThrow(/format 1 is unsupported; expected 2/)
+      .toThrow(/format 1 is unsupported; expected 3/)
     expect(() => parseRun(JSON.stringify({
       ...makeRun(), budget: { maxReworkPerGate: 2, maxReworkCycles: 3, maxRalphRounds: 0 },
     }))).toThrow(/budget contains unsupported fields/)
@@ -237,15 +252,15 @@ describe('dsh-conductor persistence', () => {
       [{ ...valid, baseline: null }, /requires an active baseline/],
       [{ ...valid, executionAuthorization: { ...valid.executionAuthorization, extra: true } }, /unsupported field extra/],
       [{ ...valid, executionAuthorization: { ...valid.executionAuthorization, executionBaselineHash: 'f'.repeat(64) } }, /does not match active baseline/],
-      [{ ...valid, history: valid.history.map(record => ({ ...record, executionBaselineHash: 'bad' })) }, /unknown execution baseline/],
-      [{ ...valid, history: valid.history.map(record => ({ ...record, executionBaselineHash: 'f'.repeat(64) })) }, /unknown execution baseline/],
-      [{ ...makeRun(), history: [gateRecord({
+      [{ ...valid, history: valid.history.map(record => record.gate === 'C' ? { ...record, executionBaselineHash: 'bad' } : record) }, /unknown execution baseline/],
+      [{ ...valid, history: valid.history.map(record => record.gate === 'C' ? { ...record, executionBaselineHash: 'f'.repeat(64) } : record) }, /unknown execution baseline/],
+      [{ ...makeRun(), history: [gateRecord({ kind: 'evaluated',
         gate: 'A', stage: 'detective', decision: 'pass', nextStage: 'strategist', executionBaselineHash: 'a'.repeat(64),
       })] }, /cannot carry executionBaselineHash/],
       [{ ...valid, history: [] }, /baselineHistory must exactly follow/],
-      [{ ...updated, history: [...valid.history, gateRecord({
+      [{ ...updated, history: [...valid.history, gateRecord({ kind: 'evaluated',
         gate: 'C', stage: 'devils-advocate', decision: 'pass', nextStage: 'headsman', executionBaselineHash: newHash,
-      }), valid.history[1]!] }, /does not use the latest Gate C baseline/],
+      }), valid.history.find(gate => gate.gate === 'D')!] }, /does not use the latest Gate C baseline/],
       [{ ...valid, baseline: null, executionAuthorization: null }, /active baseline does not match documented/],
     ]
     for (const effectProfile of [
@@ -296,7 +311,7 @@ describe('dsh-conductor persistence', () => {
     expect(() => parseRun(JSON.stringify({ ...valid, qualityExecutions: null }))).toThrow(/qualityExecutions must be an array/)
     expect(() => parseRun(JSON.stringify({ ...valid, qualityExecutions: [evidence, evidence] }))).toThrow(/ids must not contain duplicates/)
     expect(() => parseRun(JSON.stringify({
-      ...valid, history: [...valid.history, gateRecord({
+      ...valid, history: [...valid.history, gateRecord({ kind: 'evaluated',
         gate: 'E', stage: 'auditor', decision: 'escalate', executionBaselineHash: executionBaselineHash(valid.baseline!),
       })], qualityExecutions: [{ ...evidence, gate: 'E', policyStage: 'headsman' }],
     }))).toThrow(/stage does not match gate/)
@@ -307,7 +322,7 @@ describe('dsh-conductor persistence', () => {
     const failed = {
       ...valid, currentStage: 'headsman' as const, status: 'escalated' as const,
       history: valid.history.map((record) => {
-        if (record.gate !== 'D') return record
+        if (record.kind !== 'evaluated' || record.gate !== 'D') return record
         const { nextStage: _nextStage, ...attempt } = record
         return { ...attempt, decision: 'escalate' as const }
       }),
@@ -326,7 +341,7 @@ describe('dsh-conductor persistence', () => {
   it('round-trips a run through the JSON wire format unchanged', () => {
     const run = makeRun({
       currentStage: 'strategist',
-      history: [gateRecord({ gate: 'B', stage: 'strategist', decision: 'rework', defectClass: 'plan', nextStage: 'strategist' })],
+      history: [scopeAndPlan()[0]!, gateRecord({ kind: 'evaluated', gate: 'B', stage: 'strategist', decision: 'rework', defectClass: 'plan', nextStage: 'strategist' })],
       status: 'rework',
     })
     expect(parseRun(serializeRun(run))).toEqual(run)
@@ -344,7 +359,7 @@ describe('dsh-conductor persistence', () => {
     expect(() => parseRun(JSON.stringify({ ...makeRun(), currentStage: 'bogus' }))).toThrow(/invalid currentStage/)
     expect(() => parseRun(JSON.stringify({
       ...makeRun(),
-      history: [{ gate: 'A', stage: 'detective', decision: 'bogus', basis: [], evidenceReviewed: [], stateUpdate: '' }],
+      history: [{ kind: 'evaluated', gate: 'A', stage: 'detective', decision: 'bogus', basis: [], evidenceReviewed: [], stateUpdate: '' }],
     }))).toThrow(/invalid decision/)
   })
 
@@ -393,7 +408,7 @@ describe('dsh-conductor persistence', () => {
     }))).toThrow(/baseline paths must match/)
     expect(() => parseRun(JSON.stringify({
       ...makeRun(),
-      history: [gateRecord({ gate: 'A', stage: 'auditor', decision: 'pass', nextStage: 'strategist' })],
+      history: [gateRecord({ kind: 'evaluated', gate: 'A', stage: 'auditor', decision: 'pass', nextStage: 'strategist' })],
     }))).toThrow(/gate A cannot belong to stage auditor/)
     const { specialistReports: _omitted, ...withoutReports } = makeRun()
     expect(() => parseRun(JSON.stringify(withoutReports))).toThrow(/specialistReports must be an array/)
@@ -498,12 +513,12 @@ describe('dsh-conductor persistence', () => {
         effectProfile: { filesystem: 'read-only' as const, quality: 'catalog' as const, external: 'none' as const },
       },
       history: [...old.history,
-        gateRecord({
+        gateRecord({ kind: 'evaluated',
           gate: 'C', stage: 'devils-advocate', decision: 'pass', nextStage: 'headsman',
           evidenceReviewed: ['updated plan'], executionBaselineHash: newHash,
         }),
         {
-          ...old.history.find(record => record.gate === 'D')!,
+          ...old.history.find((record): record is GateRecord => record.kind === 'evaluated' && record.gate === 'D')!,
           executionBaselineHash: newHash,
         },
       ],
@@ -529,7 +544,7 @@ describe('dsh-conductor persistence', () => {
       currentStage: 'integrator',
       history: [
         ...valid.history,
-        gateRecord({
+        gateRecord({ kind: 'evaluated',
           gate: 'E', stage: 'auditor', decision: 'pass', nextStage: 'integrator',
           evidenceReviewed: [evidenceId], executionBaselineHash: executionBaselineHash(valid.baseline!),
         }),
@@ -559,15 +574,15 @@ describe('dsh-conductor persistence', () => {
   it('rejects semantically impossible gate records and lifecycle status', () => {
     expect(() => parseRun(JSON.stringify({
       ...makeRun(),
-      history: [gateRecord({ gate: 'A', stage: 'detective', decision: 'pass', nextStage: 'headsman' })],
-    }))).toThrow(/pass has invalid nextStage/)
+      history: [gateRecord({ kind: 'evaluated', gate: 'A', stage: 'detective', decision: 'pass', nextStage: 'headsman' })],
+    }))).toThrow(/successor does not match/)
     expect(() => parseRun(JSON.stringify({
       ...makeRun({ status: 'rework', currentStage: 'headsman' }),
-      history: [gateRecord({ gate: 'A', stage: 'detective', decision: 'rework', nextStage: 'headsman' })],
+      history: [gateRecord({ kind: 'evaluated', gate: 'A', stage: 'detective', decision: 'rework', nextStage: 'headsman' })],
     }))).toThrow(/rework has invalid defectClass/)
     expect(() => parseRun(JSON.stringify({
       ...makeRun(),
-      history: [gateRecord({ gate: 'A', stage: 'detective', decision: 'abort' })],
+      history: [gateRecord({ kind: 'evaluated', gate: 'A', stage: 'detective', decision: 'abort' })],
     }))).toThrow(/status running does not match/)
   })
 
@@ -667,23 +682,23 @@ describe('dsh-conductor persistence', () => {
   })
 
   it('rejects a run with no gate history parked past the initial stage', () => {
-    expect(() => { validateResumable(makeRun({ currentStage: 'auditor' })) }).toThrow(/no gate history/)
+    expect(() => { validateResumable(makeRun({ currentStage: 'auditor' })) }).toThrow(/complete gate history/)
   })
 
   it('rejects a run whose stage does not match its last documented gate', () => {
     const run = makeRun({
       currentStage: 'auditor',
-      history: [gateRecord({ gate: 'A', stage: 'detective', decision: 'pass', nextStage: 'strategist' })],
+      history: [gateRecord({ kind: 'evaluated', gate: 'A', stage: 'detective', decision: 'pass', nextStage: 'strategist' })],
     })
-    expect(() => { validateResumable(run) }).toThrow(/does not match last gate A/)
+    expect(() => { validateResumable(run) }).toThrow(/complete gate history/)
   })
 
   it('rejects a run whose documented history skips a stage', () => {
     const run = makeRun({
       currentStage: 'devils-advocate',
-      history: [gateRecord({ gate: 'B', stage: 'strategist', decision: 'pass', nextStage: 'devils-advocate' })],
+      history: [gateRecord({ kind: 'evaluated', gate: 'B', stage: 'strategist', decision: 'pass', nextStage: 'devils-advocate' })],
     })
-    expect(() => { validateResumable(run) }).toThrow(/history jumps to gate B/)
+    expect(() => { validateResumable(run) }).toThrow(/does not follow its admitted causal route/)
   })
 
   it('resumes a run at exactly its last documented, valid state', async () => {
@@ -729,16 +744,16 @@ describe('dsh-conductor persistence', () => {
       } }, /baseline.scopeVersion/],
       [{ ...makeRun(), history: null }, /history must be an array/],
       [{ ...makeRun(), history: [null] }, /history entry must be an object/],
-      [{ ...makeRun(), history: [gateRecord({ gate: 'bogus' as never, stage: 'detective', decision: 'pass' })] }, /invalid gate/],
-      [{ ...makeRun(), history: [gateRecord({ gate: 'A', stage: 'bogus' as never, decision: 'pass' })] }, /invalid stage/],
-      [{ ...makeRun(), history: [gateRecord({
+      [{ ...makeRun(), history: [gateRecord({ kind: 'evaluated', gate: 'bogus' as never, stage: 'detective', decision: 'pass' })] }, /invalid gate/],
+      [{ ...makeRun(), history: [gateRecord({ kind: 'evaluated', gate: 'A', stage: 'bogus' as never, decision: 'pass' })] }, /invalid stage/],
+      [{ ...makeRun(), history: [gateRecord({ kind: 'evaluated',
         gate: 'A', stage: 'detective', decision: 'rework', defectClass: 'bogus' as never,
       })] }, /invalid defectClass/],
-      [{ ...makeRun(), history: [gateRecord({ gate: 'A', stage: 'detective', decision: 'pass', nextStage: 'bogus' as never })] }, /invalid nextStage/],
-      [{ ...makeRun(), history: [{ ...gateRecord({ gate: 'A', stage: 'detective', decision: 'pass' }), basis: [1] }] }, /history.basis/],
-      [{ ...makeRun(), history: [{ ...gateRecord({ gate: 'A', stage: 'detective', decision: 'pass' }), evidenceReviewed: [1] }] }, /history.evidenceReviewed/],
-      [{ ...makeRun(), history: [{ ...gateRecord({ gate: 'A', stage: 'detective', decision: 'pass' }), stateUpdate: 1 }] }, /history.stateUpdate/],
-      [{ ...makeRun(), status: 'aborted', history: [gateRecord({
+      [{ ...makeRun(), history: [gateRecord({ kind: 'evaluated', gate: 'A', stage: 'detective', decision: 'pass', nextStage: 'bogus' as never })] }, /invalid nextStage/],
+      [{ ...makeRun(), history: [{ ...gateRecord({ kind: 'evaluated', gate: 'A', stage: 'detective', decision: 'pass' }), basis: [1] }] }, /history.basis/],
+      [{ ...makeRun(), history: [{ ...gateRecord({ kind: 'evaluated', gate: 'A', stage: 'detective', decision: 'pass' }), evidenceReviewed: [1] }] }, /history.evidenceReviewed/],
+      [{ ...makeRun(), history: [{ ...gateRecord({ kind: 'evaluated', gate: 'A', stage: 'detective', decision: 'pass' }), stateUpdate: 1 }] }, /history.stateUpdate/],
+      [{ ...makeRun(), status: 'aborted', history: [gateRecord({ kind: 'evaluated',
         gate: 'A', stage: 'detective', decision: 'abort', nextStage: 'detective',
       })] }, /abort cannot carry/],
     ]
@@ -822,8 +837,8 @@ describe('dsh-conductor persistence', () => {
     expect(await store.load(run.runId)).toBeUndefined()
   })
 
-  it('accepts an untouched intake run as resumable', () => {
-    expect(() => { validateResumable(makeRun({ currentStage: 'intake' })) }).not.toThrow()
+  it('rejects a record that was not admitted to its first stage', () => {
+    expect(() => { validateResumable(makeRun({ currentStage: 'intake' })) }).toThrow(/complete gate history/)
   })
 
   it('validates lifecycle status alternatives and a documented same-stage successor', () => {
@@ -837,14 +852,14 @@ describe('dsh-conductor persistence', () => {
 
     const escalated = makeRun({
       status: 'escalated',
-      history: [gateRecord({ gate: 'A', stage: 'detective', decision: 'escalate' })],
+      history: [gateRecord({ kind: 'evaluated', gate: 'A', stage: 'detective', decision: 'escalate' })],
     })
     expect(parseRun(serializeRun(escalated))).toEqual(escalated)
 
     const sameStage = makeRun({
       currentStage: 'detective',
       status: 'rework',
-      history: [gateRecord({ gate: 'A', stage: 'detective', decision: 'rework' })],
+      history: [gateRecord({ kind: 'evaluated', gate: 'A', stage: 'detective', decision: 'rework', defectClass: 'report', nextStage: 'detective' })],
     })
     expect(() => { validateResumable(sameStage) }).not.toThrow()
   })

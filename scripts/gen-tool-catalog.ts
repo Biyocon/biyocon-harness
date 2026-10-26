@@ -444,7 +444,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(ToolConductor, { subagentProvider: 'mock' })
     },
     note:
-      'The model-facing Conductor tool drives the gated Detective-to-Arbiter state machine by spawning one fresh structured-output specialist per stage and returns the Arbiter GO/NO-GO decision or a blocker.',
+      'Conductor admits a purpose and A/B/C entry, dispatches fresh policy-scoped specialists, and returns an audited analysis report, implementation GO/NO-GO or a blocker; intake never grants execution authority.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-skill',

@@ -11,6 +11,7 @@
     { "path": "../../core/agent" },
     { "path": "../../core/system-prompt" },
     { "path": "../../core/session" },
+    { "path": "../../fs/fs" },
     { "path": "../../sandbox/sandbox" },
     { "path": "../../subprocess/subprocess" },
     { "path": "../../core/tools" },
