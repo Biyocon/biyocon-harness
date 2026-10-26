@@ -135,13 +135,16 @@ export async function drive(
 ): Promise<ConductorOutcome> {
   let current = run
   if (!current.history.some(record => record.kind === 'evaluated') && current.admission.entry !== 'detective') {
-    const lacksScope = current.admission.scopeSources.length === 0 || current.scope.length === 0 || current.acceptanceCriteria.length === 0
+    const lacksBaseline = current.admission.purpose === 'implementation' && current.sourceBaseline === null
+    const lacksScope = lacksBaseline || current.admission.scopeSources.length === 0
+      || current.scope.length === 0 || current.acceptanceCriteria.length === 0
     const lacksPlan = current.admission.entry === 'devils-advocate' && current.admission.planSources.length === 0
     if (lacksScope || lacksPlan) {
       current = recordGate(current, {
         origin: 'intake-validation', decision: 'rework', defectClass: lacksScope ? 'scope' : 'plan',
         nextStage: lacksScope ? 'detective' : 'strategist',
-        basis: [lacksScope ? 'entry requires captured scope material' : 'entry requires captured plan material'],
+        basis: [lacksBaseline ? 'implementation entry requires a source baseline established by Detective or supplied explicitly'
+          : lacksScope ? 'entry requires captured scope material' : 'entry requires captured plan material'],
         evidenceReviewed: current.admission.materials.map(material => material.id), stateUpdate: 'repair insufficient intake material',
       })
       await checkpoint(current)

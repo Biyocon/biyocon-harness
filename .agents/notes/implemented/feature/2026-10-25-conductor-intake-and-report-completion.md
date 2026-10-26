@@ -18,7 +18,7 @@ Runtime captures the actual current user message, binds `current-request` to its
 
 The [tool](../../../../packages/conductor/tool-conductor/README.md) validates deployment limits for file count, bytes per input and serialized admission. It never truncates material. Captured inputs and initial skip history are checkpointed before the first child; later dispatches and resume use the stored contents. A changed purpose, entry, deliverable or supplied input requires a new run. Cited-file hashes identify those inputs, not the complete workspace or an uncommitted implementation candidate.
 
-Detective accepts an uncertain current request. Later entries require captured scope sources, nonempty scope and acceptance criteria; C additionally requires plan sources. Missing prerequisites produce a charged `origin: intake-validation` rework to A or B before dispatch, without inventing a specialist. The first specialist assesses semantic sufficiency; code does not claim to establish the quality of prose or model conclusions.
+Detective accepts an uncertain current request. Later entries require captured scope sources, nonempty scope and acceptance criteria; C additionally requires plan sources. Later implementation entry also requires an explicitly supplied source baseline; without one, runtime reworks to Detective before dispatch. Captured input hashes never substitute for assessed source state. Analysis needs no source baseline. Missing prerequisites produce a charged `origin: intake-validation` rework to A or B before dispatch, without inventing a specialist. The first specialist assesses semantic sufficiency; code does not claim to establish the quality of prose or model conclusions.
 
 ### Validated routes
 

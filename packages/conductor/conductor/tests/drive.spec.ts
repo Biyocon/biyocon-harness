@@ -6,6 +6,10 @@ import {
   QualityCommandId,
   QualityEvidenceId,
   SpecialistExecutionFailure,
+  admitIntake,
+  createRun,
+  parseRun,
+  serializeRun,
   drive,
   executionBaselineHash,
 } from '../src/index.ts'
@@ -105,6 +109,38 @@ function makeDecision(decision: 'go' | 'no-go' = 'go'): DecisionRecord {
     required_follow_up: [],
   }
 }
+
+describe('implementation entry source provenance', () => {
+  it.each([
+    ['strategist', undefined, 'detective'], ['devils-advocate', undefined, 'detective'],
+    ['strategist', 'HEAD', 'strategist'], ['devils-advocate', 'HEAD', 'devils-advocate'],
+  ] as const)('admits %s with baseline %s through %s', async (entry, sourceBaseline, firstStage) => {
+    const initial = makeRun()
+    const run = createRun(initial.runId, {
+      admission: admitIntake({ purpose: 'implementation', entry, rationale: 'Review the supplied implementation plan.',
+        scopeSources: ['current-request'], planSources: ['current-request'], plan: ['Review and implement the supplied scope.'],
+      }, initial.admission.materials),
+      objective: initial.objective, authority: initial.authority,
+      scope: ['the supplied implementation'], acceptanceCriteria: initial.acceptanceCriteria,
+      ...sourceBaseline === undefined ? {} : { sourceBaseline },
+    })
+    expect(run.sourceBaseline).toBe(sourceBaseline ?? null)
+    const called: ConductorStage[] = []
+    const result = await drive(run, {
+      authorizeExecution: () => { throw new Error('No approval before the source is assessed') },
+      dispatchArbiter: () => { throw new Error('No decision before the source is assessed') },
+      dispatchSpecialist(stage, current) {
+        called.push(stage)
+        expect(current.sourceBaseline).toBe(sourceBaseline ?? null)
+        return Promise.resolve(makeEnvelope(stage, { status: 'blocked', blockers: ['Stop after source assessment.'] }))
+      },
+    }, (checkpoint) => { expect(parseRun(serializeRun(checkpoint))).toEqual(checkpoint); return Promise.resolve() })
+    expect(called).toEqual([firstStage])
+    const repair = result.run.history.find(gate => gate.kind === 'evaluated' && gate.origin === 'intake-validation')
+    if (sourceBaseline === undefined) expect(repair).toMatchObject({ decision: 'rework', nextStage: 'detective', defectClass: 'scope' })
+    else expect(repair).toBeUndefined()
+  })
+})
 
 function dispatcherFor(envelope: unknown, decision: unknown = makeDecision()): ConductorDispatcher {
   return {

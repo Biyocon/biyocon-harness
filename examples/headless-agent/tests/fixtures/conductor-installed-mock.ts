@@ -166,6 +166,17 @@ class InstalledConductorAdapter extends LlmAdapter {
         audit_hash: string
         acceptance_criteria: string[]
       }
+      if (scenario === 'source-repair') {
+        if (input.stage !== 'detective') throw new Error('Missing source baseline must dispatch Detective first')
+        yield* call('structured_output', {
+          run_id: input.run_id, stage: 'detective', baseline_ref: 'HEAD', status: 'blocked',
+          summary: 'Detective must assess the actual source before implementation.',
+          evidence: [], findings: [], assumptions: [], blockers: ['This snapshot stops before source assessment and approval.'],
+          artifacts: [], change_requests: [], quality_evidence_ids: [],
+          recommended_transition: { target: 'conductor', rationale: 'Report the missing assessed source state.' }, confidence: 'high',
+        })
+        return
+      }
       if (input.admission.purpose !== 'analysis') throw new Error('Fixture expects an analysis dispatch')
       if (arbiter) {
         yield* call('structured_output', {
@@ -209,10 +220,11 @@ class InstalledConductorAdapter extends LlmAdapter {
       return
     }
     if (result === undefined) {
-      const later = ['plan', 'rework'].includes(scenario)
+      const later = ['plan', 'rework', 'source-repair'].includes(scenario)
       yield* call('conductor', {
-        purpose: 'analysis', entry: scenario === 'forbidden' ? 'auditor' : later ? 'devils-advocate' : 'detective',
-        deliverable: ['recommendations', 'authority'].includes(scenario) ? 'recommendations' : 'answer',
+        purpose: scenario === 'source-repair' ? 'implementation' : 'analysis',
+        entry: scenario === 'forbidden' ? 'auditor' : later ? 'devils-advocate' : 'detective',
+        ...scenario === 'source-repair' ? {} : { deliverable: ['recommendations', 'authority'].includes(scenario) ? 'recommendations' : 'answer' },
         rationale: later ? 'The owner supplied a plan for review.' : 'Answer or recommend improvements from the current request.',
         objective: 'Analyze the supplied plan.md and report the findings without modifying files.',
         scope: ['plan.md'], scopeSources: ['current-request'], materialFiles: ['plan.md'],

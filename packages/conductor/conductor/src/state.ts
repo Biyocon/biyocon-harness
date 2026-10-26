@@ -80,7 +80,7 @@ export function createRun(runId: ConductorRunId, input: CreateRunInput): Conduct
     inputArtifacts: [...(input.inputArtifacts ?? [])],
     allowedPaths: [...(input.allowedPaths ?? [])],
     excludedPaths: [...(input.excludedPaths ?? [])],
-    sourceBaseline: input.sourceBaseline ?? (input.admission.entry === 'detective' ? null : `intake:${input.admission.materials[0].sha256}`),
+    sourceBaseline: input.sourceBaseline ?? null,
     authority: { owner: input.authority.owner },
     constraints: [...(input.constraints ?? [])],
     acceptanceCriteria: [...(input.acceptanceCriteria ?? [])],

@@ -206,12 +206,13 @@ describe('installed Conductor through the headless example', () => {
     expect(result.stderr).toContain('required skill "conductor-detective" is unavailable or empty')
     expect(result.stderr).toContain('rebuild or reinstall the Conductor preset assets')
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
-  it.each(['answer', 'recommendations', 'plan', 'rework', 'forbidden', 'authority'] as const)('%s has the admitted read-only route and truthful outcome', async (scenario) => {
+  it.each(['answer', 'recommendations', 'plan', 'rework', 'forbidden', 'authority', 'source-repair'] as const)('%s has the admitted read-only route and truthful outcome', async (scenario) => {
     const stages = scenario === 'forbidden' ? [] : scenario === 'authority' ? ['detective', 'strategist']
-      : scenario === 'rework' ? ['devils-advocate', 'strategist', 'devils-advocate', 'auditor', 'arbiter']
-        : scenario === 'plan' ? ['devils-advocate', 'auditor', 'arbiter']
-          : scenario === 'recommendations' ? ['detective', 'strategist', 'auditor', 'arbiter']
-            : ['detective', 'auditor', 'arbiter']
+      : scenario === 'source-repair' ? ['detective']
+        : scenario === 'rework' ? ['devils-advocate', 'strategist', 'devils-advocate', 'auditor', 'arbiter']
+          : scenario === 'plan' ? ['devils-advocate', 'auditor', 'arbiter']
+            : scenario === 'recommendations' ? ['detective', 'strategist', 'auditor', 'arbiter']
+              : ['detective', 'auditor', 'arbiter']
     const names = ['parent', ...stages.map((stage, i) => `${i + 1}-${stage}`)]
     const result = await runLoaderSmoke({
       label: `Conductor intake ${scenario}`, tempDirPrefix: 'conductor-intake-snapshot-',
@@ -250,8 +251,12 @@ describe('installed Conductor through the headless example', () => {
           expect(run.executionAuthorization).toBeNull()
           expect(run.qualityExecutions).toEqual([])
           expect(run.closeout).toBeUndefined()
-          expect(run.status).toBe(scenario === 'authority' ? 'escalated' : 'reported')
-          expect(run.currentStage).toBe(scenario === 'authority' ? 'strategist' : 'report-complete')
+          expect(run.status).toBe(scenario === 'authority' || scenario === 'source-repair' ? 'escalated' : 'reported')
+          expect(run.currentStage).toBe(scenario === 'authority' ? 'strategist' : scenario === 'source-repair' ? 'detective' : 'report-complete')
+          if (scenario === 'source-repair') {
+            expect(run.sourceBaseline).toBeNull()
+            expect(run.history[2]).toMatchObject({ origin: 'intake-validation', gate: 'C', decision: 'rework', nextStage: 'detective' })
+          }
           const evaluated = run.history.filter(gate => gate.kind === 'evaluated' && gate.origin === undefined)
           expect(evaluated.map(gate => gate.stage)).toEqual(stages)
           if (scenario === 'plan' || scenario === 'rework') expect(run.history.slice(0, 2).map(gate => gate.kind)).toEqual(['skipped', 'skipped'])
