@@ -30,6 +30,8 @@ Normal disposal remains the [subprocess seam's](../architecture/2026-07-26-subpr
 
 ## Verification
 
+The managed-tree fixture writes process identities to an exclusively created private sibling file and renames it to the readiness path only after the complete JSON write closes. Existence of that path therefore means the host can parse the full record. A regression pauses the real writer after its first JSON byte, verifies that the readiness path is absent, then permits publication and observes successful fatal-exit cleanup. The fixture does not retry malformed JSON or increase process deadlines.
+
 A parent test starts an isolated TypeScript host through the repository source launcher, waits until exact root and descendant process identities are observable, then allows the host to take each fatal path. Direct exit, default uncaught exception, and default unhandled rejection cover ordinary TERM-resistant trees; direct exit also covers a real terminal root and descendant. The parent asserts the original host exit category and waits for every recorded process to disappear, while failure cleanup targets only recorded identities or the recorded Windows tree.
 
 Unit evidence pins synchronous POSIX group and Windows taskkill delivery, terminal scans before and after the PTY root kill, repeated finalization, per-target failure containment, normal TERM-to-KILL disposal, live-set retention during pending disposal, and listener removal after disposal.
