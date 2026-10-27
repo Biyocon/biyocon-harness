@@ -408,10 +408,32 @@ jobs:
       # download the full dependency closure once and keep it for the next
       # run. The `wine` dispatcher package (not bare `wine64`) is what puts a
       # binary on PATH.
+      - name: Inspect restored Wine archives
+        run: |
+          echo 'wine-cache: candidate versions'
+          apt-cache policy wine wine64 libwine
+          archive_dir="$HOME/wine-debs"
+          if [[ -d "$archive_dir" ]]; then
+            echo 'wine-cache: restored files and byte counts'
+            find "$archive_dir" -maxdepth 3 -type f -printf '%P\t%s\n' | sort
+            shopt -s nullglob
+            archives=("$archive_dir"/*.deb)
+            for archive in "${archives[@]}"; do
+              printf 'wine-cache: package %s\n' "$(basename "$archive")"
+              dpkg-deb --field "$archive" Package Version Architecture
+            done
+            if (( ${#archives[@]} > 0 )); then
+              echo 'wine-cache: apt URI plan for restored archives'
+              sudo apt-get --yes --print-uris --download-only --no-install-recommends install "${archives[@]}"
+            fi
+          else
+            echo 'wine-cache: archive directory absent'
+          fi
+
       - name: Install Wine
         run: |
           if compgen -G "$HOME/wine-debs/*.deb" > /dev/null; then
-            sudo apt-get install -y --no-install-recommends "$HOME"/wine-debs/*.deb
+            sudo apt-get install -y --no-download --no-install-recommends "$HOME"/wine-debs/*.deb
           else
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends --download-only wine
