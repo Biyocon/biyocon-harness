@@ -12,6 +12,12 @@ Status: implemented
 
 ## 决策
 
+master 的 `wine-apt-cache` 作业和拉取请求的 Wine 消费作业使用同一个[组合动作](../../../../.github/actions/wine-apt/action.yml)，分别在各自的运行器镜像上执行。[Wine 配置脚本](../../../../scripts/wine-apt-cache.sh)在网络命名空间内，根据该镜像已有的 apt 索引和已安装软件包状态解析 Wine 候选版本及所需归档集合。包括热缓存路径在内，规划都不会刷新索引或联系软件源。精确缓存键包含运行器镜像、Wine 版本以及完整计划的 SHA-256 摘要。恢复的清单必须与当前镜像和计划一致，不允许前缀回退或跨镜像传递集合。
+
+冷缓存未命中时，仅从 Ubuntu 官方归档或安全端点下载一次计划中的精确归档，保留镜像索引中的软件包大小和 SHA-256。运行器的 Azure 镜像 URI 会被替换，但软件包身份保持不变。已移除的软件包版本会明确失败；更新的运行器镜像提供新索引并产生新缓存键。哈希验证和离线依赖解析先于显式保存。缓存仅包含 `.deb` 文件和清单，排除 apt 的 root 所有 lock 与 partial 状态。由于保存动作将传输失败报告为警告，冷缓存发布者必须先确认能够恢复到空目录，才可使用。作业并发控制在每个仓库/ref 缓存作用域内串行化写入者，不执行取消或重试。
+
+仅将本地 `.deb` 文件作为参数传入并不能确保 apt 使用这些文件：相同版本存在于索引时，apt 仍可能选择软件源 URI。因此，安装将 `Dir::Cache::archives` 指向已验证目录，并在隔离网络的进程内使用 `--no-download`。日志必须没有任何 `Get:` 行。缺失、过期或损坏的归档会在应用测试之前失败，而不是触发下载。[apt 集成 fixture](../../../../scripts/wine-apt-cache.integration.mjs)使用回环软件包仓库和私有 dpkg 根目录执行这条 shell 路径，验证安装时的网络探针被拒绝，并拒绝缺少归档或镜像不同的情况。应用测试命令和作业时限保持不变。
+
 [ci.yml](../../../../.github/workflows/ci.yml) 中必需的 `windows` 作业仍是在 `ubuntu-latest` 上运行的 `windows node 24 / wine blocking`。它保留经过校验和验证的 Windows Node、Wine apt 与 pnpm 缓存、仅限工作区快照的 hoisted 安装，以及运行工作区构建与生产网站的[共享 Wine 门禁脚本](../../../../scripts/wine-windows-gates.sh)。Node 分发文件传输采用有界重试；nodejs.org 的大文件传输停滞时，由支持范围请求的传输镜像续传相同字节，但版本和 SHA-256 权威仍属于 nodejs.org，归档通过该校验前绝不会投入使用。稳定的 `windows` 作业 ID 仍是 `all checks passed` 的依赖项。[已归档的 Wine 实验](../../archived/process/2026-07-27-wine-windows-gates-experiment.md)保留其实测取舍，而本文负责当前双通道拓扑。
 
 每个拉取请求还会在组织自有的 `dsh-windows-2025-16core` 运行器上启动一个常规且独立的 `windows-native` 作业，名称为 `windows node 24 / native complete`。该作业为工作区符号链接启用开发人员模式，通过 `pnpm/action-setup` 提供仓库固定版本的 pnpm，在不传输 store 归档的情况下执行不可变安装，并在原生 PowerShell 下运行 `pnpm run check:ci:windows-complete`。门禁卡住时，120 分钟超时会为其设定上限，同时不把实测性能目标当作正确性截止时间。

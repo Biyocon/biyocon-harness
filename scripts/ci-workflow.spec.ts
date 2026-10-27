@@ -148,6 +148,12 @@ describe('CI workflow', () => {
     expect(windows.name).toBe('windows node 24 / wine blocking')
     expect(windows.if).toBe("github.event_name == 'pull_request'")
     expect(commandSteps.some(step => step.run.includes('wine-windows-gates.sh'))).toBe(true)
+    expect(windows.needs).toBeUndefined()
+    const wineSteps = windows.steps.filter(isRecord)
+    expect(wineSteps.find(step => step.uses === './.github/actions/wine-apt')).toMatchObject({
+      with: { install: 'true' },
+    })
+    expect(windows['timeout-minutes']).toBe(15)
 
     // windows-native: non-blocking native job with failover, runs windows-complete.
     // Its pool is resolved by the Windows-specific switch.
@@ -171,9 +177,50 @@ describe('CI workflow', () => {
     ))
     expect(nativeCommandSteps.map(step => step.run)).toContain('pnpm run check:ci:windows-complete')
 
-    // wine-apt-cache: master-only, seeds the Wine apt cache.
+    // PRs resolve their own image; master seeds only its default-branch scope.
     expect(wineAptCache.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
     expect(wineAptCache['runs-on']).toBe('ubuntu-latest')
+    expect(wineAptCache['timeout-minutes']).toBe(10)
+    const seedSteps = Array.isArray(wineAptCache.steps) ? wineAptCache.steps.filter(isRecord) : []
+    expect(seedSteps.some(step => step.uses === './.github/actions/wine-apt')).toBe(true)
+    for (const writer of [windows, wineAptCache]) {
+      expect(writer.concurrency).toEqual({
+        group: 'wine-apt-${{ github.repository }}-${{ github.ref }}',
+        'cancel-in-progress': false,
+      })
+    }
+    const action = loadWorkflow('.github/actions/wine-apt/action.yml')
+    if (!isRecord(action.runs) || !Array.isArray(action.runs.steps)) throw new TypeError('Wine composite action must define steps')
+    const steps = action.runs.steps.filter(isRecord)
+    const verifyIndex = steps.findIndex(step => step.name === 'Verify complete Wine archives offline before saving')
+    const saveIndex = steps.findIndex(step => step.name === 'Save verified Wine archives')
+    const stageIndex = steps.findIndex(step => step.name === 'Stage seed files away before checking cache transport')
+    const confirmIndex = steps.findIndex(step => step.name === 'Confirm saved Wine cache is restorable')
+    expect(verifyIndex).toBeGreaterThan(0)
+    expect(saveIndex).toBeGreaterThan(verifyIndex)
+    expect(stageIndex).toBeGreaterThan(saveIndex)
+    expect(confirmIndex).toBeGreaterThan(stageIndex)
+    expect(steps[verifyIndex]?.if).toBeUndefined()
+    expect(steps[saveIndex]).toMatchObject({
+      uses: 'actions/cache/save@v4', if: "steps.cache.outputs.cache-hit != 'true'",
+    })
+    expect(steps[confirmIndex]).toMatchObject({
+      uses: 'actions/cache/restore@v4',
+      if: "steps.cache.outputs.cache-hit != 'true'",
+      with: { 'fail-on-cache-miss': true },
+    })
+    const cachePaths = '~/wine-debs/*.deb\n~/wine-debs/wine-plan.json\n'
+    const cacheSteps = steps.filter(step => typeof step.uses === 'string' && step.uses.startsWith('actions/cache/'))
+    expect(cacheSteps).toHaveLength(3)
+    for (const step of cacheSteps) expect(step.with).toMatchObject({ path: cachePaths })
+    expect(steps.some(step => typeof step.run === 'string' && step.run.includes('wine-apt-cache.integration.mjs'))).toBe(true)
+    expect(steps.find(step => step.name === 'Install Wine offline from verified cache')).toMatchObject({ if: "inputs.install == 'true'" })
+    const provisioning = readFileSync(resolve(root, 'scripts/wine-apt-cache.sh'), 'utf8')
+    expect(provisioning).not.toMatch(/apt-get[^\n]* update/)
+    expect(provisioning).toContain('Dir::Cache::archives=$archive_dir')
+    expect(provisioning).toContain('unshare --net apt-get')
+    expect(provisioning).toContain('--yes --no-download')
+    expect(provisioning).toContain('Acquire::Retries=0')
 
     // serial-windows: master-only standby, self-hosted, non-blocking.
     expect(serialWindows.if).toBe("github.event.repository.fork == false && github.event_name == 'push' && github.ref == 'refs/heads/master'")
