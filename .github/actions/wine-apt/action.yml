@@ -1,0 +1,74 @@
+name: Verified Wine apt cache
+description: Plan from the current image, validate cached archives and install offline.
+inputs:
+  install:
+    description: Install Wine after validating the archive collection.
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Test Wine provisioning with an isolated apt fixture
+      shell: bash
+      run: sudo "$(command -v node)" scripts/wine-apt-cache.integration.mjs
+
+    - name: Plan versioned Wine archives offline
+      id: plan
+      shell: bash
+      run: bash scripts/wine-apt-cache.sh plan "$RUNNER_TEMP/wine-plan.json"
+
+    - name: Restore Wine archives
+      id: cache
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          ~/wine-debs/*.deb
+          ~/wine-debs/wine-plan.json
+        key: ${{ steps.plan.outputs.key }}
+
+    - name: Download the pinned Wine archives on cache miss
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: bash scripts/wine-apt-cache.sh download "$RUNNER_TEMP/wine-plan.json" "$HOME/wine-debs"
+
+    - name: Verify complete Wine archives offline before saving
+      shell: bash
+      env:
+        WINE_CACHE_KEY: ${{ steps.plan.outputs.key }}
+      run: bash scripts/wine-apt-cache.sh verify "$RUNNER_TEMP/wine-plan.json" "$HOME/wine-debs"
+
+    - name: Save verified Wine archives
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          ~/wine-debs/*.deb
+          ~/wine-debs/wine-plan.json
+        key: ${{ steps.plan.outputs.key }}
+
+    - name: Stage seed files away before checking cache transport
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: bash scripts/wine-apt-cache.sh stage "$RUNNER_TEMP/wine-plan.json" "$HOME/wine-debs"
+
+    - name: Confirm saved Wine cache is restorable
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          ~/wine-debs/*.deb
+          ~/wine-debs/wine-plan.json
+        key: ${{ steps.plan.outputs.key }}
+        fail-on-cache-miss: true
+
+    - name: Validate restored Wine archives
+      shell: bash
+      env:
+        WINE_CACHE_KEY: ${{ steps.plan.outputs.key }}
+      run: node scripts/wine-apt-cache.mjs validate "$RUNNER_TEMP/wine-plan.json" "$HOME/wine-debs" "$ImageOS-$ImageVersion" "$WINE_CACHE_KEY"
+
+    - name: Install Wine offline from verified cache
+      if: inputs.install == 'true'
+      shell: bash
+      env:
+        WINE_CACHE_KEY: ${{ steps.plan.outputs.key }}
+      run: bash scripts/wine-apt-cache.sh install "$RUNNER_TEMP/wine-plan.json" "$HOME/wine-debs"

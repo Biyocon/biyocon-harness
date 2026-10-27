@@ -6,9 +6,24 @@ import { join, resolve } from 'node:path'
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 const archiveName = /^[a-zA-Z0-9.+:~%_-]+\.deb$/
 
+function archiveUri(value) {
+  const mirror = /^mirror\+file:\/etc\/apt\/apt-mirrors(-security)?\.txt(\/pool\/.+)$/.exec(value)
+  const url = mirror
+    ? new URL(`https://${mirror[1] ? 'security' : 'archive'}.ubuntu.com/ubuntu${mirror[2]}`)
+    : new URL(value)
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+    throw new Error('wine-cache: archive URI must be HTTP(S) without credentials')
+  }
+  if (['azure.archive.ubuntu.com', 'archive.ubuntu.com', 'security.ubuntu.com'].includes(url.hostname)) {
+    if (url.hostname === 'azure.archive.ubuntu.com') url.hostname = 'archive.ubuntu.com'
+    url.protocol = 'https:'
+  }
+  return url.href
+}
+
 function readPlan(path) {
   const plan = JSON.parse(readFileSync(path, 'utf8'))
-  if (plan?.format !== 1 || typeof plan.wineVersion !== 'string'
+  if (plan?.format !== 2 || typeof plan.wineVersion !== 'string'
     || !/^[0-9][a-zA-Z0-9.+:~_-]*$/.test(plan.wineVersion)
     || typeof plan.runnerImage !== 'string' || !/^[a-zA-Z0-9._-]+$/.test(plan.runnerImage)
     || !Array.isArray(plan.archives) || plan.archives.length === 0) {
@@ -19,6 +34,7 @@ function readPlan(path) {
     if (!entry || typeof entry.name !== 'string' || !archiveName.test(entry.name)
       || !Number.isSafeInteger(entry.size) || entry.size <= 0
       || typeof entry.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256)
+      || typeof entry.uri !== 'string' || archiveUri(entry.uri) !== entry.uri
       || names.has(entry.name)) {
       throw new Error('wine-cache: invalid or duplicate archive entry')
     }
@@ -28,27 +44,28 @@ function readPlan(path) {
 }
 
 function cacheKey(plan) {
-  return `wine-debs-v2-${plan.runnerImage}-${plan.wineVersion}-${digest(JSON.stringify(plan))}`
+  return `wine-debs-v3-${plan.runnerImage}-${plan.wineVersion}-${digest(JSON.stringify(plan))}`
 }
 
 function makePlan(logPath, wineVersion, runnerImage, outputPath) {
   const archives = []
   for (const line of readFileSync(logPath, 'utf8').split(/\r?\n/)) {
     if (!line.startsWith("'")) continue
-    const match = /^'[^']+' (\S+) (\d+) SHA256:([a-f0-9]{64})$/.exec(line)
+    const match = /^'([^']+)' (\S+) (\d+) SHA256:([a-f0-9]{64})$/.exec(line)
     if (!match) throw new Error(`wine-cache: apt did not provide a SHA256 archive record: ${line}`)
-    archives.push({ name: match[1], size: Number(match[2]), sha256: match[3] })
+    archives.push({ name: match[2], size: Number(match[3]), sha256: match[4], uri: archiveUri(match[1]) })
   }
   archives.sort((left, right) => left.name.localeCompare(right.name, 'en'))
-  writeFileSync(outputPath, `${JSON.stringify({ format: 1, wineVersion, runnerImage, archives }, null, 2)}\n`)
+  writeFileSync(outputPath, `${JSON.stringify({ format: 2, wineVersion, runnerImage, archives }, null, 2)}\n`)
   const plan = readPlan(outputPath)
   const key = cacheKey(plan)
   console.log(`wine-cache: planned ${plan.archives.length} archives, Wine ${plan.wineVersion}, key ${key}`)
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `key=${key}\n`)
 }
 
-function validate(planPath, directory, expectedKey) {
+function validate(planPath, directory, expectedImage, expectedKey) {
   const plan = readPlan(planPath)
+  if (plan.runnerImage !== expectedImage) throw new Error(`wine-cache: runner image mismatch: expected ${expectedImage}, got ${plan.runnerImage}`)
   if (expectedKey && cacheKey(plan) !== expectedKey) throw new Error('wine-cache: restored plan does not match the requested key')
   if (!lstatSync(directory).isDirectory() || lstatSync(directory).isSymbolicLink()) {
     throw new Error('wine-cache: archive directory must be a real directory')
@@ -91,12 +108,16 @@ try {
       makePlan(...args)
       break
     case 'validate':
-      if (args.length < 2 || args.length > 3) throw new Error('wine-cache: validate requires plan, archive directory and optional expected key')
+      if (args.length < 3 || args.length > 4) throw new Error('wine-cache: validate requires plan, archive directory, runner image and optional expected key')
       validate(...args)
       break
     case 'version':
       if (args.length !== 1) throw new Error('wine-cache: version requires a plan')
       console.log(readPlan(args[0]).wineVersion)
+      break
+    case 'downloads':
+      if (args.length !== 1) throw new Error('wine-cache: downloads requires a plan')
+      for (const entry of readPlan(args[0]).archives) console.log(`${entry.uri}\t${entry.name}`)
       break
     case 'offline-log':
       if (args.length !== 1) throw new Error('wine-cache: offline-log requires an apt log')

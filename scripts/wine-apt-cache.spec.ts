@@ -42,13 +42,30 @@ describe('Wine apt cache', () => {
     const f = fixture()
     expect(run(['plan', f.log, '9.0', 'ubuntu24-image1', f.plan], f.output).status).toBe(0)
     const key = readFileSync(f.output, 'utf8').trim().slice('key='.length)
-    expect(key).toMatch(/^wine-debs-v2-ubuntu24-image1-9\.0-[a-f0-9]{64}$/)
-    const checked = run(['validate', f.plan, f.directory, key])
+    expect(key).toMatch(/^wine-debs-v3-ubuntu24-image1-9\.0-[a-f0-9]{64}$/)
+    const checked = run(['validate', f.plan, f.directory, 'ubuntu24-image1', key])
     expect(checked.status).toBe(0)
     expect(checked.stdout).toContain('complete collection: 2 archives')
     expect(checked.stdout).toContain('libwine_9.0_amd64.deb')
     expect(run(['version', f.plan]).stdout.trim()).toBe('9.0')
-    expect(run(['validate', f.plan, f.directory, 'stale-key']).stderr).toContain('does not match the requested key')
+    expect(run(['validate', f.plan, f.directory, 'ubuntu24-image1', 'stale-key']).stderr).toContain('does not match the requested key')
+    expect(run(['validate', f.plan, f.directory, 'different-image', key]).stderr).toContain('runner image mismatch')
+  })
+
+  it('uses canonical Ubuntu endpoints for mirrored archive bytes', () => {
+    const f = fixture()
+    const record = (uri: string, name: string) => `'${uri}' ${name} 20 SHA256:${'a'.repeat(64)}`
+    writeFileSync(f.log, [
+      record('mirror+file:/etc/apt/apt-mirrors.txt/pool/main/a/a.deb', 'a_1_all.deb'),
+      record('mirror+file:/etc/apt/apt-mirrors-security.txt/pool/main/b/b.deb', 'b_1_all.deb'),
+      record('http://azure.archive.ubuntu.com/ubuntu/pool/main/c/c.deb', 'c_1_all.deb'),
+    ].join('\n'))
+    expect(run(['plan', f.log, '9.0', 'image1', f.plan]).status).toBe(0)
+    const urls = run(['downloads', f.plan]).stdout
+    expect(urls).toContain('https://archive.ubuntu.com/ubuntu/pool/main/a/a.deb\ta_1_all.deb')
+    expect(urls).toContain('https://security.ubuntu.com/ubuntu/pool/main/b/b.deb\tb_1_all.deb')
+    expect(urls).toContain('https://archive.ubuntu.com/ubuntu/pool/main/c/c.deb\tc_1_all.deb')
+    expect(urls).not.toContain('azure.')
   })
 
   it('changes the key for Wine versions, image versions and dependency bytes', () => {
@@ -75,7 +92,7 @@ describe('Wine apt cache', () => {
       case 'corrupt': writeFileSync(library, 'X'.repeat(f.packages[0].bytes.length)); break
       case 'extra': writeFileSync(join(f.directory, 'unplanned_1_all.deb'), 'extra'); break
     }
-    const checked = run(['validate', f.plan, f.directory])
+    const checked = run(['validate', f.plan, f.directory, 'image1'])
     expect(checked.status).toBe(1)
     expect(checked.stderr).toContain(expected[change])
   })
@@ -86,7 +103,7 @@ describe('Wine apt cache', () => {
     const library = join(f.directory, f.packages[0].name)
     rmSync(library)
     symlinkSync(f.log, library, 'file')
-    const checked = run(['validate', f.plan, f.directory])
+    const checked = run(['validate', f.plan, f.directory, 'image1'])
     expect(checked.status).toBe(1)
     expect(checked.stderr).toContain('not a regular file')
   })
@@ -110,7 +127,7 @@ describe('Wine apt cache', () => {
     const expectedPlan = join(f.directory, 'expected.json')
     expect(run(['plan', f.log, '9.0', 'image1', expectedPlan]).status).toBe(0)
     expect(run(['plan', f.log, '9.1', 'image1', f.plan]).status).toBe(0)
-    expect(run(['validate', expectedPlan, f.directory]).stderr).toContain('stored plan differs')
+    expect(run(['validate', expectedPlan, f.directory, 'image1']).stderr).toContain('stored plan differs')
   })
 
   it('requires an apt transcript without archive acquisitions', () => {

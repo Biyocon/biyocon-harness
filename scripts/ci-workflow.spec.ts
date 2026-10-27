@@ -148,13 +148,10 @@ describe('CI workflow', () => {
     expect(windows.name).toBe('windows node 24 / wine blocking')
     expect(windows.if).toBe("github.event_name == 'pull_request'")
     expect(commandSteps.some(step => step.run.includes('wine-windows-gates.sh'))).toBe(true)
-    expect(windows.needs).toBe('wine-apt-cache')
-    const installWine = commandSteps.find(step => step.name === 'Install Wine offline from verified cache')
-    expect(installWine?.run).toContain('scripts/wine-apt-cache.sh install')
+    expect(windows.needs).toBeUndefined()
     const wineSteps = windows.steps.filter(isRecord)
-    expect(wineSteps.find(step => step.id === 'wine-cache')).toMatchObject({
-      uses: 'actions/cache/restore@v4',
-      with: { key: actionExpression('needs.wine-apt-cache.outputs.key'), 'fail-on-cache-miss': true },
+    expect(wineSteps.find(step => step.uses === './.github/actions/wine-apt')).toMatchObject({
+      with: { install: 'true' },
     })
     expect(windows['timeout-minutes']).toBe(15)
 
@@ -180,38 +177,48 @@ describe('CI workflow', () => {
     ))
     expect(nativeCommandSteps.map(step => step.run)).toContain('pnpm run check:ci:windows-complete')
 
-    // Each PR consumes a cache that the seed has verified in the same run.
-    expect(wineAptCache.if).toBe("github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')")
+    // PRs resolve their own image; master seeds only its default-branch scope.
+    expect(wineAptCache.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
     expect(wineAptCache['runs-on']).toBe('ubuntu-latest')
     expect(wineAptCache['timeout-minutes']).toBe(10)
     const seedSteps = Array.isArray(wineAptCache.steps) ? wineAptCache.steps.filter(isRecord) : []
-    const verifyIndex = seedSteps.findIndex(step => step.name === 'Verify complete Wine archives offline before saving')
-    const saveIndex = seedSteps.findIndex(step => step.name === 'Save verified Wine archives')
+    expect(seedSteps.some(step => step.uses === './.github/actions/wine-apt')).toBe(true)
+    for (const writer of [windows, wineAptCache]) {
+      expect(writer.concurrency).toEqual({
+        group: 'wine-apt-${{ github.repository }}-${{ github.ref }}',
+        'cancel-in-progress': false,
+      })
+    }
+    const action = loadWorkflow('.github/actions/wine-apt/action.yml')
+    if (!isRecord(action.runs) || !Array.isArray(action.runs.steps)) throw new TypeError('Wine composite action must define steps')
+    const steps = action.runs.steps.filter(isRecord)
+    const verifyIndex = steps.findIndex(step => step.name === 'Verify complete Wine archives offline before saving')
+    const saveIndex = steps.findIndex(step => step.name === 'Save verified Wine archives')
+    const stageIndex = steps.findIndex(step => step.name === 'Stage seed files away before checking cache transport')
+    const confirmIndex = steps.findIndex(step => step.name === 'Confirm saved Wine cache is restorable')
     expect(verifyIndex).toBeGreaterThan(0)
     expect(saveIndex).toBeGreaterThan(verifyIndex)
-    expect(seedSteps[verifyIndex]?.if).toBeUndefined()
-    expect(seedSteps[saveIndex]).toMatchObject({
-      uses: 'actions/cache/save@v4', if: "steps.wine-cache.outputs.cache-hit != 'true'",
+    expect(stageIndex).toBeGreaterThan(saveIndex)
+    expect(confirmIndex).toBeGreaterThan(stageIndex)
+    expect(steps[verifyIndex]?.if).toBeUndefined()
+    expect(steps[saveIndex]).toMatchObject({
+      uses: 'actions/cache/save@v4', if: "steps.cache.outputs.cache-hit != 'true'",
     })
-    const confirmIndex = seedSteps.findIndex(step => step.name === 'Confirm saved Wine cache is restorable')
-    expect(confirmIndex).toBeGreaterThan(saveIndex)
-    expect(seedSteps[confirmIndex]).toMatchObject({
+    expect(steps[confirmIndex]).toMatchObject({
       uses: 'actions/cache/restore@v4',
-      if: "steps.wine-cache.outputs.cache-hit != 'true'",
+      if: "steps.cache.outputs.cache-hit != 'true'",
       with: { 'fail-on-cache-miss': true },
     })
     const cachePaths = '~/wine-debs/*.deb\n~/wine-debs/wine-plan.json\n'
-    const cacheSteps = [...wineSteps, ...seedSteps].filter(step => typeof step.uses === 'string' && step.uses.startsWith('actions/cache/'))
-      .filter(step => isRecord(step.with) && typeof step.with.path === 'string' && step.with.path.includes('wine-debs'))
-    expect(cacheSteps).toHaveLength(4)
+    const cacheSteps = steps.filter(step => typeof step.uses === 'string' && step.uses.startsWith('actions/cache/'))
+    expect(cacheSteps).toHaveLength(3)
     for (const step of cacheSteps) expect(step.with).toMatchObject({ path: cachePaths })
-    expect(seedSteps.some(step => step.uses === 'actions/cache@v4')).toBe(false)
-    expect(wineSteps.some(step => step.uses === 'actions/cache@v4')).toBe(false)
+    expect(steps.some(step => typeof step.run === 'string' && step.run.includes('wine-apt-cache.integration.mjs'))).toBe(true)
+    expect(steps.find(step => step.name === 'Install Wine offline from verified cache')).toMatchObject({ if: "inputs.install == 'true'" })
     const provisioning = readFileSync(resolve(root, 'scripts/wine-apt-cache.sh'), 'utf8')
-    expect(provisioning).toContain('Dir::Etc::sourcelist=$plan.sources.list')
-    expect(provisioning).toContain('deb https://archive.ubuntu.com/ubuntu')
+    expect(provisioning).not.toMatch(/apt-get[^\n]* update/)
     expect(provisioning).toContain('Dir::Cache::archives=$archive_dir')
-    expect(provisioning).toContain('sudo unshare --net apt-get')
+    expect(provisioning).toContain('unshare --net apt-get')
     expect(provisioning).toContain('--yes --no-download')
     expect(provisioning).toContain('Acquire::Retries=0')
 

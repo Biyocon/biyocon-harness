@@ -359,10 +359,12 @@ jobs:
   # .agents/notes/implemented/process/2026-08-08-native-windows-pull-request-ci.md
   windows:
     if: github.event_name == 'pull_request'
-    needs: wine-apt-cache
     runs-on: ubuntu-latest
     name: windows node 24 / wine blocking
     timeout-minutes: 15
+    concurrency:
+      group: wine-apt-${{ github.repository }}-${{ github.ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6
         with:
@@ -391,22 +393,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-
 
-      - name: Restore verified Wine archives
-        uses: actions/cache/restore@v4
-        id: wine-cache
+      - uses: ./.github/actions/wine-apt
         with:
-          path: |
-            ~/wine-debs/*.deb
-            ~/wine-debs/wine-plan.json
-          key: ${{ needs.wine-apt-cache.outputs.key }}
-          fail-on-cache-miss: true
-
-      # Restored archives are apt's cache, not merely local package arguments.
-      # No network is available to apt; incomplete restores fail before tests.
-      - name: Install Wine offline from verified cache
-        env:
-          WINE_CACHE_KEY: ${{ needs.wine-apt-cache.outputs.key }}
-        run: bash scripts/wine-apt-cache.sh install "$HOME/wine-debs/wine-plan.json" "$HOME/wine-debs"
+          install: 'true'
 
       - name: Run the Wine Windows gates
         run: bash scripts/wine-windows-gates.sh
@@ -415,15 +404,16 @@ jobs:
         if: always()
         run: wineserver -k 2>/dev/null || true
 
-  # Master seeds the shared default-branch cache. PRs validate or populate
-  # their scoped collection before the Wine consumer restores that exact key.
+  # Master seeds the default-branch scope. Each PR prepares and consumes the
+  # matching cache on its own image through the same composite action.
   wine-apt-cache:
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     name: wine apt cache
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    outputs:
-      key: ${{ steps.wine-cache-key.outputs.key }}
+    concurrency:
+      group: wine-apt-${{ github.repository }}-${{ github.ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6
         with:
@@ -433,48 +423,7 @@ jobs:
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
 
-      - name: Plan versioned Wine archives
-        id: wine-cache-key
-        run: bash scripts/wine-apt-cache.sh plan "$RUNNER_TEMP/wine-plan.json"
-
-      - name: Restore Wine archives
-        uses: actions/cache/restore@v4
-        id: wine-cache
-        with:
-          path: |
-            ~/wine-debs/*.deb
-            ~/wine-debs/wine-plan.json
-          key: ${{ steps.wine-cache-key.outputs.key }}
-
-      - name: Download the Wine dependency closure
-        if: steps.wine-cache.outputs.cache-hit != 'true'
-        run: bash scripts/wine-apt-cache.sh download "$RUNNER_TEMP/wine-plan.json" "$HOME/wine-debs"
-
-      - name: Verify complete Wine archives offline before saving
-        env:
-          WINE_CACHE_KEY: ${{ steps.wine-cache-key.outputs.key }}
-        run: bash scripts/wine-apt-cache.sh verify "$RUNNER_TEMP/wine-plan.json" "$HOME/wine-debs"
-
-      - name: Save verified Wine archives
-        if: steps.wine-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ~/wine-debs/*.deb
-            ~/wine-debs/wine-plan.json
-          key: ${{ steps.wine-cache-key.outputs.key }}
-
-      # Save reports transport failures as warnings; require a successful
-      # restore before releasing the consumer job.
-      - name: Confirm saved Wine cache is restorable
-        if: steps.wine-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ~/wine-debs/*.deb
-            ~/wine-debs/wine-plan.json
-          key: ${{ steps.wine-cache-key.outputs.key }}
-          fail-on-cache-miss: true
+      - uses: ./.github/actions/wine-apt
 
   # Every pull request also gets a real Windows-kernel signal. This job keeps
   # its own unmasked conclusion but is deliberately absent from
