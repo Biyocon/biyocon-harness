@@ -7,17 +7,36 @@ command=${1:?Expected plan, download, verify or install}
 plan=${2:?Expected archive plan path}
 archive_dir=${3:-"$HOME/wine-debs"}
 apt_options=(-o Acquire::Retries=0 -o "Dir::Cache::archives=$archive_dir")
+if [[ "$command" != install ]]; then
+  # Keep the seed's package sources and indexes private to this job. Runner
+  # mirrorlists can select azure.archive.ubuntu.com and stall on libwine.
+  apt_options+=(-o "Dir::Etc::sourcelist=$plan.sources.list" -o Dir::Etc::sourceparts=- -o "Dir::State::lists=$plan.lists")
+fi
 
 case "$command" in
   plan)
-    sudo apt-get -o Acquire::Retries=0 update
-    wine_version=$(apt-cache policy wine | awk '/Candidate:/ { print $2 }')
+    if ! grep -qx 'ID=ubuntu' /etc/os-release; then
+      echo 'wine-cache: provisioning requires an Ubuntu runner' >&2
+      exit 1
+    fi
+    codename=$(sed -n 's/^VERSION_CODENAME=//p' /etc/os-release)
+    if [[ ! "$codename" =~ ^[a-z]+$ ]]; then
+      echo 'wine-cache: missing Ubuntu release codename' >&2
+      exit 1
+    fi
+    printf '%s\n' \
+      "deb https://archive.ubuntu.com/ubuntu $codename main universe" \
+      "deb https://archive.ubuntu.com/ubuntu $codename-updates main universe" \
+      "deb https://security.ubuntu.com/ubuntu $codename-security main universe" > "$plan.sources.list"
+    mkdir -p "$plan.lists/partial"
+    sudo apt-get "${apt_options[@]}" update
+    wine_version=$(apt-cache "${apt_options[@]}" policy wine | awk '/Candidate:/ { print $2 }')
     if [[ -z "$wine_version" || "$wine_version" == '(none)' ]]; then
       echo 'wine-cache: no Wine candidate available' >&2
       exit 1
     fi
     mkdir -p "$plan.archives"
-    apt-get -o "Dir::Cache::archives=$plan.archives" -o Acquire::ForceHash=SHA256 -o Acquire::Retries=0 \
+    apt-get "${apt_options[@]}" -o "Dir::Cache::archives=$plan.archives" -o Acquire::ForceHash=SHA256 \
       --print-uris --yes --download-only --no-install-recommends \
       install "wine=$wine_version" | tee "$plan.apt.log"
     node "$script_dir/wine-apt-cache.mjs" plan "$plan.apt.log" "$wine_version" \

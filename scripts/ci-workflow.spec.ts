@@ -195,6 +195,13 @@ describe('CI workflow', () => {
     })
     expect(seedSteps.some(step => step.uses === 'actions/cache@v4')).toBe(false)
     expect(wineSteps.some(step => step.uses === 'actions/cache@v4')).toBe(false)
+    const provisioning = readFileSync(resolve(root, 'scripts/wine-apt-cache.sh'), 'utf8')
+    expect(provisioning).toContain('Dir::Etc::sourcelist=$plan.sources.list')
+    expect(provisioning).toContain('deb https://archive.ubuntu.com/ubuntu')
+    expect(provisioning).toContain('Dir::Cache::archives=$archive_dir')
+    expect(provisioning).toContain('sudo unshare --net apt-get')
+    expect(provisioning).toContain('--yes --no-download')
+    expect(provisioning).toContain('Acquire::Retries=0')
 
     // serial-windows: master-only standby, self-hosted, non-blocking.
     expect(serialWindows.if).toBe("github.event.repository.fork == false && github.event_name == 'push' && github.ref == 'refs/heads/master'")

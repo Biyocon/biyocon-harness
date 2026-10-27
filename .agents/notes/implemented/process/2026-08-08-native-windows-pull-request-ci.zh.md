@@ -16,6 +16,8 @@ Status: implemented
 
 仅将本地 `.deb` 文件作为参数传入并不能确保 apt 使用这些文件：相同版本存在于索引时，apt 仍可能选择软件源 URI。`Dir::Cache::archives` 使 apt 使用恢复的文件。PR #41 的诊断运行发现缓存中全部 21 个软件包，包括完整的 104,806,224 字节 `libwine` 归档；104 MB 缓存与 105 MB 软件包的表面差异来自缓存压缩及不同显示单位，不能证明软件包缺失。
 
+冷缓存构建通过作业私有的 apt 软件源和索引读取 Ubuntu 官方归档及安全端点。它既不修改运行器的软件源配置，也不使用其 Azure 镜像列表；后者的大型 `libwine` 传输曾在测试开始前停滞。热缓存消费作业只使用经过验证的归档，并且没有网络访问。
+
 [ci.yml](../../../../.github/workflows/ci.yml) 中必需的 `windows` 作业仍是在 `ubuntu-latest` 上运行的 `windows node 24 / wine blocking`。它保留经过校验和验证的 Windows Node、Wine apt 与 pnpm 缓存、仅限工作区快照的 hoisted 安装，以及运行工作区构建与生产网站的[共享 Wine 门禁脚本](../../../../scripts/wine-windows-gates.sh)。Node 分发文件传输采用有界重试；nodejs.org 的大文件传输停滞时，由支持范围请求的传输镜像续传相同字节，但版本和 SHA-256 权威仍属于 nodejs.org，归档通过该校验前绝不会投入使用。稳定的 `windows` 作业 ID 仍是 `all checks passed` 的依赖项。[已归档的 Wine 实验](../../archived/process/2026-07-27-wine-windows-gates-experiment.md)保留其实测取舍，而本文负责当前双通道拓扑。
 
 每个拉取请求还会在组织自有的 `dsh-windows-2025-16core` 运行器上启动一个常规且独立的 `windows-native` 作业，名称为 `windows node 24 / native complete`。该作业为工作区符号链接启用开发人员模式，通过 `pnpm/action-setup` 提供仓库固定版本的 pnpm，在不传输 store 归档的情况下执行不可变安装，并在原生 PowerShell 下运行 `pnpm run check:ci:windows-complete`。门禁卡住时，120 分钟超时会为其设定上限，同时不把实测性能目标当作正确性截止时间。
