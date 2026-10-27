@@ -33,6 +33,8 @@ interface ScriptedLog {
    * written log carries genuine volatile values for the normalizers to scrub.
    */
   lines: unknown[]
+  /** Unterminated raw text after the complete records, simulating an in-progress JSONL append. */
+  trailingText?: string
 }
 
 /** The whole scripted behavior for one run. Every field defaults to the least surprising choice. */
@@ -238,7 +240,7 @@ function writeLogs(): void {
   for (const log of behavior.logs ?? []) {
     const target = join(sessionsRoot, log.file)
     mkdirSync(dirname(target), { recursive: true })
-    writeFileSync(target, log.lines.map(l => JSON.stringify(instantiate(l))).join('\n') + '\n')
+    writeFileSync(target, log.lines.map(l => JSON.stringify(instantiate(l))).join('\n') + '\n' + (log.trailingText ?? ''))
   }
 }
 

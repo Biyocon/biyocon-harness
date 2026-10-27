@@ -15,11 +15,8 @@
       "path": ".dsh-snapshot-subagent-settled"
     },
     {
-      "op": "waitForTurnStart",
+      "op": "waitForTurnEnd",
       "minimumTurn": 2
-    },
-    {
-      "op": "waitForTurnEnd"
     },
     {
       "op": "prompt",

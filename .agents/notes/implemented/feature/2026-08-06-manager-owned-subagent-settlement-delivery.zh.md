@@ -56,7 +56,7 @@ Status: implemented
 
 ### 快照覆盖
 
-三个整体组装的 ACP 场景覆盖该通知：一个从不上报的 child、一个先上报的 child，以及一个被多轮 follow-up 驱动的 child。三者都需要显式栅栏。通知在 child 拆卸完成后才到达，会与父级当时正在做的事竞争，因此每个场景都会把 child 保持到父级启动轮次结束，再等待该通知开启的那个父级轮次（先 `waitForTurnStart` 到该轮次，再 `waitForTurnEnd`），然后脚本才继续。等待一个运行并未被栅栏保证会产生的轮次不算覆盖：一旦通知落进已经在跑的那个轮次，它就是一次超时。
+三个整体组装的 ACP 场景覆盖该通知：一个从不上报的 child、一个先上报的 child，以及一个被多轮 follow-up 驱动的 child。通知在 child 拆卸完成后才到达，会与父级当时正在做的事竞争，因此每个场景都会把 child 保持到父级启动轮次结束，再通过 `waitForTurnEnd.minimumTurn` 等待指定编号的父级轮次关闭，然后脚本才继续。[完成轮次等待](../testing/2026-10-27-acp-completed-turn-observation.md)也能观察到在两次轮询之间完成的轮次。场景仍须保证运行会产生该轮次；否则，已运行轮次所接收的通知不能满足等待条件。
 
 `subagent-continuable` 是其中固定失败结局的那个。它的 child 最后一个轮次在被强制的持久化检查点上死亡，且未进入任何 step，因此该 transcript 正是上面那条终止原因规则的端到端可见之处：通知说该 child **失败**，把此前的 `SECOND_OK` 作为它最后产出的内容而非结果携带，而父级自己的确认轮次会到达 ACP 客户端。
 
