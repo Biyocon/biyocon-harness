@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/test-support/acp-snapshot/README.md
-README.md: 31f4ec0caeb995a10202d4a452ee7e433749762f
-README.zh.md: e92d3f17c62b4fe7dea4f5b6c5a0738eef635327
+README.md: 7543701e5a51eb53c2a4980865dca0f6739f63a9
+README.zh.md: 18077f22baff27bd95cfe4ad953e51e816461fe2

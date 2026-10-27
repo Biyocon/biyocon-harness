@@ -52,7 +52,9 @@ const WAIT_POLL_INTERVAL_MS = 10
  * the prompt, then keeps the application live until that later update arrives.
  * `waitForTurnStart` waits for an open durable turn, optionally at or beyond a
  * specified turn number. `waitForTurnEnd` holds the subprocess open until the
- * selected session's latest complete raw-JSONL turn boundary is `turn/end`.
+ * selected session's latest complete raw-JSONL turn boundary is `turn/end`,
+ * optionally requiring a specified turn to be durably closed. Completed turns
+ * remain observable even when their start and end occur between polls.
  * `waitForGoalPhase` waits for the latest durable goal snapshot to reach one phase.
  * `waitForInboxMessage` waits for inserted inbox text containing a scenario marker.
  * `waitForSubagentTurnEnd` waits until one background child has persisted a
@@ -80,7 +82,7 @@ export type InputStep =
   }
   | { op: 'waitForFile'; path: string; timeoutMs?: number }
   | { op: 'waitForTurnStart'; minimumTurn?: number; timeoutMs?: number }
-  | { op: 'waitForTurnEnd'; timeoutMs?: number }
+  | { op: 'waitForTurnEnd'; minimumTurn?: number; timeoutMs?: number }
   | { op: 'waitForSubagentTurnEnd'; child?: number; minimumTurn?: number; timeoutMs?: number }
   | { op: 'waitForGoalPhase'; phase: 'active' | 'paused' | 'blocked' | 'complete'; timeoutMs?: number }
   | { op: 'waitForInboxMessage'; text: string; timeoutMs?: number }
@@ -306,7 +308,7 @@ export async function runScenario(input: InputScript, opts: RunOptions): Promise
         () => sessionId,
         (id) => { sessionId = id },
         (id, timeoutMs, minimumTurn) => waitForPersistedTurnStart(sessionsRoot, id, timeoutMs, minimumTurn),
-        (id, timeoutMs) => waitForPersistedTurnEnd(sessionsRoot, id, timeoutMs),
+        (id, timeoutMs, minimumTurn) => waitForPersistedTurnEnd(sessionsRoot, id, timeoutMs, minimumTurn),
         (child, timeoutMs, minimumTurn) => waitForPersistedChildTurnEnd(sessionsRoot, child, timeoutMs, minimumTurn),
         (id, phase, timeoutMs) => waitForPersistedGoalPhase(sessionsRoot, id, phase, timeoutMs),
         (id, text, timeoutMs) => waitForPersistedInboxMessage(sessionsRoot, id, text, timeoutMs),
@@ -384,7 +386,7 @@ async function runStep(
   getSessionId: () => string | undefined,
   setSessionId: (id: string) => void,
   waitForTurnStart: (sessionId: string, timeoutMs?: number, minimumTurn?: number) => Promise<void>,
-  waitForTurnEnd: (sessionId: string, timeoutMs?: number) => Promise<void>,
+  waitForTurnEnd: (sessionId: string, timeoutMs?: number, minimumTurn?: number) => Promise<void>,
   waitForChildTurnEnd: (child: number, timeoutMs?: number, minimumTurn?: number) => Promise<void>,
   waitForGoalPhase: (sessionId: string, phase: string, timeoutMs?: number) => Promise<void>,
   waitForInboxMessage: (sessionId: string, text: string, timeoutMs?: number) => Promise<void>,
@@ -473,7 +475,7 @@ async function runStep(
     case 'waitForTurnEnd': {
       const sessionId = getSessionId()
       if (sessionId === undefined) throw new Error('snapshot-harness: waitForTurnEnd before newSession')
-      await waitForTurnEnd(sessionId, step.timeoutMs)
+      await waitForTurnEnd(sessionId, step.timeoutMs, step.minimumTurn)
       return
     }
     case 'waitForSubagentTurnEnd':
@@ -552,7 +554,8 @@ async function waitForPersistedTurnStart(
 }
 
 /**
- * Wait until the raw JSONL backend exposes one complete closing turn boundary.
+ * Wait until the raw JSONL backend exposes a closed latest turn and, when
+ * requested, includes the numbered completed turn.
  * The ACP cancel notification settles its prompt before the agent necessarily
  * reaches quiescence, so cancellation snapshots use this external boundary to
  * keep subprocess disposal from changing an `aborted` turn into `disposed`.
@@ -561,11 +564,14 @@ async function waitForPersistedTurnEnd(
   root: string,
   sessionId: string,
   timeoutMs = DEFAULT_WAIT_TIMEOUT_MS,
+  minimumTurn?: number,
 ): Promise<void> {
   await vi.waitFor(async () => {
     const log = (await harvestSessionLogs(root)).find(candidate => candidate.id === sessionId)
-    if (log === undefined || !latestTurnIsClosed(log.content)) {
-      throw new Error(`snapshot-harness: session "${sessionId}" did not persist turn/end within ${timeoutMs}ms`)
+    if (log === undefined || !latestTurnIsClosed(log.content)
+      || (minimumTurn !== undefined && !hasClosedTurn(log.content, minimumTurn))) {
+      const detail = minimumTurn === undefined ? 'turn/end' : `closed turn ${minimumTurn}`
+      throw new Error(`snapshot-harness: session "${sessionId}" did not persist ${detail} within ${timeoutMs}ms`)
     }
   }, { interval: WAIT_POLL_INTERVAL_MS, timeout: timeoutMs })
 }

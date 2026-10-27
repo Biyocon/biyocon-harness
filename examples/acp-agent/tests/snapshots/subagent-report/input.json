@@ -15,11 +15,8 @@
       "op": "waitForSubagentTurnEnd"
     },
     {
-      "op": "waitForTurnStart",
+      "op": "waitForTurnEnd",
       "minimumTurn": 2
-    },
-    {
-      "op": "waitForTurnEnd"
     },
     {
       "op": "promptAndWaitForAgentMessage",

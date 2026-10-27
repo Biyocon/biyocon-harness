@@ -602,6 +602,60 @@ describe('runScenario', () => {
     expect(result.sessionLogs[0]?.content).toContain('"type":"turn/end"')
   })
 
+  it('observes a background parent turn after its closing boundary is already durable', { timeout: 20_000 }, async () => {
+    const { fixtureFile } = await scenario({
+      prompt: 'hang-until-cancel',
+      persistLogsOnCancel: true,
+      logs: [{
+        file: 'project/main/session.jsonl',
+        lines: [
+          { type: 'session', version: 0, id: '{{SID}}', createdAt: 1, delegationDepth: 0 },
+          { type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } },
+          { type: 'turn/end', seq: 1, time: 2, data: { turn: 1, reason: { kind: 'stop' } } },
+          { type: 'turn/start', seq: 2, time: 3, data: { turn: 2 } },
+          { type: 'turn/end', seq: 3, time: 4, data: { turn: 2, reason: { kind: 'stop' } } },
+        ],
+      }],
+    })
+    const result = await runScenario(
+      {
+        steps: [
+          ...boot,
+          { op: 'promptAndCancel', text: 'hang' },
+          { op: 'waitForTurnEnd', minimumTurn: 2, timeoutMs: 20 },
+        ],
+      },
+      { agent: AGENT, mode: 'replay', fixtureFile },
+    )
+    expect(result.sessionLogs[0]?.content).toContain('"data":{"turn":2,"reason":{"kind":"stop"}}')
+  })
+
+  it.each([false, true])('waitForTurnEnd rejects an earlier closed turn when the requested turn is open: %s', async (open) => {
+    const { fixtureFile } = await scenario({
+      prompt: 'hang-until-cancel',
+      persistLogsOnCancel: true,
+      logs: [{
+        file: 'project/main/session.jsonl',
+        lines: [
+          { type: 'session', version: 0, id: '{{SID}}', createdAt: 1, delegationDepth: 0 },
+          { type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } },
+          { type: 'turn/end', seq: 1, time: 2, data: { turn: 1, reason: { kind: 'stop' } } },
+          ...open ? [{ type: 'turn/start', seq: 2, time: 3, data: { turn: 2 } }] : [],
+        ],
+      }],
+    })
+    await expect(runScenario(
+      {
+        steps: [
+          ...boot,
+          { op: 'promptAndCancel', text: 'hang' },
+          { op: 'waitForTurnEnd', minimumTurn: 2, timeoutMs: 20 },
+        ],
+      },
+      { agent: AGENT, mode: 'replay', fixtureFile },
+    )).rejects.toThrow(/did not persist closed turn 2 within 20ms/)
+  })
+
   it('waitForInboxMessage holds the app through a matching durable insertion', { timeout: 20_000 }, async () => {
     const { fixtureFile } = await scenario({
       prompt: 'hang-until-cancel',
