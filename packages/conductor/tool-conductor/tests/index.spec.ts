@@ -249,7 +249,7 @@ function analysisResult(request: WorkflowStartRequest): WorkflowResult {
 }
 
 describe('Conductor analysis tool admission and execution policy', () => {
-  it.each([undefined, []])('rejects missing analysis criteria before saving or dispatching: %j', async (acceptanceCriteria) => {
+  it.each([{ acceptanceCriteria: undefined }, { acceptanceCriteria: [] }])('rejects missing analysis criteria before saving or dispatching: $acceptanceCriteria', async ({ acceptanceCriteria }) => {
     const h = await setup()
     const { acceptanceCriteria: _criteria, ...args } = baseArgs
     const result = await execute(h.ctx, {

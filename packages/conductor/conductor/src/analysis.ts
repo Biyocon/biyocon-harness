@@ -65,11 +65,14 @@ export function candidateProblem(value: unknown, run: ConductorRun): string | un
     || !text(value.version) || !text(value.content) || run.admission.purpose !== 'analysis'
     || value.deliverable !== run.admission.deliverable || !materialReferences(value.material_ids, run)
     || !texts(value.assumptions) || !texts(value.limitations) || !Array.isArray(value.criteria)) return 'invalid analysis ReportCandidate'
-  if (value.criteria.some(item => !object(item)
-    || Object.keys(item).some(key => key !== 'criterion' && key !== 'outcome')
-    || !text(item.criterion) || !text(item.outcome))) return 'report criteria must contain only non-empty criterion and outcome strings'
-  const received = value.criteria.map(item => (item as { criterion: string }).criterion)
   const expected = run.acceptanceCriteria
+  const malformed = value.criteria.flatMap((item, index) => !object(item)
+    || Object.keys(item).some(key => key !== 'criterion' && key !== 'outcome')
+    || !text(item.criterion) || !text(item.outcome) ? [index + 1] : [])
+  if (malformed.length > 0) {
+    return `report criteria must contain only non-empty normalized criterion and outcome strings. Expected acceptance_criteria: ${JSON.stringify(expected)}. Malformed criterion/outcome item positions (1-based): ${JSON.stringify(malformed)}`
+  }
+  const received = value.criteria.map(item => (item as { criterion: string }).criterion)
   const changed = received.flatMap((criterion, index) => index < expected.length && criterion !== expected[index]
     ? [{ position: index + 1, expected: expected[index], received: criterion }] : [])
   if (received.length !== expected.length || changed.length > 0) {

@@ -8,12 +8,17 @@ export const CONDUCTOR_ENTRIES = ['detective', 'strategist', 'devils-advocate'] 
 /**
  * Require measurable deliverable criteria before admitting or restoring an analysis.
  * @param admission - validated purpose and entry.
- * @param criteria - normalized owner-task acceptance criteria.
+ * @param criteria - owner-task acceptance criteria to validate.
  */
 export function requireAnalysisCriteria(admission: ConductorAdmission, criteria: readonly string[]): void {
-  if (admission.purpose === 'analysis' && criteria.length === 0) {
+  if (admission.purpose !== 'analysis') return
+  if (criteria.length === 0) {
     throw new Error('Conductor analysis requires at least one acceptanceCriteria item. Put measurable deliverable requirements in acceptanceCriteria, not constraints.')
   }
+  if (criteria.some(criterion => criterion.length === 0 || criterion !== criterion.trim())) {
+    throw new Error('Conductor analysis acceptanceCriteria must contain only non-empty normalized strings')
+  }
+  if (new Set(criteria).size !== criteria.length) throw new Error('Conductor analysis acceptanceCriteria must not contain duplicates')
 }
 
 /**
