@@ -9,6 +9,7 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  renameSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -356,7 +357,7 @@ function lockOwnershipChangedError(lockPath) {
   return new Error(`Lefthook installer lock ownership changed for ${lockPath}; refusing to remove it`)
 }
 
-function releaseInstallLock(lockPath, ownedRecord, ownedStat) {
+function assertInstallLockOwner(lockPath, ownedRecord, ownedStat) {
   const currentStat = installLockStat(lockPath)
   if (
     currentStat === undefined
@@ -368,8 +369,17 @@ function releaseInstallLock(lockPath, ownedRecord, ownedStat) {
   ) {
     throw lockOwnershipChangedError(lockPath)
   }
+}
+
+function releaseInstallLock(lockPath, ownedRecord, ownedStat) {
+  assertInstallLockOwner(lockPath, ownedRecord, ownedStat)
+  const retiredPath = `${lockPath}.${randomUUID()}.released`
   try {
-    unlinkSync(lockPath)
+    // Windows can deny an exclusive open while unlink is deleting this name.
+    // Retire the name first so contenders never create a delete-pending file.
+    renameSync(lockPath, retiredPath)
+    assertInstallLockOwner(retiredPath, ownedRecord, ownedStat)
+    unlinkSync(retiredPath)
   } catch (error) {
     if (errorCode(error) === 'ENOENT') {
       throw lockOwnershipChangedError(lockPath)

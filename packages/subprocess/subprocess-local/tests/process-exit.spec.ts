@@ -86,13 +86,18 @@ function cleanupTree(state: TreeState | undefined, identities: ProcessIdentity[]
   }
 }
 
-async function runScenario(kind: ManagedKind, trigger: ExitTrigger) {
+async function runScenario(kind: ManagedKind, trigger: ExitTrigger, pausePublication = false) {
   const root = await mkdtemp(join(tmpdir(), `dsh-subprocess-host-exit-${kind}-${trigger}-`))
   const launch = resolveExampleLaunch({
     srcBin: hostScript,
     mode: 'src',
     tsconfigPath: join(repoRoot, 'tsconfig.json'),
     configArgs: [kind, trigger, root],
+    env: pausePublication ? {
+      NODE_OPTIONS: [process.env.NODE_OPTIONS,
+        `--import=${new URL('./fixtures/pause-tree-publication.mjs', import.meta.url).href}`,
+      ].filter(Boolean).join(' '),
+    } : {},
   })
   const child = execa(launch.command, launch.args, {
     cwd: repoRoot,
@@ -106,6 +111,18 @@ async function runScenario(kind: ManagedKind, trigger: ExitTrigger) {
   let settled = false
   let treeGone = false
   try {
+    if (pausePublication) {
+      const publication = await vi.waitFor(async () => JSON.parse(
+        await readFile(join(root, 'state-writing'), 'utf8'),
+      ) as { path: string; data: string }, { interval: 10, timeout: scenarioTimeoutMs })
+      state = JSON.parse(publication.data) as TreeState
+      try {
+        expect(await readFile(publication.path, 'utf8')).toBe('{')
+        await expect(readFile(join(root, 'tree.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+      } finally {
+        await writeFile(join(root, 'state-continue'), 'continue')
+      }
+    }
     state = await readTree(join(root, 'tree.json'))
     await vi.waitFor(() => readFile(join(root, 'ready'), 'utf8'), {
       interval: 10,
@@ -139,6 +156,12 @@ async function runScenario(kind: ManagedKind, trigger: ExitTrigger) {
 }
 
 describe('synchronous cleanup on host exit', () => {
+  it('keeps incomplete process identities private until publication finishes', { timeout: 45_000 }, async () => {
+    const { outcome } = await runScenario('ordinary', 'direct', true)
+    expect(outcome.exitCode).toBe(23)
+    expect(outcome.signal).toBeUndefined()
+  })
+
   it.each([
     { trigger: 'direct' as const, expectedCode: 23, diagnostic: undefined },
     { trigger: 'uncaught-exception' as const, expectedCode: 1, diagnostic: 'host-exit-uncaught-exception' },

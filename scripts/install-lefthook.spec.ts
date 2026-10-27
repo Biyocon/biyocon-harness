@@ -70,7 +70,7 @@ function fakeLefthookSource(): string {
   return `#!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 if (process.argv.slice(2).join(' ') !== 'install --force') process.exit(64)
 const rootOutput = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' })
@@ -86,7 +86,8 @@ if (forbiddenConfigKey !== undefined) {
 }
 const hooksPath = execFileSync('git', ['config', '--get', 'core.hooksPath'], { encoding: 'utf8' }).trim()
 mkdirSync(hooksPath, { recursive: true })
-const running = join(hooksPath, '.fake-lefthook-running')
+const common = resolve(root, execFileSync('git', ['rev-parse', '--git-common-dir'], { encoding: 'utf8' }).trim())
+const running = join(common, '.fake-lefthook-running')
 try {
   writeFileSync(running, String(process.pid), { flag: 'wx' })
 } catch {
@@ -339,8 +340,28 @@ describe('worktree-local Lefthook installer', { timeout: 30_000 }, () => {
     for (const result of repeated) expect(result.status, result.stderr).toBe(0)
     expect(readFileSync(mainHookPath, 'utf8')).toBe(initialHook)
     expect(existsSync(join(commonDirectory(fixture), 'dsh-lefthook-install.lock'))).toBe(false)
-    expect(existsSync(join(hooksPath(fixture, fixture.main), '.fake-lefthook-running'))).toBe(false)
+    expect(existsSync(join(commonDirectory(fixture), '.fake-lefthook-running'))).toBe(false)
   }, MULTI_PROCESS_TEST_TIMEOUT_MS)
+
+  it('retires the shared lock name before deleting its released owner record', async () => {
+    const fixture = createFixture()
+    const observation = join(fixture.container, 'lock-release.json')
+    const preload = new URL('./fixtures/observe-install-lock-release.mjs', import.meta.url).href
+
+    const result = await runInstaller(fixture, fixture.main, {
+      NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${preload}`].filter(Boolean).join(' '),
+      DSH_TEST_LOCK_RELEASE_OBSERVATION: observation,
+    })
+
+    expect(result.status, result.stderr).toBe(0)
+    const observed = JSON.parse(readFileSync(observation, 'utf8')) as {
+      path: string
+      sharedExists: boolean
+    }
+    expect(observed.path).not.toBe(installLockPath(fixture))
+    expect(observed.sharedExists).toBe(false)
+    expect(existsSync(observed.path)).toBe(false)
+  })
 
   it('waits for a concurrent installer to finish publishing its lock record', async () => {
     const fixture = createFixture()
@@ -531,7 +552,7 @@ describe('worktree-local Lefthook installer', { timeout: 30_000 }, () => {
   it('does not release an installer lock whose ownership changed', async () => {
     const fixture = createFixture()
     const lockPath = installLockPath(fixture)
-    const runningPath = join(hooksPath(fixture, fixture.main), '.fake-lefthook-running')
+    const runningPath = join(commonDirectory(fixture), '.fake-lefthook-running')
     const install = runInstaller(fixture, fixture.main, { DSH_TEST_LEFTHOOK_DELAY_MS: '250' })
     await waitForPath(runningPath)
     const replacementRecord = 'replacement owner\n'
