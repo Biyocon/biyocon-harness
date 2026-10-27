@@ -47,6 +47,94 @@ export type ConductorStage =
   | 'integrator'
   | 'arbiter'
   | 'closeout'
+  | 'report-complete'
+
+/** Intake stages supported before execution authorization. */
+export type ConductorEntry = 'detective' | 'strategist' | 'devils-advocate'
+
+/** Analysis result requested by the owner. */
+export type ReportDeliverable = 'answer' | 'recommendations'
+
+/** Runtime-minted identity of one captured intake input. */
+export type ConductorMaterialId = Branded<'ConductorMaterialId'>
+
+/** Captured input whose bytes and provenance survive resume. */
+export interface IntakeMaterial {
+  id: ConductorMaterialId
+  selector: string
+  kind: 'current-request' | 'file'
+  content: string
+  sha256: string
+  sourceMessage?: { sessionId: SessionId; eventIndex: number }
+}
+
+/** Required purpose and deliverable combinations; entry never grants authority. */
+export type IntakeSelection =
+  | { purpose: 'implementation'; entry: ConductorEntry; deliverable?: never }
+  | { purpose: 'analysis'; entry: ConductorEntry; deliverable: ReportDeliverable }
+
+/** Immutable admitted inputs and runtime-selected workflow profile. */
+export type ConductorAdmission = IntakeSelection & {
+  profileVersion: 1
+  rationale: string
+  materials: [IntakeMaterial, ...IntakeMaterial[]]
+  scopeSources: ConductorMaterialId[]
+  plan: string[]
+  planSources: ConductorMaterialId[]
+}
+
+/** Causal return after an earlier stage repairs a gate's missing prerequisite. */
+export interface RepairReturn {
+  stage: ConductorStage
+  returnTo: ConductorStage
+}
+
+/** A producer's read-only answer or recommendations, independently audited before completion. */
+export interface ReportCandidate {
+  version: string
+  deliverable: ReportDeliverable
+  content: string
+  criteria: { criterion: string; outcome: string }[]
+  material_ids: string[]
+  assumptions: string[]
+  limitations: string[]
+}
+
+/** Runtime-owned version/hash linking a producer's report to its audit. */
+export interface CapturedReport {
+  producer: ConductorEntry
+  candidate: ReportCandidate
+  hash: string
+}
+
+/** Analysis-specific specialist output; no execution baseline or command evidence. */
+export interface AnalysisEnvelope {
+  run_id: string
+  purpose: 'analysis'
+  stage: ConductorEntry | 'auditor'
+  deliverable: ReportDeliverable
+  status: SpecialistStatus
+  summary: string
+  material_ids: string[]
+  blockers: string[]
+  assumptions: string[]
+  limitations: string[]
+  defect?: 'scope' | 'plan' | 'report'
+  candidate?: ReportCandidate
+  candidate_hash?: string
+}
+
+/** Independent report verdict, never a release decision or an authorization. */
+export interface ReportDecision {
+  run_id: string
+  purpose: 'analysis'
+  candidate_hash: string
+  audit_hash: string
+  decision: 'accept' | 'revise' | 'blocked'
+  basis: string[]
+  evidence_reviewed: string[]
+  open_risks: string[]
+}
 
 /** An external action that may be recorded during owner-authorized closeout. */
 export type ConductorAction = 'read' | 'write' | 'commit' | 'push' | 'merge' | 'release' | 'publish' | 'deploy'
@@ -202,6 +290,7 @@ export type ConductorRunStatus =
   | 'escalated'
   | 'closed'
   | 'aborted'
+  | 'reported'
 
 /**
  * The durable, authoritative record of one Conductor run. Conductor is the only
@@ -211,7 +300,17 @@ export type ConductorRunStatus =
  */
 export interface ConductorRun {
   /** Pre-release durable record format; unsupported versions are rejected without migration. */
-  recordFormatVersion: 2
+  recordFormatVersion: 3
+  /** Immutable, captured owner inputs and validated entry selection. */
+  admission: ConductorAdmission
+  /** Pending prerequisite repairs, in causal stack order. */
+  repairReturns: RepairReturn[]
+  /** Validated analysis reports retained in dispatch order. */
+  analysisReports: AnalysisEnvelope[]
+  /** Append-only report versions; audits must name the latest exact hash. */
+  reportCandidates: CapturedReport[]
+  /** The final report-specific verdict; accept produces status reported. */
+  reportDecision?: ReportDecision
   /** The run's id. */
   runId: ConductorRunId
   /** The desired outcome. */
@@ -268,7 +367,7 @@ export type GateId = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'
 export type GateDecision = 'pass' | 'rework' | 'escalate' | 'abort'
 
 /** The class of defect a rework addresses, used to route the fix to the right stage. */
-export type DefectClass = 'scope' | 'plan' | 'implementation' | 'delivery' | 'report'
+export type DefectClass = 'scope' | 'plan' | 'implementation' | 'delivery' | 'report' | 'analysis'
 
 /**
  * One recorded gate decision. Conductor owns this record and appends it to
@@ -276,7 +375,11 @@ export type DefectClass = 'scope' | 'plan' | 'implementation' | 'delivery' | 're
  * decision. `defectClass` is set on `rework`; `nextStage` is set on `pass`,
  * `rework`, and `escalate` but absent on `abort`.
  */
-export interface GateRecord {
+export interface EvaluatedGateRecord {
+  /** An actual runtime evaluation, distinct from an explicitly skipped gate. */
+  kind: 'evaluated'
+  /** Admission insufficiency may be discovered before any specialist is dispatched. */
+  origin?: 'intake-validation'
   /** The gate letter. */
   gate: GateId
   /** The gated stage this gate judged (one of the seven Detective–Arbiter stages). */
@@ -296,6 +399,27 @@ export interface GateRecord {
   /** Hash of the active execution baseline for Gate C pass and every later attempt under it. */
   executionBaselineHash?: string
 }
+
+/** A runtime-owned bypass with captured evidence; it is never a gate pass. */
+export interface SkippedGateRecord {
+  kind: 'skipped'
+  gate: GateId
+  stage: ConductorStage
+  decision: 'skipped'
+  reason: 'supplied-work' | 'profile-not-applicable'
+  basis: string[]
+  evidenceReviewed: string[]
+  nextStage: ConductorStage
+  stateUpdate: string
+  purpose: 'implementation' | 'analysis'
+  deliverable?: ReportDeliverable
+  route: ConductorStage[]
+  defectClass?: never
+  executionBaselineHash?: never
+}
+
+/** Evaluated decisions and explicit, evidence-backed bypasses in causal order. */
+export type GateRecord = EvaluatedGateRecord | SkippedGateRecord
 
 /** A specialist's delivery readiness — never a gate pass (Conductor decides that). */
 export type SpecialistStatus = 'ready' | 'rework' | 'blocked' | 'failed'

@@ -1,3 +1,4 @@
+import { implementationAdmission } from './intake-fixtures.ts'
 import { describe, expect, it } from 'vitest'
 import { ConductorRunId, drive, reworkTarget, routeGate } from '../src/index.ts'
 import type {
@@ -11,7 +12,8 @@ import type {
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
-    recordFormatVersion: 2,
+    recordFormatVersion: 3,
+    admission: implementationAdmission(), repairReturns: [], analysisReports: [], reportCandidates: [],
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -106,6 +108,6 @@ describe('dsh-conductor gate invariants', () => {
     // Closeout records the decision, not a release: the run stays awaiting authorization until
     // the authorized release action and its verification are recorded.
     expect(outcome.run.status).toBe('awaiting_authorization')
-    expect(outcome.run.history.at(-1)).toMatchObject({ gate: 'G', decision: 'pass' })
+    expect(outcome.run.history.at(-1)).toMatchObject({ kind: 'evaluated', gate: 'G', decision: 'pass' })
   })
 })

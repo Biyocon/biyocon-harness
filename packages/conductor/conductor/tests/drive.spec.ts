@@ -1,3 +1,4 @@
+import { implementationAdmission } from './intake-fixtures.ts'
 import { describe, expect, it } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import {
@@ -5,6 +6,10 @@ import {
   QualityCommandId,
   QualityEvidenceId,
   SpecialistExecutionFailure,
+  admitIntake,
+  createRun,
+  parseRun,
+  serializeRun,
   drive,
   executionBaselineHash,
 } from '../src/index.ts'
@@ -26,7 +31,8 @@ const QUALITY_BINDING: QualityCommandBinding = {
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
-    recordFormatVersion: 2,
+    recordFormatVersion: 3,
+    admission: implementationAdmission(), repairReturns: [], analysisReports: [], reportCandidates: [],
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -104,10 +110,42 @@ function makeDecision(decision: 'go' | 'no-go' = 'go'): DecisionRecord {
   }
 }
 
+describe('implementation entry source provenance', () => {
+  it.each([
+    ['strategist', undefined, 'detective'], ['devils-advocate', undefined, 'detective'],
+    ['strategist', 'HEAD', 'strategist'], ['devils-advocate', 'HEAD', 'devils-advocate'],
+  ] as const)('admits %s with baseline %s through %s', async (entry, sourceBaseline, firstStage) => {
+    const initial = makeRun()
+    const run = createRun(initial.runId, {
+      admission: admitIntake({ purpose: 'implementation', entry, rationale: 'Review the supplied implementation plan.',
+        scopeSources: ['current-request'], planSources: ['current-request'], plan: ['Review and implement the supplied scope.'],
+      }, initial.admission.materials),
+      objective: initial.objective, authority: initial.authority,
+      scope: ['the supplied implementation'], acceptanceCriteria: initial.acceptanceCriteria,
+      ...sourceBaseline === undefined ? {} : { sourceBaseline },
+    })
+    expect(run.sourceBaseline).toBe(sourceBaseline ?? null)
+    const called: ConductorStage[] = []
+    const result = await drive(run, {
+      authorizeExecution: () => { throw new Error('No approval before the source is assessed') },
+      dispatchArbiter: () => { throw new Error('No decision before the source is assessed') },
+      dispatchSpecialist(stage, current) {
+        called.push(stage)
+        expect(current.sourceBaseline).toBe(sourceBaseline ?? null)
+        return Promise.resolve(makeEnvelope(stage, { status: 'blocked', blockers: ['Stop after source assessment.'] }))
+      },
+    }, (checkpoint) => { expect(parseRun(serializeRun(checkpoint))).toEqual(checkpoint); return Promise.resolve() })
+    expect(called).toEqual([firstStage])
+    const repair = result.run.history.find(gate => gate.kind === 'evaluated' && gate.origin === 'intake-validation')
+    if (sourceBaseline === undefined) expect(repair).toMatchObject({ decision: 'rework', nextStage: 'detective', defectClass: 'scope' })
+    else expect(repair).toBeUndefined()
+  })
+})
+
 function dispatcherFor(envelope: unknown, decision: unknown = makeDecision()): ConductorDispatcher {
   return {
     authorizeExecution: authorize,
-    async dispatchSpecialist() { return envelope as SpecialistEnvelope },
+    async dispatchSpecialist() { return envelope },
     async dispatchArbiter() { return decision },
   }
 }
@@ -286,7 +324,7 @@ describe('dsh-conductor drive', () => {
     expect(dispatched).toEqual(['detective', 'strategist', 'devils-advocate'])
     expect(outcome.run.baseline).toBeNull()
     expect(outcome.run.executionAuthorization).toBeNull()
-    expect(outcome.run.history.at(-1)).toMatchObject({ gate: 'C', decision: 'escalate' })
+    expect(outcome.run.history.at(-1)).toMatchObject({ kind: 'evaluated', gate: 'C', decision: 'escalate' })
   })
 
   it('turns unavailable or mismatched Gate C authorization into a controlled blocker', async () => {
@@ -313,7 +351,7 @@ describe('dsh-conductor drive', () => {
         async dispatchArbiter() { return makeDecision('go') },
       })
       expect(outcome.kind).toBe('blocked')
-      expect(outcome.run.history.at(-1)).toMatchObject({ gate: 'C', decision: 'escalate' })
+      expect(outcome.run.history.at(-1)).toMatchObject({ kind: 'evaluated', gate: 'C', decision: 'escalate' })
       expect(outcome.run.baseline).toBeNull()
     }
   })
@@ -389,7 +427,7 @@ describe('dsh-conductor drive', () => {
           baseline_ref: 'HEAD',
           evidence: [], findings: [], assumptions: [], blockers: [], artifacts: [], change_requests: [],
           recommended_transition: { target: 'strategist', rationale: '' }, confidence: 'high',
-        } as unknown as SpecialistEnvelope
+        }
       },
       async dispatchArbiter() { return makeDecision('go') },
     }

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-25-conductor-mode-routing.md
-2026-10-25-conductor-mode-routing.md: f55451f2b5973d37304563c390921e5ae61a3497
-2026-10-25-conductor-mode-routing.zh.md: 8958d156ffac57f3f836738f0a82f67407a69df5
+2026-10-25-conductor-mode-routing.md: de43b8e0624936bcc43bd9f8e109b0a99ad2dc4d
+2026-10-25-conductor-mode-routing.zh.md: 3ed133ca428a1633d5be462ee631386c936c4471

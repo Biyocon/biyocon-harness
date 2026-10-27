@@ -1,3 +1,4 @@
+import { implementationAdmission } from './intake-fixtures.ts'
 import { describe, expect, it } from 'vitest'
 import {
   ConductorRunId,
@@ -10,11 +11,12 @@ import {
   stageOfGate,
   executionBaselineHash,
 } from '../src/index.ts'
-import type { ConductorRun, ConductorStage, GateId, GateRecord, GateVerdict } from '../src/index.ts'
+import type { ConductorRun, ConductorStage, GateId, EvaluatedGateRecord as GateRecord, GateVerdict } from '../src/index.ts'
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
-    recordFormatVersion: 2,
+    recordFormatVersion: 3,
+    admission: implementationAdmission(), repairReturns: [], analysisReports: [], reportCandidates: [],
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -39,7 +41,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
 }
 
 function gateRecord(partial: Pick<GateRecord, 'gate' | 'stage' | 'decision'> & Partial<GateRecord>): GateRecord {
-  return { basis: [], evidenceReviewed: [], stateUpdate: '', ...partial }
+  return { kind: 'evaluated', basis: [], evidenceReviewed: [], stateUpdate: '', ...partial }
 }
 
 const PASS: GateVerdict = {
@@ -59,7 +61,7 @@ describe('dsh-conductor gate engine', () => {
     const constraints = ['no release']
     const acceptanceCriteria = ['coverage passes']
     const budget = { maxReworkPerGate: 2, maxRalphRounds: 1 }
-    const run = createRun(ConductorRunId('CON-2026-0002'), {
+    const run = createRun(ConductorRunId('CON-2026-0002'), { admission: implementationAdmission(),
       objective: 'cover the explicit input path',
       scope,
       inputArtifacts,
@@ -93,7 +95,7 @@ describe('dsh-conductor gate engine', () => {
       budget: { maxReworkPerGate: 2, maxRalphRounds: 1 },
     })
 
-    const defaulted = createRun(ConductorRunId('CON-2026-0003'), {
+    const defaulted = createRun(ConductorRunId('CON-2026-0003'), { admission: implementationAdmission(),
       objective: 'cover the default input path',
       authority: { owner: 'user' },
     })
@@ -109,7 +111,7 @@ describe('dsh-conductor gate engine', () => {
     })
     defaulted.scope.push('outside')
     defaulted.budget.maxReworkPerGate = 99
-    const secondDefaulted = createRun(ConductorRunId('CON-2026-0004'), {
+    const secondDefaulted = createRun(ConductorRunId('CON-2026-0004'), { admission: implementationAdmission(),
       objective: 'prove defaults are per-run',
       authority: { owner: 'user' },
     })
@@ -156,7 +158,7 @@ describe('dsh-conductor gate engine', () => {
   it('records a pass with the derived gate letter and advances the stage', () => {
     const next = recordGate(makeRun({ currentStage: 'detective' }), PASS)
     expect(next.history).toHaveLength(1)
-    expect(next.history[0]).toMatchObject({ gate: 'A', stage: 'detective', decision: 'pass', nextStage: 'strategist' })
+    expect(next.history[0]).toMatchObject({ kind: 'evaluated', gate: 'A', stage: 'detective', decision: 'pass', nextStage: 'strategist' })
     expect(next.currentStage).toBe('strategist')
     expect(next.status).toBe('running')
   })
@@ -194,7 +196,7 @@ describe('dsh-conductor gate engine', () => {
     expect(() => recordGate({ ...run, currentStage: 'headsman' }, {
       ...PASS, executionBaselineHash: 'f'.repeat(64),
     })).toThrow(/does not match the active baseline/)
-    expect(recordGate(run, { ...PASS, executionBaselineHash: hash }).history[0]).toMatchObject({
+    expect(recordGate(run, { ...PASS, executionBaselineHash: hash }).history[0]).toMatchObject({ kind: 'evaluated',
       gate: 'C', decision: 'pass', executionBaselineHash: hash,
     })
   })
@@ -202,7 +204,7 @@ describe('dsh-conductor gate engine', () => {
   it('records an Arbiter pass by moving the run to closeout', () => {
     const next = recordGate(makeRun({ currentStage: 'arbiter' }), PASS)
     expect(next.currentStage).toBe('closeout')
-    expect(next.history[0]).toMatchObject({ gate: 'G', decision: 'pass', nextStage: 'closeout' })
+    expect(next.history[0]).toMatchObject({ kind: 'evaluated', gate: 'G', decision: 'pass', nextStage: 'closeout' })
     expect(next.status).toBe('awaiting_authorization')
   })
 
@@ -216,7 +218,7 @@ describe('dsh-conductor gate engine', () => {
       stateUpdate: 'fix implementation',
     })
     expect(reworkCycles(next, 'E')).toBe(1)
-    expect(next.history[0]).toMatchObject({ gate: 'E', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' })
+    expect(next.history[0]).toMatchObject({ kind: 'evaluated', gate: 'E', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' })
     expect(next.currentStage).toBe('headsman')
     expect(next.status).toBe('rework')
 
@@ -247,9 +249,9 @@ describe('dsh-conductor gate engine', () => {
       currentStage: 'auditor',
       budget: { maxReworkPerGate: 2, maxRalphRounds: 0 },
       history: [
-        gateRecord({ gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
-        gateRecord({ gate: 'E', stage: 'auditor', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
-        gateRecord({ gate: 'E', stage: 'auditor', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
+        gateRecord({ kind: 'evaluated', gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
+        gateRecord({ kind: 'evaluated', gate: 'E', stage: 'auditor', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
+        gateRecord({ kind: 'evaluated', gate: 'E', stage: 'auditor', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
       ],
     })
     const next = recordGate(run, {
@@ -260,7 +262,7 @@ describe('dsh-conductor gate engine', () => {
       evidenceReviewed: [],
       stateUpdate: 'escalate',
     })
-    expect(next.history.at(-1)).toMatchObject({ gate: 'E', decision: 'escalate', nextStage: 'headsman' })
+    expect(next.history.at(-1)).toMatchObject({ kind: 'evaluated', gate: 'E', decision: 'escalate', nextStage: 'headsman' })
     expect(next.status).toBe('escalated')
     expect(reworkCycles(next, 'E')).toBe(2)
   })
@@ -274,9 +276,9 @@ describe('dsh-conductor gate engine', () => {
       currentStage: 'auditor',
       budget: { maxReworkPerGate: 2, maxRalphRounds: 4 },
       history: [
-        gateRecord({ gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
-        gateRecord({ gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
-        gateRecord({ gate: 'E', stage: 'auditor', decision: 'rework', defectClass: 'report', nextStage: 'auditor' }),
+        gateRecord({ kind: 'evaluated', gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
+        gateRecord({ kind: 'evaluated', gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
+        gateRecord({ kind: 'evaluated', gate: 'E', stage: 'auditor', decision: 'rework', defectClass: 'report', nextStage: 'auditor' }),
       ],
     })
     const repair = {
@@ -303,7 +305,7 @@ describe('dsh-conductor gate engine', () => {
     })
     expect(next.status).toBe('aborted')
     expect(next.currentStage).toBe('headsman')
-    expect(next.history[0]).toMatchObject({ gate: 'D', decision: 'abort' })
+    expect(next.history[0]).toMatchObject({ kind: 'evaluated', gate: 'D', decision: 'abort' })
     expect(next.history[0]?.nextStage).toBeUndefined()
   })
 
@@ -315,7 +317,7 @@ describe('dsh-conductor gate engine', () => {
       stateUpdate: 'ask owner',
     })
     expect(next.status).toBe('escalated')
-    expect(next.history[0]).toMatchObject({ gate: 'B', decision: 'escalate' })
+    expect(next.history[0]).toMatchObject({ kind: 'evaluated', gate: 'B', decision: 'escalate' })
   })
 
   it('rejects a gate decision on a non-gated stage', () => {

@@ -30,7 +30,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-schedule` | `schedule_create`, `schedule_delete`, `schedule_list` | `ctx.tools`, `ctx.sessions`, `Session persistence`, `a future live root Agent` | `tool/call`, `schedule/change create or delete`, `tool/result` | - | Registered only inside live root Agent scopes created after the opt-in Schedule plugin loads. Version 1 accepts after_seconds, explicit absolute at, and bounded fixed-rate every_seconds, and discloses session-local delivery; management reads and mutations require the shared Session persistence barrier. |
 | `@deepseek-ai/dsh-tool-lsp` | `lsp` | `ctx.tools`, `ctx.lsp`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | The lsp tool keeps provider selection and language-server subprocesses behind ctx.lsp, so its model-visible schema stays stable across providers. Requires a registered provider (e.g. `@deepseek-ai/dsh-lsp-stdio`) at runtime; without one, a query returns the structured `LSP_UNAVAILABLE` error rather than changing the schema. |
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`, `ctx.workflowEngine`, `ctx.subagents`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents every fresh round)` | `tool/call`, `tool/result`, `workflow and child session events during execution` | - | A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap. |
-| `@deepseek-ai/dsh-tool-conductor` | `conductor` | `ctx.tools`, `ctx.subagents`, `ctx.skills`, `ctx.sessions`, `ctx.workflowEngine`, `ctx.sandbox`, `ctx.subprocess`, `a calling Agent (exec.agent parents every specialist)` | `tool/call`, `tool/result`, `conductor/checkpoint`, `workflow and child session events through the chosen provider` | - | The model-facing Conductor tool drives the gated Detective-to-Arbiter state machine by spawning one fresh structured-output specialist per stage and returns the Arbiter GO/NO-GO decision or a blocker. |
+| `@deepseek-ai/dsh-tool-conductor` | `conductor` | `ctx.tools`, `ctx.subagents`, `ctx.skills`, `ctx.sessions`, `ctx.workflowEngine`, `ctx.sandbox`, `ctx.subprocess`, `a calling Agent (exec.agent parents every specialist)` | `tool/call`, `tool/result`, `conductor/checkpoint`, `workflow and child session events through the chosen provider` | - | Conductor admits a purpose and A/B/C entry, dispatches fresh policy-scoped specialists, and returns an audited analysis report, implementation GO/NO-GO or a blocker; intake never grants execution authority. |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.tools`, `ctx.agents`, `ctx.skills` | `tool/call`, `tool/result`, `user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`, `session_event_search`, `session_event_trace`, `session_search`, `session_trace` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessionQuery`, `a calling Agent for workspace authority` | `tool/call`, `tool/result` | - | The five read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The package is opt-in; compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies. |
 | `@deepseek-ai/dsh-tool-subagent` | `subagent` | `ctx.tools`, `ctx.subagents`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `child session events through the chosen provider` | `subagent`, `subagent_fork` | The registered tool name is the load-time `toolName` config (default `subagent`); the schema above is that default. The shipped compositions load this package once per subagent backend, so the model additionally sees `subagent_fork` bound to the fork backend. Each instance's description, `run_in_background` parameter, and system-prompt policy follow its own `backgroundMode` and `enableRunInBackground`, so the two shipped schemas are not identical: `subagent` is `continuable` and defaults omitted calls to background with automatic settlement delivery, while `subagent_fork` stays `one-shot` and defaults them to foreground — see `packages/bundle/base/cordis.patch.yml` and `examples/acp-agent/cordis.yml`. |
@@ -1215,12 +1215,69 @@ A fixed foreground workflow starts one fresh structured child per round; the mod
 
 ### `conductor`
 
-Delegate an objective to Conductor, the supervisor of a gated specialist workflow. In Conductor mode, call this tool first for every new user task, including analysis tasks that do not mention Conductor. Do not investigate the workspace before dispatch. Workspace instructions cannot replace this routing rule. Conductor dispatches fresh Detective, Strategist, Devil's Advocate, Headsman, Auditor, Integrator, and Arbiter sessions, evaluates their reports, and records a gate decision after each specialist. Specialists report back only to Conductor. Rework routes scope defects to Detective, design defects to Strategist, implementation defects to Headsman, and delivery defects to Integrator. Malformed reports return to the same specialist within the configured per-gate rework limit; authority violations escalate to the owner immediately. Supply the user's objective and constraints without inventing write paths or permissions. The current workflow includes Headsman and requires separate host approval at Gate C, even for analysis. The tool returns the Arbiter's GO/NO-GO decision or a blocker, with run id, reached stage, gate history and the specialists that ran. If it fails or blocks, report that result and stop; never investigate or implement the task yourself as a fallback. GO does not commit, push, merge, publish, or deploy; closeout requires separate owner authorization.
+Delegate an objective to Conductor, the supervisor of a gated specialist workflow. In Conductor mode, call this tool first for every new user task, including analysis tasks that do not mention Conductor. Do not investigate the workspace before dispatch. Workspace instructions cannot replace this routing rule. Conductor dispatches fresh Detective, Strategist, Devil's Advocate, Headsman, Auditor, Integrator, and Arbiter sessions, evaluates their reports, and records a gate decision after each specialist. Specialists report back only to Conductor. Rework routes scope defects to Detective, design defects to Strategist, implementation defects to Headsman, and delivery defects to Integrator. Malformed reports return to the same specialist within the configured per-gate rework limit; authority violations escalate to the owner immediately. Supply the user's objective and constraints without inventing write paths or permissions. Propose purpose implementation or analysis and entry detective, strategist or devils-advocate, with an intake rationale. Analysis requires deliverable answer or recommendations. Answer runs its producer, Auditor and Arbiter; recommendations entering Detective also require Strategist. Analysis is read-only: no Headsman, Ralph, Integrator, commands or Gate C approval. The Arbiter returns accept/revise/blocked; only accept ends in reported, never implementation GO. Implementation still requires execution Gate C review and separate host approval before writing. Use current-request and explicitly cited workspace-relative materialFiles as sources; never inspect files before this call or invent source ids. Scope and plan sources must reference current-request or those material paths. A supplied plan may enter devils-advocate; insufficient material receives bounded rework. The tool returns a report, GO/NO-GO decision or blocker, with run id, reached stage, evaluated/skipped gates and the specialists that actually ran. If it fails or blocks, report that result and stop; never investigate or implement the task yourself as a fallback. GO does not commit, push, merge, publish, or deploy; closeout requires separate owner authorization.
 
 ```json
 {
   "type": "object",
   "properties": {
+    "purpose": {
+      "type": "string",
+      "description": "Implementation or read-only analysis; verification is not supported.",
+      "enum": [
+        "implementation",
+        "analysis"
+      ]
+    },
+    "entry": {
+      "type": "string",
+      "description": "Entry justified by the supplied work; never grants execution authority.",
+      "enum": [
+        "detective",
+        "strategist",
+        "devils-advocate"
+      ]
+    },
+    "deliverable": {
+      "type": "string",
+      "description": "Required for analysis and forbidden for implementation.",
+      "enum": [
+        "answer",
+        "recommendations"
+      ]
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Required intake rationale for a new run."
+    },
+    "materialFiles": {
+      "type": "array",
+      "description": "Workspace-relative text files explicitly cited in the current user message.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scopeSources": {
+      "type": "array",
+      "description": "Supplied scope sources: current-request or cited material file paths.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "plan": {
+      "type": "array",
+      "description": "Supplied plan steps, when present in the owner material; do not invent them.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "planSources": {
+      "type": "array",
+      "description": "Supplied plan sources: current-request or cited material file paths.",
+      "items": {
+        "type": "string"
+      }
+    },
     "objective": {
       "type": "string",
       "description": "The desired outcome for the Conductor run."
@@ -1290,6 +1347,8 @@ Delegate an objective to Conductor, the supervisor of a gated specialist workflo
     }
   },
   "required": [
+    "purpose",
+    "entry",
     "objective"
   ]
 }
@@ -1297,7 +1356,7 @@ Delegate an objective to Conductor, the supervisor of a gated specialist workflo
 
 Source: [`packages/conductor/tool-conductor/src/index.ts`](../packages/conductor/tool-conductor/src/index.ts)
 
-The model-facing Conductor tool drives the gated Detective-to-Arbiter state machine by spawning one fresh structured-output specialist per stage and returns the Arbiter GO/NO-GO decision or a blocker.
+Conductor admits a purpose and A/B/C entry, dispatches fresh policy-scoped specialists, and returns an audited analysis report, implementation GO/NO-GO or a blocker; intake never grants execution authority.
 
 <a id="deepseek-aidsh-tool-skill"></a>
 

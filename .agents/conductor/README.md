@@ -2,6 +2,8 @@
 
 Dette er et sæt tilpassede rolle-instruktioner til en Conductor-session. Hver rollefil bærer frontmatter (`name: conductor-*`, `description`, `disable-model-invocation: true`) og loader derfor som en skill gennem filesystem-skill-provideren, som Conductor-preset'en (`apps/cli/config/agent-presets/conductor/agent.cordis.yml`) monterer; rollekroppen forbliver en manuel prompt. Filerne håndhæver ikke værktøjsrettigheder.
 
+[Intake og rapportafslutning i fase 1](../notes/implemented/feature/2026-10-25-conductor-intake-and-report-completion.md) ejer de tilladte ruter, indfanget input og den terminale rapports betydning.
+
 ## Ejerskab og routing
 
 Den aktive Codex-agent er **The Conductor** og ejer intake, workflow-state, handoffs, gates, baseline, evidens, rework og eskalering. Brugeren ejer mandatet og autoriserer ændringer. Specialister arbejder kun på en afgrænset arbejdspakke og afleverer altid tilbage til Conductor; ingen specialist sender arbejde direkte til den næste specialist.
@@ -13,7 +15,13 @@ Conductor indlæser den relevante rollefil og specialistkontrakten ved delegatio
 Før første specialist fastlægger Conductor en arbejdspakke med:
 
 ```yaml
-record_format_version: 2
+record_format_version: 3
+admission:
+  purpose: implementation | analysis
+  entry: detective | strategist | devils-advocate
+  deliverable: answer | recommendations; analysis only
+  rationale: why the supplied material supports this entry
+  materials: host-captured current request and explicitly cited workspace files with ids, content and SHA-256
 run_id: unique-id
 objective: concrete outcome
 scope: included work
@@ -30,11 +38,13 @@ authority:
   owner: mandate-owner attribution only
 ```
 
-Et manglende mandat, uklart scope eller utilstrækkelige acceptkriterier stopper intake og sendes tilbage til brugeren. `authority.owner` er attribution og kan ikke give modellen skriveret, subprocess-adgang eller ekstern myndighed. En ukendt source-baseline er Detective-arbejde; den senere execution-baseline oprettes først efter Gate C og bliver først aktiv, når hosten har godkendt dens eksakte hash, stier, valgte command-definitioner og effektprofil.
+Conductor-modellen foreslår formål og indgang; kode validerer kombinationen og vælger ruten. Uklart nyt arbejde starter ved Detective; manglende scope- eller planmateriale ved en senere indgang giver afgrænset rework til den ansvarlige tidligere rolle. Runtime binder `current-request` til den faktiske brugerbesked og læser kun eksplicit henviste tekstfiler inden for arbejdsområdet, med grænser for antal og bytes. Indhold, hashes og meddelelsens provenance gemmes før dispatch; de identificerer disse input, ikke hele arbejdsområdets ukommittede tilstand. Auditor-indgang, verification og komplette dirty/non-Git-manifester understøttes ikke.
+
+`authority.owner` er attribution og kan ikke give modellen skriveret, subprocess-adgang eller ekstern myndighed. Ved implementation etablerer Detective en ukendt source-baseline; ved senere indgang identificerer intake-hashen alene de indfangede input. Eksekveringsbaseline og host-autorisation opstår først ved en rigtig Gate C-vurdering og godkendelse. En oversprungen gate registreres som `kind: skipped` med begrundelse, materialereferencer og rute; den er aldrig et pass eller en godkendelse.
 
 ## Handoff
 
-Alle specialistresultater bruger samme envelope og identificerer den version, der blev vurderet:
+Implementation-resultater bruger envelopen nedenfor og identificerer den vurderede version. Analysis bruger det formålsbestemte rapportskema i [specialistprotokollen](../skills/conductor-specialist/SKILL.md): et svar går producent → Auditor → The Arbiter; anbefalinger med indgang Detective går Detective → Strategist → Auditor → The Arbiter. Gate C er her rapportvurdering, ikke eksekveringsgodkendelse. Ingen analyse når Headsman, Ralph, Integrator, kvalitetskommandoer eller en approval.
 
 Operative templates:
 
@@ -71,6 +81,8 @@ Conductor bevarer hvert valideret specialistresultat som en del af run-recorden 
 En strukturelt ugyldig rapport sendes til samme rolle som `report`-rework. `maxReworkPerGate` begrænser rework pr. gate; presettet tillader to, og tredje afvisning eskaleres. Gate C-forslaget udelader `allowedPaths` og `excludedPaths`: runtime kopierer kun ejerens stier og exclusions. Identitets-, baseline- eller autoritetsbrud og afvist host-godkendelse eskaleres straks. Slutresultatet viser run-id, nået stage, gate-beslutninger med begrundelser og de specialister, der har leveret et gate-resultat, også når rapporten blev afvist.
 
 ## Rettigheder og stopregler
+
+Ved analyse vurderer The Arbiter den præcise ReportCandidate og en uafhængig audit med `accept | revise | blocked`. Accept ender i `reported` og `report-complete`, uden GO, closeout eller handlingstilladelse. Rapportrevision går til producenten og derefter gennem en ny Auditor-vurdering. Forudsætnings-rework bevarer returvejen, fx C → B → C eller C → B → A → B → C, og hver gate bruger sit eksisterende rework-budget. Efter ethvert resultat er hovedagentens værktøjer fortsat afvist indtil en ny brugeropgave.
 
 Rollefilerne beskriver adfærd, men giver ingen teknisk adgang. Headsman må kun skrive i arbejdspakkens autoriserede scope. Auditor er uafhængig og ændrer ikke produktkode. Integrator må kun samle afgrænsede dokumenter, når arbejdspakken tillader det; ingen rolle committer, merger, pusher eller publicerer uden særskilt autorisation. The Arbiter læser evidens og afgiver `GO` eller `NO-GO`; en `GO` udvider ikke mandatet og udløser ikke release.
 

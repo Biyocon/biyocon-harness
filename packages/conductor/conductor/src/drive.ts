@@ -25,7 +25,10 @@ import type {
   SpecialistEnvelope,
   SpecialistProblem,
   SpecialistStatus,
+  CapturedReport,
+  ReportDecision,
 } from './types.ts'
+import { driveAnalysis } from './analysis.ts'
 import { gateOfStage, recordGate } from './state.ts'
 import { routeGate } from './routing.ts'
 import {
@@ -81,7 +84,7 @@ export interface ConductorDispatcher {
   dispatchSpecialist(
     stage: ConductorStage,
     run: ConductorRun,
-  ): Promise<SpecialistDispatchResult | SpecialistEnvelope>
+  ): Promise<unknown>
   /**
    * Ask the host to authorize the exact Gate-C baseline and effect profile.
    * A null result is an explicit rejection; a rejection or thrown infrastructure
@@ -109,6 +112,7 @@ export type ConductorCheckpoint = (run: ConductorRun) => Promise<void>
 export type ConductorOutcome =
   | { readonly kind: 'decision'; readonly decision: DecisionRecord; readonly run: ConductorRun }
   | { readonly kind: 'blocked'; readonly blocker: string; readonly run: ConductorRun }
+  | { readonly kind: 'report'; readonly report: CapturedReport; readonly decision: ReportDecision; readonly run: ConductorRun }
 
 /**
  * Drive a run from its current stage to the Arbiter's decision or a blocker.
@@ -130,12 +134,29 @@ export async function drive(
   checkpoint: ConductorCheckpoint = () => Promise.resolve(),
 ): Promise<ConductorOutcome> {
   let current = run
+  if (!current.history.some(record => record.kind === 'evaluated') && current.admission.entry !== 'detective') {
+    const lacksBaseline = current.admission.purpose === 'implementation' && current.sourceBaseline === null
+    const lacksScope = lacksBaseline || current.admission.scopeSources.length === 0
+      || current.scope.length === 0 || current.acceptanceCriteria.length === 0
+    const lacksPlan = current.admission.entry === 'devils-advocate' && current.admission.planSources.length === 0
+    if (lacksScope || lacksPlan) {
+      current = recordGate(current, {
+        origin: 'intake-validation', decision: 'rework', defectClass: lacksScope ? 'scope' : 'plan',
+        nextStage: lacksScope ? 'detective' : 'strategist',
+        basis: [lacksBaseline ? 'implementation entry requires a source baseline established by Detective or supplied explicitly'
+          : lacksScope ? 'entry requires captured scope material' : 'entry requires captured plan material'],
+        evidenceReviewed: current.admission.materials.map(material => material.id), stateUpdate: 'repair insufficient intake material',
+      })
+      await checkpoint(current)
+    }
+  }
+  if (current.admission.purpose === 'analysis') return driveAnalysis(current, dispatcher, checkpoint)
   while (true) {
     const stage = current.currentStage
     if (stage === 'arbiter') {
       return await settleArbiter(current, dispatcher, checkpoint)
     }
-    if (stage === 'intake' || stage === 'ralph' || stage === 'closeout') {
+    if (stage === 'intake' || stage === 'ralph' || stage === 'closeout' || stage === 'report-complete') {
       throw new Error(`Conductor drive cannot dispatch stage "${stage}"`)
     }
     if ((stage === 'headsman' || stage === 'auditor' || stage === 'integrator')
@@ -659,6 +680,7 @@ function defectClassFromEnvelope(envelope: SpecialistEnvelope, stage: ConductorS
     case 'intake':
     case 'ralph':
     case 'closeout':
+    case 'report-complete':
       throw new Error(`stage "${stage}" owns no rework defect class`)
     /* v8 ignore stop */
   }

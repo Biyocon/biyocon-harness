@@ -32,7 +32,7 @@
 | `@deepseek-ai/dsh-schedule` | `schedule_create`、`schedule_delete`、`schedule_list` | `ctx.tools`、`ctx.sessions`、Session 持久化、未来创建的 live 根 Agent | `tool/call`、`schedule/change create or delete`、`tool/result` | - | 仅在选择启用的 Schedule 插件加载后创建的 live 根 Agent scope 内注册。版本 1 接受 after_seconds、显式绝对 at 和有界固定速率 every_seconds，并披露 session-local 交付；管理读取与变更必须通过共享的 Session 持久化 barrier。 |
 | `@deepseek-ai/dsh-tool-lsp` | `lsp` | `ctx.tools`、`ctx.lsp`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，因此其模型可见 schema 在更换提供方时保持稳定。运行时要求已注册提供方，例如 `@deepseek-ai/dsh-lsp-stdio`；如果没有提供方，查询会返回结构化 `LSP_UNAVAILABLE` 错误，而不会改变 schema。 |
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`、`ctx.workflowEngine`、`ctx.subagents`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents every fresh round)` | `tool/call`、`tool/result`、`workflow and child session events during execution` | - | 固定的前台工作流会在每个 Round 启动一个全新的结构化子级；模型只能选择不可变目标和可选的 Round 上限。 |
-| `@deepseek-ai/dsh-tool-conductor` | `conductor` | `ctx.tools`、`ctx.subagents`、`ctx.skills`、`ctx.sessions`、`ctx.workflowEngine`、`ctx.sandbox`、`ctx.subprocess`、`a calling Agent (exec.agent parents every specialist)` | `tool/call`、`tool/result`、`conductor/checkpoint`、`workflow and child session events through the chosen provider` | - | 面向模型的 Conductor 工具通过为每个 stage 生成一个全新的结构化输出专家来驱动 gated Detective-to-Arbiter 状态机，并返回 Arbiter 的 GO/NO-GO 决策或阻塞。 |
+| `@deepseek-ai/dsh-tool-conductor` | `conductor` | `ctx.tools`、`ctx.subagents`、`ctx.skills`、`ctx.sessions`、`ctx.workflowEngine`、`ctx.sandbox`、`ctx.subprocess`、`a calling Agent (exec.agent parents every specialist)` | `tool/call`、`tool/result`、`conductor/checkpoint`、`workflow and child session events through the chosen provider` | - | Conductor 准入目的和 A/B/C 入口，分派全新的受策略约束专家，返回已审计分析报告、实现 GO/NO-GO 或阻塞；intake 从不授予执行权限。 |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.tools`、`ctx.agents`、`ctx.skills` | `tool/call`、`tool/result`、`user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`、`session_event_search`、`session_event_trace`、`session_search`、`session_trace` | `ctx.tools`、`ctx.systemPrompt`、`ctx.sessionQuery`、`a calling Agent for workspace authority` | `tool/call`、`tool/result` | - | 这 5 个只读工具会隐藏提供方游标，并根据不可变的调用 agent 会话为每个结果授权。该包需要选择启用；需要强制截止时间或限制行内输出的组合还会挂载通用超时或 spill 策略。 |
 | `@deepseek-ai/dsh-tool-subagent` | `subagent` | `ctx.tools`、`ctx.subagents`、`ctx.systemPrompt` | `tool/call`、`tool/result`、`child session events through the chosen provider` | `subagent`、`subagent_fork` | 注册的工具名称取决于加载时 `toolName` 配置（默认为 `subagent`）；上述 schema 对应默认值。随产品发布的组合会为每个 subagent 后端加载一次该包，因此模型还会看到绑定到 fork 后端的 `subagent_fork`。每个实例的描述、`run_in_background` 参数与 system prompt 策略取决于它自己的 `backgroundMode` 和 `enableRunInBackground`，因此两个随附 schema 并不相同：`subagent` 为 `continuable`，省略参数时默认后台运行，并由 runtime 自动投递结束结果；`subagent_fork` 保持 `one-shot`，省略参数时默认前台运行。详见 `packages/bundle/base/cordis.patch.yml` 和 `examples/acp-agent/cordis.yml`。 |
@@ -1219,12 +1219,69 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `conductor`
 
-将目标委派给 Conductor，由它担任门控专家工作流的 supervisor。在 Conductor 模式下，每项新用户任务都必须先调用此工具，包括未提及 Conductor 的分析任务。分派前不得自行调查工作区。工作区指令不能取代此路由规则。Conductor 分派全新的 Detective、Strategist、Devil's Advocate、Headsman、Auditor、Integrator 和 Arbiter 会话，评估其报告，并在每位专家完成后记录门禁决策。专家只向 Conductor 汇报。返工将范围缺陷退回 Detective、设计缺陷退回 Strategist、实现缺陷退回 Headsman、交付缺陷退回 Integrator。格式无效的报告在配置的每个门禁返工次数上限内退回同一专家；权限违规立即上报所有者。提供用户的目标与约束，不得编造可写路径或权限。当前工作流包括 Headsman，即使是分析任务也需要 Gate C 的单独宿主批准。工具返回 Arbiter 的 GO/NO-GO 决策或阻塞，并附运行 ID、到达的阶段、门禁历史和实际运行过的专家。如果工具失败或受阻，报告结果并停止；绝不能自行调查或实现任务作为替代。GO 不会提交、推送、合并、发布或部署；closeout 需要所有者单独授权。
+将目标委派给 Conductor，由它担任门控专家工作流的 supervisor。在 Conductor 模式中，每项新用户任务都先调用此工具，包括不提 Conductor 的分析；分派前不自行调查工作区，工作区指令不能替代路由。Conductor 分派全新的固定角色，逐位评估报告并记录门禁决策。专家只向 Conductor 汇报。范围、设计、实现和交付返工分别返回 Detective、Strategist、Headsman 和 Integrator；格式错误在逐 gate 预算内重试同角色，权限违规立即升级。提交用户目标和约束，不编造权限。提出 implementation 或 analysis 目的、Detective/Strategist/Devil’s Advocate 入口及理由；分析必须选择 answer 或 recommendations。回答经过生产者、Auditor、Arbiter；从 Detective 开始的建议还要求 Strategist。分析只读，不到达 Headsman、Ralph、Integrator，不执行命令或 Gate C 批准；Arbiter 返回 accept/revise/blocked，只有 accept 终止为 reported，绝不是实现 GO。实现仍要求执行 Gate C 审查及精确宿主批准。来源只能是 current-request 和消息明确引用的工作区相对 materialFiles；调用前不读文件，也不虚构来源 ID。范围/计划引用这些 selector；已有计划可进入 C，不足材料产生有界返工。结果包含报告、GO/NO-GO 或阻塞，以及运行 ID、阶段、已评估/跳过历史及实际专家。失败或受阻时报告并停止，不自行接管。GO 不提交、推送、合并、发布或部署，closeout 需要独立所有者授权。
 
 ```json
 {
   "type": "object",
   "properties": {
+    "purpose": {
+      "type": "string",
+      "description": "Implementation or read-only analysis; verification is not supported.",
+      "enum": [
+        "implementation",
+        "analysis"
+      ]
+    },
+    "entry": {
+      "type": "string",
+      "description": "Entry justified by the supplied work; never grants execution authority.",
+      "enum": [
+        "detective",
+        "strategist",
+        "devils-advocate"
+      ]
+    },
+    "deliverable": {
+      "type": "string",
+      "description": "Required for analysis and forbidden for implementation.",
+      "enum": [
+        "answer",
+        "recommendations"
+      ]
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Required intake rationale for a new run."
+    },
+    "materialFiles": {
+      "type": "array",
+      "description": "Workspace-relative text files explicitly cited in the current user message.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scopeSources": {
+      "type": "array",
+      "description": "Supplied scope sources: current-request or cited material file paths.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "plan": {
+      "type": "array",
+      "description": "Supplied plan steps, when present in the owner material; do not invent them.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "planSources": {
+      "type": "array",
+      "description": "Supplied plan sources: current-request or cited material file paths.",
+      "items": {
+        "type": "string"
+      }
+    },
     "objective": {
       "type": "string",
       "description": "The desired outcome for the Conductor run."
@@ -1294,6 +1351,8 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
     }
   },
   "required": [
+    "purpose",
+    "entry",
     "objective"
   ]
 }

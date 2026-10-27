@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { CallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
 import UserApproval from '@deepseek-ai/dsh-user-approval'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
@@ -112,6 +112,7 @@ function goDecision(runId: string): Record<string, unknown> {
 
 function openApprovalTurn(agent: Agent): void {
   agent.session.append('turn/start', { turn: 1 })
+  agent.session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'Implement the owner-authorized change.' }], source: { kind: 'user' } }), { surfaceOp: 'append' })
 }
 
 describe('dsh-tool-conductor over the real spawn stack', () => {
@@ -212,6 +213,8 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       callId: CallId('conductor-integration'),
       name: 'conductor',
       arguments: {
+        purpose: 'implementation', entry: 'detective',
+        rationale: 'Explicit implementation mandate.',
         objective: 'Ship the feature through the full gate chain.',
         acceptanceCriteria: ['all specialist gates have evidence'],
         allowedPaths: ['packages/conductor'],
@@ -241,6 +244,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       callId: CallId('conductor-closeout'),
       name: 'conductor',
       arguments: {
+        purpose: 'implementation', entry: 'detective',
         runId: checkpoint.data.runId,
         objective: 'Ship the feature through the full gate chain.',
         allowedPaths: ['packages/conductor'],
@@ -268,6 +272,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       callId: CallId('conductor-model-execution-authority'),
       name: 'conductor',
       arguments: {
+        purpose: 'implementation', entry: 'detective',
         runId: checkpoint.data.runId,
         objective: 'Ship the feature through the full gate chain.',
         allowedPaths: ['packages/conductor'],
@@ -282,6 +287,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       callId: CallId('conductor-awaiting-host-closeout'),
       name: 'conductor',
       arguments: {
+        purpose: 'implementation', entry: 'detective',
         runId: checkpoint.data.runId,
         objective: 'Ship the feature through the full gate chain.',
         allowedPaths: ['packages/conductor'],
@@ -297,6 +303,8 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       callId: CallId('conductor-blank-criterion'),
       name: 'conductor',
       arguments: {
+        purpose: 'implementation', entry: 'detective',
+        rationale: 'Explicit implementation mandate.',
         objective: 'Reject blank criteria before dispatch.',
         acceptanceCriteria: [''],
         authority: { owner: 'user' },
@@ -373,6 +381,8 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
         callId: CallId(`conductor-approval-${approvalOutcome}`),
         name: 'conductor',
         arguments: {
+          purpose: 'implementation', entry: 'detective',
+          rationale: 'Explicit implementation mandate.',
           objective: 'Stop before execution unless the host approves the exact baseline.',
           acceptanceCriteria: ['No execution without host approval'],
           allowedPaths: ['packages/conductor'],
@@ -491,6 +501,8 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       callId: CallId('conductor-quality-integration'),
       name: 'conductor',
       arguments: {
+        purpose: 'implementation', entry: 'detective',
+        rationale: 'Explicit implementation mandate.',
         objective: 'Ship only after bounded implementation and independent verification.',
         acceptanceCriteria: ['Headsman and Auditor quality checks pass'],
         allowedPaths: ['packages/conductor'],
@@ -585,6 +597,8 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       callId: CallId('conductor-invalid-gate-c'),
       name: 'conductor',
       arguments: {
+        purpose: 'implementation', entry: 'detective',
+        rationale: 'Explicit implementation mandate.',
         objective: 'Reject a model-selected command outside the deployment catalog.',
         acceptanceCriteria: ['Gate C records the invalid specialist output'],
         allowedPaths: ['packages/conductor'],
@@ -604,12 +618,12 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       history: { gate: string; decision: string; basis: string[] }[]
     }
     expect(record.status, JSON.stringify(record)).toBe('escalated')
-    expect(record.history.find(gate => gate.gate === 'C'), JSON.stringify(record)).toMatchObject({
+    expect(record.history.find(gate => gate.gate === 'C'), JSON.stringify(record)).toMatchObject({ kind: 'evaluated',
       gate: 'C',
       decision: 'rework',
       basis: expect.arrayContaining(['Gate C selected unknown quality command "unknown-check"']) as unknown,
     })
-    expect(record.history.at(-1)).toMatchObject({ gate: 'C', decision: 'escalate' })
+    expect(record.history.at(-1)).toMatchObject({ kind: 'evaluated', gate: 'C', decision: 'escalate' })
     expect(record.history.filter(gate => gate.gate === 'C').map(gate => gate.decision)).toEqual(['rework', 'rework', 'escalate'])
   }, realSpawnTimeoutMs)
 
@@ -699,6 +713,8 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       callId: CallId('conductor-quality-failure-integration'),
       name: 'conductor',
       arguments: {
+        purpose: 'implementation', entry: 'detective',
+        rationale: 'Explicit implementation mandate.',
         objective: 'Preserve host evidence across a specialist failure.',
         acceptanceCriteria: ['Completed quality commands remain durable'],
         allowedPaths: ['packages/conductor'],

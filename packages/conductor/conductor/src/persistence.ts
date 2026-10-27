@@ -31,6 +31,9 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { isValidRunId } from './run-id.ts'
 import { executionBaselineHash, executionEffectProfile } from './quality.ts'
 import { CONDUCTOR_RECORD_FORMAT_VERSION } from './state.ts'
+import { parseAdmission } from './intake.ts'
+import { validateIntakeHistory } from './intake-history.ts'
+import { parseAnalysisState } from './analysis-persistence.ts'
 
 /** One whole-run checkpoint in the parent Session log. A null record is a tombstone. */
 export interface ConductorCheckpointData {
@@ -78,16 +81,7 @@ const GATE_STAGE: Readonly<Record<GateId, ConductorStage>> = {
   F: 'integrator',
   G: 'arbiter',
 }
-const NEXT_AFTER_PASS: Readonly<Record<GateId, ConductorStage>> = {
-  A: 'strategist',
-  B: 'devils-advocate',
-  C: 'headsman',
-  D: 'auditor',
-  E: 'integrator',
-  F: 'arbiter',
-  G: 'closeout',
-}
-const REWORK_STAGE: Readonly<Record<Exclude<DefectClass, 'report'>, ConductorStage>> = {
+const REWORK_STAGE: Readonly<Record<Exclude<DefectClass, 'report' | 'analysis'>, ConductorStage>> = {
   scope: 'detective',
   plan: 'strategist',
   implementation: 'headsman',
@@ -442,6 +436,12 @@ export function parseRun(json: string): ConductorRun {
       `Conductor run record format ${String(record.recordFormatVersion)} is unsupported; expected ${CONDUCTOR_RECORD_FORMAT_VERSION}`,
     )
   }
+  const runKeys = ['recordFormatVersion', 'admission', 'repairReturns', 'analysisReports', 'reportCandidates', 'reportDecision',
+    'runId', 'objective', 'scope', 'inputArtifacts', 'allowedPaths', 'excludedPaths', 'sourceBaseline', 'authority',
+    'constraints', 'acceptanceCriteria', 'budget', 'baselineHistory', 'baseline', 'executionAuthorization', 'currentStage',
+    'history', 'specialistReports', 'qualityExecutions', 'status', 'decision', 'closeout']
+  if (Object.keys(record).some(key => !runKeys.includes(key))) throw new Error('Conductor run record contains unsupported phase-one fields')
+  const admission = parseAdmission(record.admission)
 
   if (typeof record.runId !== 'string' || !isValidRunId(record.runId)) {
     throw new Error(`Conductor run record has invalid runId: ${String(record.runId)}`)
@@ -471,6 +471,11 @@ export function parseRun(json: string): ConductorRun {
   if (!Number.isSafeInteger(budget.maxRalphRounds) || Number(budget.maxRalphRounds) < 0) {
     throw new Error('Conductor run record budget.maxRalphRounds must be a non-negative safe integer')
   }
+  if (admission.purpose === 'analysis') return parseAnalysisState(record)
+  if (!Array.isArray(record.repairReturns) || record.repairReturns.length !== 0
+    || !Array.isArray(record.analysisReports) || record.analysisReports.length !== 0
+    || !Array.isArray(record.reportCandidates) || record.reportCandidates.length !== 0
+    || record.reportDecision !== undefined) throw new Error('Implementation run cannot carry analysis report state')
   if (!Array.isArray(record.baselineHistory)) {
     throw new Error('Conductor run record baselineHistory must be an array')
   }
@@ -530,6 +535,8 @@ export function parseRun(json: string): ConductorRun {
       throw new Error('Conductor run history entry must be an object')
     }
     const gate = entry as Record<string, unknown>
+    if (gate.kind === 'skipped') continue
+    if (gate.kind !== 'evaluated') throw new Error('Conductor gate record requires evaluated or skipped kind')
     if (!isOneOf(gate.gate, GATE_IDS)) {
       throw new Error(`Conductor gate record has invalid gate: ${String(gate.gate)}`)
     }
@@ -550,9 +557,6 @@ export function parseRun(json: string): ConductorRun {
     requireString(gate.stateUpdate, 'history.stateUpdate')
     if (GATE_STAGE[gate.gate] !== gate.stage) {
       throw new Error(`Conductor gate ${gate.gate} cannot belong to stage ${gate.stage}`)
-    }
-    if (gate.decision === 'pass' && gate.nextStage !== NEXT_AFTER_PASS[gate.gate]) {
-      throw new Error(`Conductor gate ${gate.gate} pass has invalid nextStage`)
     }
     if (gate.decision === 'rework') {
       if (!isOneOf(gate.defectClass, DEFECT_CLASSES)
@@ -715,7 +719,7 @@ export function parseRun(json: string): ConductorRun {
     && (record.currentStage !== 'closeout' || decision?.decision !== 'go' || closeout === undefined)) {
     throw new Error('Closed Conductor run requires closeout stage, Arbiter GO, and closeout record')
   }
-  const lastGate = record.history.at(-1) as Record<string, unknown> | undefined
+  const lastGate = record.history.findLast(entry => (entry as Record<string, unknown>).kind === 'evaluated') as Record<string, unknown> | undefined
   if (lastGate !== undefined) {
     const expectedStatus = lastGate.decision === 'pass'
       ? (lastGate.gate === 'G' ? 'awaiting_authorization' : 'running')
@@ -729,47 +733,26 @@ export function parseRun(json: string): ConductorRun {
     }
   }
 
+  validateIntakeHistory(record as unknown as ConductorRun)
   return record as unknown as ConductorRun
 }
 
 /**
  * Assert a run is resumable. A `closed` or `aborted` run is terminal and never
  * resumes. A resumable run must sit exactly where its documented history put
- * it: with no gate history it may only be at the initial `intake`/`detective`
- * stage; otherwise every history entry must continue from its predecessor and
+ * it: skipped gates and causal repairs must follow the admitted profile;
+ * every history entry must continue from its predecessor and
  * `currentStage` must equal the last documented successor.
  * @param run - the run to check.
  */
 export function validateResumable(run: ConductorRun): void {
-  if (run.status === 'closed' || run.status === 'aborted') {
+  if (run.status === 'closed' || run.status === 'aborted' || run.status === 'reported') {
     throw new Error(`Conductor run ${run.runId} is ${run.status}; a terminal run cannot resume`)
   }
   if (run.status === 'escalated') {
     throw new Error(`Conductor run ${run.runId} is escalated; an owner resolution is required before resume`)
   }
-  if (run.history.length === 0) {
-    if (run.currentStage !== 'intake' && run.currentStage !== 'detective') {
-      throw new Error(`Conductor run ${run.runId} has no gate history but is at stage "${run.currentStage}"`)
-    }
-    return
-  }
-  let expected: ConductorStage = 'detective'
-  for (const gate of run.history) {
-    if (gate.stage !== expected) {
-      throw new Error(
-        `Conductor run ${run.runId} history jumps to gate ${gate.gate} at "${gate.stage}" (expected "${expected}")`,
-      )
-    }
-    expected = gate.nextStage ?? gate.stage
-  }
-  const last = run.history.at(-1)
-  /* v8 ignore next -- the non-empty history branch guarantees at(-1) returns the last gate record. */
-  if (last === undefined) throw new Error(`Conductor run ${run.runId} has no gate history to resume from`)
-  if (run.currentStage !== expected) {
-    throw new Error(
-      `Conductor run ${run.runId} stage "${run.currentStage}" does not match last gate ${last.gate} (expected "${expected}")`,
-    )
-  }
+  validateIntakeHistory(run)
 }
 
 /**
