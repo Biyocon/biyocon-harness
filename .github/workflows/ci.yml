@@ -395,7 +395,9 @@ jobs:
         uses: actions/cache/restore@v4
         id: wine-cache
         with:
-          path: ~/wine-debs
+          path: |
+            ~/wine-debs/*.deb
+            ~/wine-debs/wine-plan.json
           key: ${{ needs.wine-apt-cache.outputs.key }}
           fail-on-cache-miss: true
 
@@ -439,7 +441,9 @@ jobs:
         uses: actions/cache/restore@v4
         id: wine-cache
         with:
-          path: ~/wine-debs
+          path: |
+            ~/wine-debs/*.deb
+            ~/wine-debs/wine-plan.json
           key: ${{ steps.wine-cache-key.outputs.key }}
 
       - name: Download the Wine dependency closure
@@ -455,8 +459,22 @@ jobs:
         if: steps.wine-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: ~/wine-debs
+          path: |
+            ~/wine-debs/*.deb
+            ~/wine-debs/wine-plan.json
           key: ${{ steps.wine-cache-key.outputs.key }}
+
+      # Save reports transport failures as warnings; require a successful
+      # restore before releasing the consumer job.
+      - name: Confirm saved Wine cache is restorable
+        if: steps.wine-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/wine-debs/*.deb
+            ~/wine-debs/wine-plan.json
+          key: ${{ steps.wine-cache-key.outputs.key }}
+          fail-on-cache-miss: true
 
   # Every pull request also gets a real Windows-kernel signal. This job keeps
   # its own unmasked conclusion but is deliberately absent from

@@ -193,6 +193,18 @@ describe('CI workflow', () => {
     expect(seedSteps[saveIndex]).toMatchObject({
       uses: 'actions/cache/save@v4', if: "steps.wine-cache.outputs.cache-hit != 'true'",
     })
+    const confirmIndex = seedSteps.findIndex(step => step.name === 'Confirm saved Wine cache is restorable')
+    expect(confirmIndex).toBeGreaterThan(saveIndex)
+    expect(seedSteps[confirmIndex]).toMatchObject({
+      uses: 'actions/cache/restore@v4',
+      if: "steps.wine-cache.outputs.cache-hit != 'true'",
+      with: { 'fail-on-cache-miss': true },
+    })
+    const cachePaths = '~/wine-debs/*.deb\n~/wine-debs/wine-plan.json\n'
+    const cacheSteps = [...wineSteps, ...seedSteps].filter(step => typeof step.uses === 'string' && step.uses.startsWith('actions/cache/'))
+      .filter(step => isRecord(step.with) && typeof step.with.path === 'string' && step.with.path.includes('wine-debs'))
+    expect(cacheSteps).toHaveLength(4)
+    for (const step of cacheSteps) expect(step.with).toMatchObject({ path: cachePaths })
     expect(seedSteps.some(step => step.uses === 'actions/cache@v4')).toBe(false)
     expect(wineSteps.some(step => step.uses === 'actions/cache@v4')).toBe(false)
     const provisioning = readFileSync(resolve(root, 'scripts/wine-apt-cache.sh'), 'utf8')
