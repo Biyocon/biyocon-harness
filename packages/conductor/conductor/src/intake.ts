@@ -6,6 +6,17 @@ import type { ConductorAdmission, ConductorEntry, ConductorMaterialId, Conductor
 export const CONDUCTOR_ENTRIES = ['detective', 'strategist', 'devils-advocate'] as const
 
 /**
+ * Require measurable deliverable criteria before admitting or restoring an analysis.
+ * @param admission - validated purpose and entry.
+ * @param criteria - normalized owner-task acceptance criteria.
+ */
+export function requireAnalysisCriteria(admission: ConductorAdmission, criteria: readonly string[]): void {
+  if (admission.purpose === 'analysis' && criteria.length === 0) {
+    throw new Error('Conductor analysis requires at least one acceptanceCriteria item. Put measurable deliverable requirements in acceptanceCriteria, not constraints.')
+  }
+}
+
+/**
  * Hash exact UTF-8 text or canonical JSON selected by its owner.
  * @param text - complete input, without trimming or truncation.
  * @returns lowercase SHA-256.

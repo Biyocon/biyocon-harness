@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-现有 Conductor 模型在强制的第一个 `conductor` 调用中提出 intake；[运行时准入](../../../../packages/conductor/conductor/src/intake.ts)验证提案并推导路线。没有 intake 专家、通用指令加载器修改或新增权限渠道。第一阶段仅支持 `purpose: implementation | analysis` 和 `detective | strategist | devils-advocate` 入口。分析必须指定 `deliverable: answer | recommendations`；实现拒绝 deliverable。缺失字段、禁止的入口和不支持的组合在创建运行前失败。
+现有 Conductor 模型在强制的第一个 `conductor` 调用中提出 intake；[运行时准入](../../../../packages/conductor/conductor/src/intake.ts)验证提案并推导路线。没有 intake 专家、通用指令加载器修改或新增权限渠道。第一阶段仅支持 `purpose: implementation | analysis` 和 `detective | strategist | devils-advocate` 入口。分析必须指定 `deliverable: answer | recommendations` 和至少一项可衡量的 `acceptanceCriteria`；实现拒绝 deliverable。交付成功要求属于 `acceptanceCriteria`，`constraints` 只保存限制。空或缺失的分析标准在检查点保存和分派前失败；空标准的持久化分析记录也明确失败。缺失字段、禁止的入口和不支持的组合在创建运行前失败。
 
 ### 捕获的材料
 
@@ -38,7 +38,7 @@ Detective 接受不确定的当前请求。较晚入口要求捕获的范围来�
 
 ### 报告完成与效果
 
-生产者提供版本化 `ReportCandidate`，包含 deliverable、完整报告、精确验收标准评估、捕获材料引用、假设和限制。建议内容包含优先顺序与理由。运行时计算候选哈希；Auditor 在全新会话审查该精确版本和来源。另一个全新的 Arbiter 会话返回 `accept | revise | blocked`，绑定候选及成功审计哈希。修改产生新候选版本和新审计；旧哈希被拒绝。
+生产者提供版本化 `ReportCandidate`，包含 deliverable、完整报告、按分派 `acceptance_criteria` 原顺序逐字复制的逐项 criterion/outcome 评估、捕获材料引用、假设和限制。约束不提供额外报告标准。不匹配会返回完整预期字符串及缺失、多余、变更的差异，变更位置从 1 开始。每次分析分派均包含标准指令和持久化 gate 历史，让全新生产者收到具体返工理由。建议内容包含优先顺序与理由。运行时计算候选哈希；Auditor 在全新会话审查该精确版本和来源。另一个全新的 Arbiter 会话返回 `accept | revise | blocked`，绑定候选及成功审计哈希。修改产生新候选版本和新审计；旧哈希被拒绝。
 
 接受产生 `kind: report`、终态 `reported` 和 `currentStage: report-complete`，既不是 GO，也不批准发布或实现。有依据的负面发现和静态分析限制保留在报告中。reported 运行不能恢复、closeout 或变成实现运行。实施建议需要新 implementation 运行及真正的执行 C 批准。
 
@@ -64,6 +64,6 @@ Detective 接受不确定的当前请求。较晚入口要求捕获的范围来�
 
 捕获输入增加有界的 Session 日志体积，并可能包含敏感项目文本；现有文件系统权限及日志政策继续适用。全新角色只代表上下文分离，不代表不同模型或人工审查。有效引用和 keyless 测试不证明提供方的语义质量，也不认证未检查文件。
 
-准入、报告验证及持久化篡改测试覆盖支持的组合、缺失材料、旧报告、因果修复/恢复、独立预算及禁止效果。[安装预设快照](../../../../examples/headless-agent/tests/conductor-installed.snapshot.ts)在具有矛盾 AGENTS.md 的外部工作区使用真实 Loader，仅替换模型，并验证实际第一个工具、专家路线、项目文件不变、无批准、父级拒绝以及 reported 或 blocked 结果。现有实现/质量快照保留宿主批准路线。Fixtures 在 Linux/WSL 录制；SDK 通用投影另行验证。
+准入、报告验证及持久化篡改测试覆盖支持的组合、缺失材料、旧报告、因果修复/恢复、独立预算及禁止效果。[安装预设快照](../../../../examples/headless-agent/tests/conductor-installed.snapshot.ts)在具有矛盾 AGENTS.md 的外部工作区使用真实 Loader，仅替换模型，并验证实际第一个工具、专家路线、项目文件不变、无批准、父级拒绝以及 reported 或 blocked 结果。专用场景验证空分析标准在创建运行或子级前被拒绝，以及 Strategist 根据收到的历史在首次 Gate-B 返工修复标准不匹配。现有实现/质量快照保留宿主批准路线。Fixtures 在 Linux/WSL 录制；SDK 通用投影另行验证。
 
 第二阶段仍未实现：Auditor 入口、`verification`、dirty 候选 digest 和非 Git manifest 需要 F02 及单独批准。附件、隐式会话检索、远程文档、source-launch 自动生成（#25）、UI 元数据（#28）及补充专家/提供方/文档处理不属于第一阶段。因此 #30 保持打开。Runtime、质量执行器、安装 skills、路由和 gate 稳健性决策保留各自独立保证，没有任何一篇被完全替代或归档。

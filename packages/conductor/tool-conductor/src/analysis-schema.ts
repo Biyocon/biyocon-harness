@@ -3,6 +3,9 @@ import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 
 const strings = { type: 'array', items: { type: 'string' } } as const
 
+/** Exact criterion identity and ordering required of an analysis report producer. */
+export const ANALYSIS_CRITERIA_INSTRUCTION = 'For candidate.criteria, copy every acceptance_criteria string verbatim and in the same order, with exactly one criterion/outcome assessment per item. Do not add criteria from constraints. On rework, use the gate_history basis to correct the report against this unchanged list.'
+
 /** Read-only specialist output; the core additionally validates producer/audit requirements. */
 export const ANALYSIS_SCHEMA = {
   type: 'object', additionalProperties: false,
@@ -18,7 +21,7 @@ export const ANALYSIS_SCHEMA = {
       properties: {
         version: { type: 'string' }, deliverable: { type: 'string', enum: ['answer', 'recommendations'] },
         content: { type: 'string' }, material_ids: strings, assumptions: strings, limitations: strings,
-        criteria: { type: 'array', items: {
+        criteria: { type: 'array', description: ANALYSIS_CRITERIA_INSTRUCTION, items: {
           type: 'object', additionalProperties: false,
           properties: { criterion: { type: 'string' }, outcome: { type: 'string' } }, required: ['criterion', 'outcome'],
         } },

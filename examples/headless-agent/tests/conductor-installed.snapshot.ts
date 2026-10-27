@@ -206,13 +206,14 @@ describe('installed Conductor through the headless example', () => {
     expect(result.stderr).toContain('required skill "conductor-detective" is unavailable or empty')
     expect(result.stderr).toContain('rebuild or reinstall the Conductor preset assets')
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
-  it.each(['answer', 'recommendations', 'plan', 'rework', 'forbidden', 'authority', 'source-repair'] as const)('%s has the admitted read-only route and truthful outcome', async (scenario) => {
-    const stages = scenario === 'forbidden' ? [] : scenario === 'authority' ? ['detective', 'strategist']
+  it.each(['answer', 'recommendations', 'plan', 'rework', 'forbidden', 'authority', 'source-repair', 'missing-criteria', 'criteria-rework'] as const)('%s has the admitted read-only route and truthful outcome', async (scenario) => {
+    const stages = scenario === 'forbidden' || scenario === 'missing-criteria' ? [] : scenario === 'authority' ? ['detective', 'strategist']
       : scenario === 'source-repair' ? ['detective']
-        : scenario === 'rework' ? ['devils-advocate', 'strategist', 'devils-advocate', 'auditor', 'arbiter']
-          : scenario === 'plan' ? ['devils-advocate', 'auditor', 'arbiter']
-            : scenario === 'recommendations' ? ['detective', 'strategist', 'auditor', 'arbiter']
-              : ['detective', 'auditor', 'arbiter']
+        : scenario === 'criteria-rework' ? ['detective', 'strategist', 'strategist', 'auditor', 'arbiter']
+          : scenario === 'rework' ? ['devils-advocate', 'strategist', 'devils-advocate', 'auditor', 'arbiter']
+            : scenario === 'plan' ? ['devils-advocate', 'auditor', 'arbiter']
+              : scenario === 'recommendations' ? ['detective', 'strategist', 'auditor', 'arbiter']
+                : ['detective', 'auditor', 'arbiter']
     const names = ['parent', ...stages.map((stage, i) => `${i + 1}-${stage}`)]
     const result = await runLoaderSmoke({
       label: `Conductor intake ${scenario}`, tempDirPrefix: 'conductor-intake-snapshot-',
@@ -241,9 +242,10 @@ describe('installed Conductor through the headless example', () => {
         expect(calls).toEqual(scenario === 'answer' ? ['conductor', 'read', 'write', 'conductor'] : ['conductor'])
         expect(parent.events.filter(row => row.type === 'approval/asked')).toEqual([])
         const checkpoints = parent.events.filter(row => row.type === 'conductor/checkpoint')
-        if (scenario === 'forbidden') {
+        if (scenario === 'forbidden' || scenario === 'missing-criteria') {
           expect(checkpoints).toEqual([])
-          expect(JSON.stringify(parent.events)).toContain('entry')
+          expect(JSON.stringify(parent.events)).toContain(scenario === 'forbidden' ? 'entry'
+            : 'No Conductor run was started: Conductor analysis requires at least one acceptanceCriteria')
         } else {
           const run = JSON.parse(checkpoints.at(-1)!.data.record!) as ConductorRun
           expect(run.recordFormatVersion).toBe(3)
@@ -261,6 +263,12 @@ describe('installed Conductor through the headless example', () => {
           expect(evaluated.map(gate => gate.stage)).toEqual(stages)
           if (scenario === 'plan' || scenario === 'rework') expect(run.history.slice(0, 2).map(gate => gate.kind)).toEqual(['skipped', 'skipped'])
           if (scenario === 'rework') expect(run.history.filter(gate => gate.gate === 'C').map(gate => gate.decision)).toEqual(['rework', 'pass'])
+          if (scenario === 'criteria-rework') {
+            expect(run.history.filter(gate => gate.gate === 'B').map(gate => gate.decision)).toEqual(['rework', 'pass'])
+            expect(run.acceptanceCriteria).toEqual(['Answer the owner task using the supplied evidence.'])
+            expect(run.reportCandidates).toHaveLength(1)
+            expect(run.reportCandidates[0]!.candidate.criteria.map(item => item.criterion)).toEqual(run.acceptanceCriteria)
+          }
           for (const [i, child] of decoded.slice(1).entries()) {
             expect(child.header.parentSession).toBe(parent.header.id)
             const requests = child.events.filter(row => row.type === 'request/header')

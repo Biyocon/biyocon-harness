@@ -249,6 +249,21 @@ function analysisResult(request: WorkflowStartRequest): WorkflowResult {
 }
 
 describe('Conductor analysis tool admission and execution policy', () => {
+  it.each([undefined, []])('rejects missing analysis criteria before saving or dispatching: %j', async (acceptanceCriteria) => {
+    const h = await setup()
+    const { acceptanceCriteria: _criteria, ...args } = baseArgs
+    const result = await execute(h.ctx, {
+      ...args, purpose: 'analysis', deliverable: 'answer',
+      ...acceptanceCriteria === undefined ? {} : { acceptanceCriteria },
+      constraints: ['Describe the structure.', 'Justify three recommendations.'],
+    }, h.parent)
+    expect(result.isError).toBe(true)
+    expect(JSON.stringify(result)).toContain('No Conductor run was started: Conductor analysis requires at least one acceptanceCriteria')
+    expect(JSON.stringify(result)).toContain('not constraints')
+    expect(h.engine.requests).toEqual([])
+    expect(h.parent.session.events.filter(event => event.type === 'conductor/checkpoint')).toEqual([])
+  })
+
   it('runs fresh report sessions with no execution tools, contribution, Ralph or approval', async () => {
     const h = await setup({ factory: analysisResult })
     h.ctx.on('approval/request', () => { throw new Error('Analysis must never request approval') })
@@ -257,6 +272,11 @@ describe('Conductor analysis tool admission and execution policy', () => {
     expect(result.value).toMatchObject({ status: 'reported', stage: 'report-complete', result: { kind: 'report' } })
     expect(h.engine.requests).toHaveLength(3)
     for (const request of h.engine.requests) {
+      const prompt = (request.args as { prompt: string }).prompt
+      if (prompt.includes('Dispatch package:')) {
+        expect(prompt).toContain('copy every acceptance_criteria string verbatim and in the same order')
+        expect(prompt).toContain('"gate_history"')
+      }
       expect(request.childToolFilter).toEqual({ allow: ['read', 'read_image', 'grep', 'glob'] })
       expect(request.childToolContribution).toBeUndefined()
       const attempt = (name: string) => request.childToolGuard!({ name } as never)

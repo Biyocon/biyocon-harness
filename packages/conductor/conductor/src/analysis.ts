@@ -44,6 +44,16 @@ function materialReferences(value: unknown, run: ConductorRun): boolean {
     && value.every(id => run.admission.materials.some(material => material.id === id))
 }
 
+function unmatchedCriteria(left: readonly string[], right: readonly string[]): string[] {
+  const remaining = [...right]
+  return left.filter((criterion) => {
+    const index = remaining.indexOf(criterion)
+    if (index === -1) return true
+    remaining.splice(index, 1)
+    return false
+  })
+}
+
 /**
  * Validate a candidate at a model or durable boundary.
  * @param value - untrusted candidate.
@@ -55,9 +65,17 @@ export function candidateProblem(value: unknown, run: ConductorRun): string | un
     || !text(value.version) || !text(value.content) || run.admission.purpose !== 'analysis'
     || value.deliverable !== run.admission.deliverable || !materialReferences(value.material_ids, run)
     || !texts(value.assumptions) || !texts(value.limitations) || !Array.isArray(value.criteria)) return 'invalid analysis ReportCandidate'
-  if (value.criteria.length !== run.acceptanceCriteria.length || value.criteria.some((item, index) => !object(item)
+  if (value.criteria.some(item => !object(item)
     || Object.keys(item).some(key => key !== 'criterion' && key !== 'outcome')
-    || item.criterion !== run.acceptanceCriteria[index] || !text(item.outcome))) return 'report must assess the exact acceptance criteria'
+    || !text(item.criterion) || !text(item.outcome))) return 'report criteria must contain only non-empty criterion and outcome strings'
+  const received = value.criteria.map(item => (item as { criterion: string }).criterion)
+  const expected = run.acceptanceCriteria
+  const changed = received.flatMap((criterion, index) => index < expected.length && criterion !== expected[index]
+    ? [{ position: index + 1, expected: expected[index], received: criterion }] : [])
+  if (received.length !== expected.length || changed.length > 0) {
+    const differences = { missing: unmatchedCriteria(expected, received), extra: unmatchedCriteria(received, expected), changed }
+    return `report must assess the exact acceptance criteria verbatim and in order. Expected acceptance_criteria: ${JSON.stringify(expected)}. Differences: ${JSON.stringify(differences)}`
+  }
   return undefined
 }
 

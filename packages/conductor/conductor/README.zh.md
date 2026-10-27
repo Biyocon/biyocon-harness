@@ -12,7 +12,7 @@ Headsman 与 Auditor 必须精确引用当前 dispatch 产生的持久化 `Quali
 
 Gate C 提案只包含版本、rollback reference 和请求的质量命令 id，不包含路径字段。运行时从所有者授权的运行提供 `allowedPaths` 和 `excludedPaths`，并拒绝专家编写的路径。完整解析 baseline 仍须获得精确宿主批准。`SpecialistExecutionFailure` 在保存已完成宿主质量记录的检查点后传播基础设施故障，不伪造专家报告或门禁决策。记录格式 3 保存不可变 intake、已评估/跳过历史、因果返工和报告版本，以及实现证据；明确拒绝版本 2 及更旧记录，不做迁移。[门禁稳健性决策](../../../.agents/notes/implemented/bug-fix/2026-10-25-conductor-gate-robustness.md)记录验证分类及验证证据。
 
-准入目的为 `implementation | analysis`，入口为 Detective、Strategist 或 Devil's Advocate。分析要求 `answer | recommendations`：回答使用所选生产者 → Auditor → Arbiter；从 Detective 开始的建议还要求 Strategist 生成报告。已提供工作及不适用的 gate 记录为 `kind: skipped`，绝不是批准。返工返回缺失前提，再返回请求的 gate，重用逐 gate 预算。准入捕获当前用户文本和明确引用的工作区文本文件及内容哈希；恢复验证捕获路线和材料。实现从较晚入口开始时，若未明确提供源 baseline，运行时将其返工至 Detective；输入内容哈希绝不是源 baseline。
+准入目的为 `implementation | analysis`，入口为 Detective、Strategist 或 Devil's Advocate。分析在创建及持久化加载时要求 `answer | recommendations` 和非空 `acceptanceCriteria` 列表：回答使用所选生产者 → Auditor → Arbiter；从 Detective 开始的建议还要求 Strategist 生成报告。已提供工作及不适用的 gate 记录为 `kind: skipped`，绝不是批准。返工返回缺失前提，再返回请求的 gate，重用逐 gate 预算。准入捕获当前用户文本和明确引用的工作区文本文件及内容哈希；恢复验证捕获路线和材料。实现从较晚入口开始时，若未明确提供源 baseline，运行时将其返工至 Detective；输入内容哈希绝不是源 baseline。
 
 分析保持空执行状态且不执行质量命令。版本化报告经独立审计后，Arbiter 返回 `accept | revise | blocked`；接受终止为 `reported`/`report-complete`，而非 GO 或 closeout。从不请求批准或到达 Headsman、Ralph、Integrator。[准入决策](../../../.agents/notes/implemented/feature/2026-10-25-conductor-intake-and-report-completion.md)拥有来源、报告绑定和延期第二阶段行为。
 
