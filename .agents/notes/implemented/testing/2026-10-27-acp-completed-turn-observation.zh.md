@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-[ACP harness](../../../../packages/test-support/acp-snapshot/src/harness.ts) 在 `waitForTurnEnd` 上接受 `minimumTurn`。选定会话必须包含该编号的 `turn/end`，且其最新完整轮次边界必须已关闭。轮次完成后，已完成的证据仍然有效。取消就绪检查保留 `waitForTurnStart` 对打开轮次的要求。
+[ACP harness](../../../../packages/test-support/acp-snapshot/src/harness.ts) 在 `waitForTurnEnd` 上接受 `minimumTurn`。选定会话必须包含该编号的 `turn/end`，且其最新完整轮次边界必须已关闭。轮次完成后，已完成的证据仍然有效。仅以换行符结束的记录计入结果；尚在写入的尾部片段不能证明完成。取消就绪检查保留 `waitForTurnStart` 对打开轮次的要求。
 
 四个后台 subagent 场景和 goal-wrapup 直接等待父级轮次 2 完成。[结算栅栏](../feature/2026-08-06-manager-owned-subagent-settlement-delivery.md)仍保证后台投递会开启独立父级轮次。默认超时、轮询间隔、运行时调度、会话记录和预期输出比较保持不变。
 

@@ -10,7 +10,7 @@ Background settlement and goal wrap-up can finish a parent turn between the snap
 
 ## Decision
 
-The [ACP harness](../../../../packages/test-support/acp-snapshot/src/harness.ts) accepts `minimumTurn` on `waitForTurnEnd`. The selected session must contain that numbered `turn/end`, and its latest complete turn boundary must be closed. Completed evidence remains valid after the turn finishes. Cancellation readiness retains the open-turn requirement of `waitForTurnStart`.
+The [ACP harness](../../../../packages/test-support/acp-snapshot/src/harness.ts) accepts `minimumTurn` on `waitForTurnEnd`. The selected session must contain that numbered `turn/end`, and its latest complete turn boundary must be closed. Completed evidence remains valid after the turn finishes. Only newline-terminated records count; an in-progress trailing fragment cannot establish completion. Cancellation readiness retains the open-turn requirement of `waitForTurnStart`.
 
 The four background-subagent scenarios and goal-wrapup wait directly for completed parent turn 2. The [settlement fence](../feature/2026-08-06-manager-owned-subagent-settlement-delivery.md) still ensures that background delivery opens its own parent turn. Default timeouts, polling intervals, runtime scheduling, transcripts, and expected-output comparisons are unchanged.
 

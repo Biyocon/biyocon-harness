@@ -656,6 +656,36 @@ describe('runScenario', () => {
     )).rejects.toThrow(/did not persist closed turn 2 within 20ms/)
   })
 
+  it.each([
+    { tail: '{"type":"turn/end","data":', complete: true },
+    { tail: '{"type":"turn/end","data":{"turn":2}}', complete: false },
+  ])('waitForTurnEnd only counts newline-terminated records: $complete', async ({ tail, complete }) => {
+    const { fixtureFile } = await scenario({
+      prompt: 'hang-until-cancel',
+      persistLogsOnCancel: true,
+      logs: [{
+        file: 'project/main/session.jsonl',
+        lines: [
+          { type: 'session', version: 0, id: '{{SID}}', createdAt: 1, delegationDepth: 0 },
+          { type: 'turn/end', seq: 1, time: 2, data: { turn: complete ? 2 : 1, reason: { kind: 'stop' } } },
+        ],
+        trailingText: tail,
+      }],
+    })
+    const result = runScenario(
+      {
+        steps: [
+          ...boot,
+          { op: 'promptAndCancel', text: 'hang' },
+          { op: 'waitForTurnEnd', minimumTurn: 2, timeoutMs: 20 },
+        ],
+      },
+      { agent: AGENT, mode: 'replay', fixtureFile },
+    )
+    if (complete) await expect(result).resolves.toHaveProperty('sessionId')
+    else await expect(result).rejects.toThrow(/did not persist closed turn 2 within 20ms/)
+  })
+
   it('waitForInboxMessage holds the app through a matching durable insertion', { timeout: 20_000 }, async () => {
     const { fixtureFile } = await scenario({
       prompt: 'hang-until-cancel',

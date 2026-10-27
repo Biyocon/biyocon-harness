@@ -602,9 +602,10 @@ async function waitForPersistedChildTurnEnd(
   }, { interval: WAIT_POLL_INTERVAL_MS, timeout: timeoutMs })
 }
 
-/** Whether a raw session log contains the requested closed turn. */
+/** Whether newline-terminated raw session records contain the requested closed turn. */
 function hasClosedTurn(content: string, turn: number): boolean {
-  return content.split('\n').filter(Boolean).some((line) => {
+  const complete = content.slice(0, content.lastIndexOf('\n') + 1)
+  return complete.split('\n').filter(Boolean).some((line) => {
     const event = JSON.parse(line) as { type?: unknown; data?: { turn?: unknown } }
     return event.type === 'turn/end' && event.data?.turn === turn
   })
