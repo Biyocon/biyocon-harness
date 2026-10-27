@@ -359,6 +359,7 @@ jobs:
   # .agents/notes/implemented/process/2026-08-08-native-windows-pull-request-ci.md
   windows:
     if: github.event_name == 'pull_request'
+    needs: wine-apt-cache
     runs-on: ubuntu-latest
     name: windows node 24 / wine blocking
     timeout-minutes: 15
@@ -390,57 +391,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-
 
-      # Master's wine-apt-cache job seeds the default-branch scope every pull
-      # request can read; a save from this job only reaches reruns of the
-      # same merge ref.
-      - name: Compose Wine apt cache key
-        id: wine-cache-key
-        run: echo "key=wine-debs-${ImageOS:-linux}-${ImageVersion:-v0}" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache@v4
+      - name: Restore verified Wine archives
+        uses: actions/cache/restore@v4
+        id: wine-cache
         with:
           path: ~/wine-debs
-          key: ${{ steps.wine-cache-key.outputs.key }}
+          key: ${{ needs.wine-apt-cache.outputs.key }}
+          fail-on-cache-miss: true
 
-      # Runner provisioning only — a developer machine installs Wine through
-      # its own package manager; the gate script assumes a wine binary and
-      # fails loud without one. Wine from the apt cache when present; else
-      # download the full dependency closure once and keep it for the next
-      # run. The `wine` dispatcher package (not bare `wine64`) is what puts a
-      # binary on PATH.
-      - name: Inspect restored Wine archives
-        run: |
-          echo 'wine-cache: candidate versions'
-          apt-cache policy wine wine64 libwine
-          archive_dir="$HOME/wine-debs"
-          if [[ -d "$archive_dir" ]]; then
-            echo 'wine-cache: restored files and byte counts'
-            find "$archive_dir" -maxdepth 3 -type f -printf '%P\t%s\n' | sort
-            shopt -s nullglob
-            archives=("$archive_dir"/*.deb)
-            for archive in "${archives[@]}"; do
-              printf 'wine-cache: package %s\n' "$(basename "$archive")"
-              dpkg-deb --field "$archive" Package Version Architecture
-            done
-            if (( ${#archives[@]} > 0 )); then
-              echo 'wine-cache: apt URI plan for restored archives'
-              sudo apt-get --yes --print-uris --download-only --no-install-recommends install "${archives[@]}"
-            fi
-          else
-            echo 'wine-cache: archive directory absent'
-          fi
-
-      - name: Install Wine
-        run: |
-          if compgen -G "$HOME/wine-debs/*.deb" > /dev/null; then
-            sudo apt-get install -y --no-download --no-install-recommends "$HOME"/wine-debs/*.deb
-          else
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends --download-only wine
-            mkdir -p "$HOME/wine-debs"
-            cp /var/cache/apt/archives/*.deb "$HOME/wine-debs/" 2>/dev/null || true
-            sudo apt-get install -y --no-install-recommends wine
-          fi
+      # Restored archives are apt's cache, not merely local package arguments.
+      # No network is available to apt; incomplete restores fail before tests.
+      - name: Install Wine offline from verified cache
+        env:
+          WINE_CACHE_KEY: ${{ needs.wine-apt-cache.outputs.key }}
+        run: bash scripts/wine-apt-cache.sh install "$HOME/wine-debs/wine-plan.json" "$HOME/wine-debs"
 
       - name: Run the Wine Windows gates
         run: bash scripts/wine-windows-gates.sh
@@ -449,21 +413,30 @@ jobs:
         if: always()
         run: wineserver -k 2>/dev/null || true
 
-  # Master seeds the Wine apt-archive cache in the default-branch scope,
-  # which every pull request's windows job can restore; saves from
-  # pull-request runs are scoped to their own merge ref and help nobody
-  # else. Runs in seconds when the image version already has a cache.
+  # Master seeds the shared default-branch cache. PRs validate or populate
+  # their scoped collection before the Wine consumer restores that exact key.
   wine-apt-cache:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
     name: wine apt cache
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      key: ${{ steps.wine-cache-key.outputs.key }}
     steps:
-      - name: Compose Wine apt cache key
-        id: wine-cache-key
-        run: echo "key=wine-debs-${ImageOS:-linux}-${ImageVersion:-v0}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
-      - uses: actions/cache@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+
+      - name: Plan versioned Wine archives
+        id: wine-cache-key
+        run: bash scripts/wine-apt-cache.sh plan "$RUNNER_TEMP/wine-plan.json"
+
+      - name: Restore Wine archives
+        uses: actions/cache/restore@v4
         id: wine-cache
         with:
           path: ~/wine-debs
@@ -471,12 +444,19 @@ jobs:
 
       - name: Download the Wine dependency closure
         if: steps.wine-cache.outputs.cache-hit != 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends --download-only wine
-          mkdir -p "$HOME/wine-debs"
-          cp /var/cache/apt/archives/*.deb "$HOME/wine-debs/"
-          du -sh "$HOME/wine-debs"
+        run: bash scripts/wine-apt-cache.sh download "$RUNNER_TEMP/wine-plan.json" "$HOME/wine-debs"
+
+      - name: Verify complete Wine archives offline before saving
+        env:
+          WINE_CACHE_KEY: ${{ steps.wine-cache-key.outputs.key }}
+        run: bash scripts/wine-apt-cache.sh verify "$RUNNER_TEMP/wine-plan.json" "$HOME/wine-debs"
+
+      - name: Save verified Wine archives
+        if: steps.wine-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/wine-debs
+          key: ${{ steps.wine-cache-key.outputs.key }}
 
   # Every pull request also gets a real Windows-kernel signal. This job keeps
   # its own unmasked conclusion but is deliberately absent from

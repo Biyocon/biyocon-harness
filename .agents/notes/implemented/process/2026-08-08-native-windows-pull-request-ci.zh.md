@@ -12,7 +12,9 @@ Status: implemented
 
 ## 决策
 
-从缓存安装 Wine 时禁止下载，并记录恢复的归档名称、字节数、软件包身份和 apt 的 URI 计划。缓存恢复成功本身不能证明归档集合满足安装请求；缺少软件包会在执行 Wine 测试命令之前导致失败。
+`wine-apt-cache` 作业在 master 推送和拉取请求上运行，先于必需的 Wine 消费作业。它的 apt 计划固定 Wine 候选版本，以及运行器镜像所需每个归档的文件名、字节数和 SHA-256。缓存键包含运行器镜像、Wine 版本及计划摘要，恢复时没有前缀回退。[Wine 配置脚本](../../../../scripts/wine-apt-cache.sh)直接下载到专用 apt 归档目录，验证全部计划文件和离线依赖解析，只有验证成功后才显式保存。消费作业必须恢复该精确键、验证内容，并在隔离网络的进程中使用相同归档目录及 `--no-download` 安装。apt 日志必须没有任何 `Get:` 行。不完整或损坏的集合会在 Wine 测试命令之前失败，绝不回退到下载。apt 获取重试被禁用，作业时限和测试命令保持不变。
+
+仅将本地 `.deb` 文件作为参数传入并不能确保 apt 使用这些文件：相同版本存在于索引时，apt 仍可能选择软件源 URI。`Dir::Cache::archives` 使 apt 使用恢复的文件。PR #41 的诊断运行发现缓存中全部 21 个软件包，包括完整的 104,806,224 字节 `libwine` 归档；104 MB 缓存与 105 MB 软件包的表面差异来自缓存压缩及不同显示单位，不能证明软件包缺失。
 
 [ci.yml](../../../../.github/workflows/ci.yml) 中必需的 `windows` 作业仍是在 `ubuntu-latest` 上运行的 `windows node 24 / wine blocking`。它保留经过校验和验证的 Windows Node、Wine apt 与 pnpm 缓存、仅限工作区快照的 hoisted 安装，以及运行工作区构建与生产网站的[共享 Wine 门禁脚本](../../../../scripts/wine-windows-gates.sh)。Node 分发文件传输采用有界重试；nodejs.org 的大文件传输停滞时，由支持范围请求的传输镜像续传相同字节，但版本和 SHA-256 权威仍属于 nodejs.org，归档通过该校验前绝不会投入使用。稳定的 `windows` 作业 ID 仍是 `all checks passed` 的依赖项。[已归档的 Wine 实验](../../archived/process/2026-07-27-wine-windows-gates-experiment.md)保留其实测取舍，而本文负责当前双通道拓扑。
 

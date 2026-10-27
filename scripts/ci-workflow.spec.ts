@@ -148,9 +148,15 @@ describe('CI workflow', () => {
     expect(windows.name).toBe('windows node 24 / wine blocking')
     expect(windows.if).toBe("github.event_name == 'pull_request'")
     expect(commandSteps.some(step => step.run.includes('wine-windows-gates.sh'))).toBe(true)
-    expect(commandSteps.some(step => step.name === 'Inspect restored Wine archives')).toBe(true)
-    const installWine = commandSteps.find(step => step.name === 'Install Wine')
-    expect(installWine?.run).toContain('install -y --no-download --no-install-recommends')
+    expect(windows.needs).toBe('wine-apt-cache')
+    const installWine = commandSteps.find(step => step.name === 'Install Wine offline from verified cache')
+    expect(installWine?.run).toContain('scripts/wine-apt-cache.sh install')
+    const wineSteps = windows.steps.filter(isRecord)
+    expect(wineSteps.find(step => step.id === 'wine-cache')).toMatchObject({
+      uses: 'actions/cache/restore@v4',
+      with: { key: actionExpression('needs.wine-apt-cache.outputs.key'), 'fail-on-cache-miss': true },
+    })
+    expect(windows['timeout-minutes']).toBe(15)
 
     // windows-native: non-blocking native job with failover, runs windows-complete.
     // Its pool is resolved by the Windows-specific switch.
@@ -174,9 +180,21 @@ describe('CI workflow', () => {
     ))
     expect(nativeCommandSteps.map(step => step.run)).toContain('pnpm run check:ci:windows-complete')
 
-    // wine-apt-cache: master-only, seeds the Wine apt cache.
-    expect(wineAptCache.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
+    // Each PR consumes a cache that the seed has verified in the same run.
+    expect(wineAptCache.if).toBe("github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')")
     expect(wineAptCache['runs-on']).toBe('ubuntu-latest')
+    expect(wineAptCache['timeout-minutes']).toBe(10)
+    const seedSteps = Array.isArray(wineAptCache.steps) ? wineAptCache.steps.filter(isRecord) : []
+    const verifyIndex = seedSteps.findIndex(step => step.name === 'Verify complete Wine archives offline before saving')
+    const saveIndex = seedSteps.findIndex(step => step.name === 'Save verified Wine archives')
+    expect(verifyIndex).toBeGreaterThan(0)
+    expect(saveIndex).toBeGreaterThan(verifyIndex)
+    expect(seedSteps[verifyIndex]?.if).toBeUndefined()
+    expect(seedSteps[saveIndex]).toMatchObject({
+      uses: 'actions/cache/save@v4', if: "steps.wine-cache.outputs.cache-hit != 'true'",
+    })
+    expect(seedSteps.some(step => step.uses === 'actions/cache@v4')).toBe(false)
+    expect(wineSteps.some(step => step.uses === 'actions/cache@v4')).toBe(false)
 
     // serial-windows: master-only standby, self-hosted, non-blocking.
     expect(serialWindows.if).toBe("github.event.repository.fork == false && github.event_name == 'push' && github.ref == 'refs/heads/master'")
