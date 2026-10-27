@@ -12,6 +12,8 @@ Lefthook-generated hooks prefer an absolute binary path captured from the instal
 
 ## Decision
 
+The repository lock also covers installs from different worktrees because repository-format migration modifies their common Git config. Release validates ownership, atomically renames the lock to a unique retired filename in the same directory, revalidates its identity and contents, and deletes that retired record. Windows can reject an exclusive create during deletion of the same name; retiring the name before deletion keeps that interval away from new acquisitions. Permission errors remain failures rather than retryable contention. The concurrent-install fixture uses one common-repository sentinel so overlapping Lefthook executions in different worktrees also fail the test.
+
 Hook installation is worktree-scoped. With `CI=true` or `GITHUB_ACTIONS=true`, the installer returns before Git discovery or mutation because automated jobs do not consume contributor hooks. Otherwise, it requires Git 2.26 or newer so `git config --show-scope` can report which scope supplied a value, upgrades a format-0 repository to format 1, enables `extensions.worktreeConfig`, and assigns the current worktree an absolute `core.hooksPath` at `$GIT_DIR/dsh-hooks`.
 
 Before upgrading format 0, the installer refuses direct common-config `extensions.*`; it also refuses direct `core.worktree` or `core.bare=true` and non-empty dormant worktree configs that enabling the extension would activate. The migration removes direct `core.bare=false` because false is Git's default. The common repository config and every existing `config.worktree` must be regular files. These checks disable include expansion because Git's repository-format parser also ignores included targets. A repository-scoped lock serializes migration and hook writes; its process ID, random token, file identity, and exact contents must still match at release. Dead or invalid locks require manual recovery rather than automatic breaking.
@@ -21,6 +23,8 @@ Each hook directory carries a JSON ownership marker containing the absolute path
 If Lefthook fails after changing `core.hooksPath`, the installer restores the previous worktree value; a rollback failure is reported alongside the installation failure. Existing files in `$GIT_COMMON_DIR/hooks` are never removed or rewritten. Focused installer tests pin isolation, copied new-worktree configuration, migration refusal, ownership and relocation, concurrent installation, custom paths, and rollback.
 
 ## Alternatives considered
+
+**Retry `EPERM` or serialize the test runner.** Permission failures do not prove lock contention, and globally sequential tests would leave simultaneous contributor installs exposed. Name retirement removes the conflicting filesystem operation while preserving repository-level exclusion and the existing wait budget.
 
 **Keep the shared generated hooks and rely on their current-worktree fallback.** The captured absolute path wins while its worktree exists, so the fallback does not provide version or lifecycle isolation.
 
@@ -33,6 +37,8 @@ If Lefthook fails after changing `core.hooksPath`, the installer restores the pr
 **Stop installing hooks automatically.** Manual setup avoids shared writes but makes the repository's cheap commit and push checks optional by accident, especially in short-lived agent worktrees.
 
 ## Consequences
+
+An interruption after retirement can leave an inert `.released` record. It does not hold the shared lock name or authorize automatic cleanup; filesystem failures still fail the installer.
 
 Installing or removing one worktree no longer changes another worktree's active hooks, binary path, or generated hook bytes. Concurrent installs are serialized and repeated installation is idempotent, while the jobs and latency boundary owned by [Fast local Git hooks](2026-07-22-fast-local-git-hooks.md) stay unchanged.
 

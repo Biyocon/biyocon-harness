@@ -30,6 +30,8 @@ Status: implemented
 
 ## Verification
 
+managed-tree fixture 将进程身份写入独占创建的私有同级文件，完整 JSON 写入并关闭后，才将文件重命名到就绪路径。因此，该路径存在就表示宿主可以解析完整记录。回归测试在真实写入器写下 JSON 的第一个字节后暂停，验证就绪路径尚不存在，再允许发布并观察致命退出清理成功。fixture 不会重试无效 JSON，也不增加进程期限。
+
 父测试通过仓库 source launcher启动隔离的 TypeScript宿主，等待精确 root与后代进程身份可观察后，再允许宿主进入各条致命路径。直接退出、默认未捕获异常和默认未处理 rejection覆盖忽略 TERM的普通进程树；直接退出还覆盖真实 terminal root与后代。父测试断言原始宿主退出类别，并等待所有已记录进程消失；失败清理只针对已记录身份或已记录的 Windows进程树。
 
 单元证据固定同步 POSIX进程组与 Windows taskkill投递、PTY root终止前后的 terminal扫描、重复最终清理、逐目标失败包含、正常 TERM到 KILL dispose、dispose等待期间保留存活集合，以及 dispose后移除 listener。
