@@ -362,6 +362,9 @@ jobs:
     runs-on: ubuntu-latest
     name: windows node 24 / wine blocking
     timeout-minutes: 15
+    concurrency:
+      group: wine-apt-${{ github.repository }}-${{ github.ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6
         with:
@@ -390,35 +393,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-
 
-      # Master's wine-apt-cache job seeds the default-branch scope every pull
-      # request can read; a save from this job only reaches reruns of the
-      # same merge ref.
-      - name: Compose Wine apt cache key
-        id: wine-cache-key
-        run: echo "key=wine-debs-${ImageOS:-linux}-${ImageVersion:-v0}" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache@v4
+      - uses: ./.github/actions/wine-apt
         with:
-          path: ~/wine-debs
-          key: ${{ steps.wine-cache-key.outputs.key }}
-
-      # Runner provisioning only — a developer machine installs Wine through
-      # its own package manager; the gate script assumes a wine binary and
-      # fails loud without one. Wine from the apt cache when present; else
-      # download the full dependency closure once and keep it for the next
-      # run. The `wine` dispatcher package (not bare `wine64`) is what puts a
-      # binary on PATH.
-      - name: Install Wine
-        run: |
-          if compgen -G "$HOME/wine-debs/*.deb" > /dev/null; then
-            sudo apt-get install -y --no-install-recommends "$HOME"/wine-debs/*.deb
-          else
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends --download-only wine
-            mkdir -p "$HOME/wine-debs"
-            cp /var/cache/apt/archives/*.deb "$HOME/wine-debs/" 2>/dev/null || true
-            sudo apt-get install -y --no-install-recommends wine
-          fi
+          install: 'true'
 
       - name: Run the Wine Windows gates
         run: bash scripts/wine-windows-gates.sh
@@ -427,34 +404,26 @@ jobs:
         if: always()
         run: wineserver -k 2>/dev/null || true
 
-  # Master seeds the Wine apt-archive cache in the default-branch scope,
-  # which every pull request's windows job can restore; saves from
-  # pull-request runs are scoped to their own merge ref and help nobody
-  # else. Runs in seconds when the image version already has a cache.
+  # Master seeds the default-branch scope. Each PR prepares and consumes the
+  # matching cache on its own image through the same composite action.
   wine-apt-cache:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     name: wine apt cache
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    concurrency:
+      group: wine-apt-${{ github.repository }}-${{ github.ref }}
+      cancel-in-progress: false
     steps:
-      - name: Compose Wine apt cache key
-        id: wine-cache-key
-        run: echo "key=wine-debs-${ImageOS:-linux}-${ImageVersion:-v0}" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache@v4
-        id: wine-cache
+      - uses: actions/checkout@v6
         with:
-          path: ~/wine-debs
-          key: ${{ steps.wine-cache-key.outputs.key }}
+          persist-credentials: false
 
-      - name: Download the Wine dependency closure
-        if: steps.wine-cache.outputs.cache-hit != 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends --download-only wine
-          mkdir -p "$HOME/wine-debs"
-          cp /var/cache/apt/archives/*.deb "$HOME/wine-debs/"
-          du -sh "$HOME/wine-debs"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+
+      - uses: ./.github/actions/wine-apt
 
   # Every pull request also gets a real Windows-kernel signal. This job keeps
   # its own unmasked conclusion but is deliberately absent from
