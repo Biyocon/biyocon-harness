@@ -16,6 +16,8 @@ Gate C 提案只包含版本、rollback reference 和请求的质量命令 id，
 
 分析保持空执行状态且不执行质量命令。版本化报告经独立审计后，Arbiter 返回 `accept | revise | blocked`；接受终止为 `reported`/`report-complete`，而非 GO 或 closeout。从不请求批准或到达 Headsman、Ralph、Integrator。[准入决策](../../../.agents/notes/implemented/feature/2026-10-25-conductor-intake-and-report-completion.md)拥有来源、报告绑定和延期第二阶段行为。
 
+`conductor/child` 是模型不可见的父事件，标识一个具体工作流子会话：运行时角色、按角色的尝试编号、生命周期、派发历史偏移及可选的精确子会话门禁结果。`./child-types` 可安全导入客户端。将本包作为插件与 `sessionProjections` 一起挂载，即可独立于 agent 生命周期保留 `conductorChildren` 投影；共享 base bundle 已挂载。继承的种子子会话被清除。这些必读事件不改变检查点格式 3。[子会话显示决策](../../../.agents/notes/implemented/bug-fix/2026-10-28-conductor-child-role-status.md)定义归属与重放语义。
+
 ## 已知限制与延期工作
 
 - 只有 host 挂载持久化 Session provider 时，checkpoint 才具备跨进程持久性；内存 Session 只在当前进程生命周期内保留记录。

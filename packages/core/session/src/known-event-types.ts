@@ -31,6 +31,7 @@ export const KNOWN_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
   'compaction/start',
   'compaction/summary',
   'conductor/checkpoint',
+  'conductor/child',
   'feedback/record',
   'goal/change',
   'hook/invoked',

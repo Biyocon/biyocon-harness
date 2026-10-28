@@ -86,3 +86,18 @@ export { drive, SpecialistExecutionFailure } from './drive.ts'
 export type { ConductorCheckpoint, ConductorDispatcher, ConductorOutcome, SpecialistDispatchResult } from './drive.ts'
 export { executionBaselineHash, executionEffectProfile, nextQualityCycle, snapshotQualityBindings } from './quality.ts'
 export { isValidRunId, mintRunId } from './run-id.ts'
+
+import type { Context } from '@deepseek-ai/cordis'
+import { conductorChildrenProjection } from './child-projection.ts'
+export { conductorChildrenProjection }
+
+/** Projection service required for persistent Conductor child catalogs. */
+export const inject = ['sessionProjections']
+
+/**
+ * Mount child presentation independently of the live agent preset.
+ * @param ctx - context carrying the shared projection registry.
+ */
+export function apply(ctx: Context): void {
+  ctx.sessionProjections.register(conductorChildrenProjection)
+}

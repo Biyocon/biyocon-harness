@@ -1613,6 +1613,41 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     source: 'packages/client/ui-workspace/src/client/contract/slots.ts:58',
   },
   {
+    key: 'subagent.catalog.content',
+    kind: 'chain',
+    scope: 'root',
+    summary: 'Override child text using domain-owned presentation.',
+    doc: 'Override child text using domain-owned presentation.',
+    registerOptions: [
+      {
+        name: 'select',
+        requirement: 'required',
+        type: '(owner) => unknown | null',
+        doc: 'Pure routing selector. Entries are tried in ascending order; the first non-null result wins and arrives as the component\'s `matched` prop. All-null falls through to the owner\'s fallback.',
+      },
+    ],
+    ownerProps: [
+      '/** Identifies one session in the store (and its persistence artifacts). */\nexport type SessionId = Branded<\'SessionId\'>',
+    ],
+    ownerPropsReferences: [
+      'Branded',
+    ],
+    standardProps: [
+      'useSessions: SnapshotSelectorHook<SessionListState>',
+      'useWorkspaces: SnapshotSelectorHook<import(\'./contract/workspaces.ts\').WorkspaceListState>',
+    ],
+    keyDomain: '',
+    hookContext: '',
+    slotInject: '',
+    declaredBy: 'an entry in \'conversation.session.header.actions\' (client-ui-subagent), so it exists while that entry is mounted',
+    occupants: [
+      'client-ui-conductor-subagent Content',
+    ],
+    replaceRisk: 'none',
+    example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'subagent.catalog.content\', () => ctx.slots.register(\n      { name: \'subagent.catalog.content\', select: owner => null },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
+    source: 'packages/client/ui-subagent/src/client/index.ts:29',
+  },
+  {
     key: 'tool.call.toolview',
     kind: 'keyed',
     scope: 'session',

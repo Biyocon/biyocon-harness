@@ -22,6 +22,7 @@ const CHILD = 'child' as SessionId
 const GRANDCHILD = 'grandchild' as SessionId
 const t: SubagentCatalogActionProps['t'] = makeTranslate(da)
 
+
 function catalog(over: Partial<SubagentCatalogSnapshot> = {}): SubagentCatalogSnapshot {
   return {
     entries: [
@@ -73,6 +74,7 @@ function props(
     openChild: vi.fn(),
     refresh: vi.fn(),
     setCatalogOpen: vi.fn(),
+    renderSlotChain: (_key: unknown, _owner: unknown, options: { fallback: unknown }) => options.fallback,
     t,
   } as unknown as SubagentCatalogActionProps
 }

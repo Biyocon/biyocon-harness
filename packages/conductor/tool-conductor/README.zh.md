@@ -20,6 +20,8 @@
 
 决策、报告和阻塞结果包含 `runId`、已达 `stage`、生命周期状态、含理由的完整 `gateHistory`，以及从运行时门禁尝试推导的 `specialistsRan`，包括被拒绝的报告。运行创建前的错误明确说明没有启动 Conductor 运行；创建后的错误包含最后持久化运行状态及已确认启动但失败的子级，不编造门禁决策。这些诊断不将报告、受阻运行或 Arbiter GO 转变为执行权限。
 
+每次工作流派发都在父日志中记录模型不可见的子会话身份与生命周期。运行时按该子会话派发时的历史偏移关联已保存的门禁，使每次返工独立保留。Ralph 的可信工作流观察器提供 worker 身份，但不把 Headsman 的 Gate D 赋予 worker。这些事件不影响提示、门禁决策或权限；[显示决策](../../../.agents/notes/implemented/bug-fix/2026-10-28-conductor-child-role-status.md)拥有其语义。
+
 ## 已知限制与延期工作
 
 Skill 查找选择父 agent 的 scope key，因此其预设安装的角色和协议提供方不依赖任务工作区而保持可见。随附预设在挂载前验证这些资源；自定义组合必须提供完整的 skill catalog。

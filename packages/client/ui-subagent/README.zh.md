@@ -12,6 +12,8 @@ one-shot child 始终选用只读编辑器，并将 transcript（文本记录）
 
 `@` source 仍然刻意保持独立且惰性。候选是从 `ctx.sessions.list` 零 RPC 得到的运行中 child；pick 会插入字面文本 `@label `，codec 投影为 `@label`。它不参与命令裁决，也不会把 label 解析成继续执行地址。
 
+通用 subagent.catalog.content chain 接收精确父子数据，允许领域插件替换名称与说明文本。目录按文本 id 和精确指标生成无障碍行名称。[Conductor 贡献](../ui-conductor-subagent/README.md)拥有专家显示；本包不解释角色或门禁结果。
+
 ## 模型体验
 
 ### 用户提示词中的 subagent label 文本
@@ -30,5 +32,5 @@ one-shot child 始终选用只读编辑器，并将 transcript（文本记录）
 
 ## 已知限制与暂缓事项
 
-- **目录没有持久化结果**：活动状态与计时无法区分完成、失败或取消，且 UI 不公开 Activation 身份；停止能力仅限编辑器上针对运行中可继续 child 的当前轮次 Stop。
+- **普通子代理没有持久化结果**：其活动状态与计时无法区分完成、失败或取消。Conductor 行具有独立于门禁接受的生命周期。UI 不公开 Activation 身份；停止能力仅限编辑器上针对运行中可继续 child 的当前轮次 Stop。
 - **`@` 引用仍是显示标题文本**：重复或改名后的 label 会有歧义，因此它们刻意不获得继续执行语义。

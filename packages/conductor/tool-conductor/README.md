@@ -20,6 +20,8 @@ Analysis uses the admitted producer → Auditor → Arbiter, with Strategist pro
 
 Decision, report and blocked results include `runId`, reached `stage`, lifecycle status, complete `gateHistory` with reasons, and `specialistsRan` derived from runtime gate attempts, including rejected reports. Errors before run creation explicitly state that no Conductor run was started; an error after creation includes the last durable run status and a failed child known to have started, without inventing a gate verdict. These diagnostics do not convert a report, a blocked run, or an Arbiter GO into permission to act.
 
+Each workflow dispatch records a model-hidden child identity and lifecycle in the parent log. The runtime binds a saved evaluated gate to that child's dispatch history offset, leaving every rework attempt separate. Ralph's trusted workflow observer supplies worker identities without assigning Headsman's Gate D to a worker. These events do not affect prompts, gate decisions or authority; [the presentation decision](../../../.agents/notes/implemented/bug-fix/2026-10-28-conductor-child-role-status.md) owns their semantics.
+
 ## Known Limitations and Deferred Work
 
 Skill lookup selects the parent agent's scope key, so its preset's installed role and protocol providers remain visible independently of the task workspace. The shipped preset validates these resources before mounting; a custom composition must provide its own complete skill catalog.

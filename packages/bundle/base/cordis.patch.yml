@@ -126,6 +126,9 @@
     - id: session-projection
       name: '@deepseek-ai/dsh-session-projection'
 
+    - id: conductor-presentation
+      name: '@deepseek-ai/dsh-conductor'
+
     # Session telemetry is mounted but disabled by default. DSH_TELEMETRY_MODE
     # explicitly opts into FULL or FEEDBACK_ONLY reporting; uploading mirrors
     # session-log records onto OTLP/HTTP logs with no session-telemetry/record redaction

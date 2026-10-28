@@ -12,7 +12,7 @@
  */
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 /**
  * Identifies one Conductor run. The runtime mints `CON-YYYY-NNNN`; every
