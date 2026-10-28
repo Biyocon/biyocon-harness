@@ -405,6 +405,17 @@ Source: [`packages/compaction/compaction/src/types.ts:33`](../packages/compactio
 
 Source: [`packages/conductor/conductor/src/persistence.ts:52`](../packages/conductor/conductor/src/persistence.ts)
 
+<a id="conductorchild--log-only"></a>
+
+#### `conductor/child` — log-only
+
+```ts persistence-catalog
+/** Model-hidden child identity/lifecycle/verdict snapshot, keyed by childId. */
+'conductor/child': ConductorChild
+```
+
+Source: [`packages/conductor/conductor/src/child-types.ts:29`](../packages/conductor/conductor/src/child-types.ts)
+
 ### `feedback/*`
 
 <a id="feedbackrecord--log-only"></a>

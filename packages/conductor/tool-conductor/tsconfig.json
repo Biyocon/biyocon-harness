@@ -4,26 +4,69 @@
     "rootDir": "src",
     "outDir": "lib/types"
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
-    { "path": "../../../vendor/cordis" },
-    { "path": "../../../vendor/schemastery" },
-    { "path": "../../core/agent" },
-    { "path": "../../core/system-prompt" },
-    { "path": "../../core/session" },
-    { "path": "../../fs/fs" },
-    { "path": "../../sandbox/sandbox" },
-    { "path": "../../subprocess/subprocess" },
-    { "path": "../../core/tools" },
-    { "path": "../../workflow/workflow" },
-    { "path": "../../workflow/tool-ralph" },
-    { "path": "../../interaction/user-approval" },
-    { "path": "../../llm/llm" },
-    { "path": "../../skill/skill" },
-    { "path": "../../subagent/subagent" },
-    { "path": "../../util/timeout" },
-    { "path": "../conductor" },
-    { "path": "../conductor-presets" },
-    { "path": "../../runtime-diagnostics/invariants" }
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../core/agent"
+    },
+    {
+      "path": "../../core/system-prompt"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../fs/fs"
+    },
+    {
+      "path": "../../sandbox/sandbox"
+    },
+    {
+      "path": "../../subprocess/subprocess"
+    },
+    {
+      "path": "../../core/tools"
+    },
+    {
+      "path": "../../workflow/workflow"
+    },
+    {
+      "path": "../../workflow/tool-ralph"
+    },
+    {
+      "path": "../../interaction/user-approval"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../skill/skill"
+    },
+    {
+      "path": "../../subagent/subagent"
+    },
+    {
+      "path": "../../util/timeout"
+    },
+    {
+      "path": "../conductor"
+    },
+    {
+      "path": "../conductor-presets"
+    },
+    {
+      "path": "../../runtime-diagnostics/invariants"
+    },
+    {
+      "path": "../../session/session-projection"
+    }
   ]
 }

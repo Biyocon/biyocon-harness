@@ -16,6 +16,8 @@ The admitted purpose is `implementation | analysis`, with entry at Detective, St
 
 Analysis retains null execution state and no quality work. A versioned report is audited independently before Arbiter returns `accept | revise | blocked`; acceptance ends in `reported`/`report-complete`, not GO or closeout. It never requests approval or visits Headsman, Ralph or Integrator. [The intake decision](../../../.agents/notes/implemented/feature/2026-10-25-conductor-intake-and-report-completion.md) owns provenance, report binding and deferred Phase 2 behavior.
 
+`conductor/child` is a model-hidden parent event for one concrete workflow child: runtime role, per-role attempt, lifecycle, dispatch history offset and optional exact-child gate verdict. The `./child-types` export is safe for clients. Mount this package as a plugin alongside `sessionProjections` to retain the `conductorChildren` projection independently of agent lifetime; the shared base bundle does so. Inherited seed children are cleared. These required-on-read events do not change checkpoint format 3. [The child-presentation decision](../../../.agents/notes/implemented/bug-fix/2026-10-28-conductor-child-role-status.md) defines attribution and replay semantics.
+
 ## Known Limitations and Deferred Work
 
 - Checkpoints are durable only when the host mounts a persistent Session provider; an in-memory Session retains them only for that process lifetime.

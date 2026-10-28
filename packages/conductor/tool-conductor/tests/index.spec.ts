@@ -421,7 +421,7 @@ describe('dsh-tool-conductor unit boundary', () => {
       expect(result.isError).toBe(false)
       expect(result.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked' } })
       expect(engine.requests).toHaveLength(3)
-      expect(parent.session.events.at(-1)).toMatchObject({ type: 'conductor/checkpoint' })
+      expect(parent.session.events.findLast(event => event.type === 'conductor/checkpoint')).toMatchObject({ type: 'conductor/checkpoint' })
     }
   })
 

@@ -20,6 +20,8 @@ An ordinary child failure produces an error naming the failed round and retainin
 
 The caller's agent is the parent of every fresh child, preserving cwd and lineage without copying its conversation. `exec.signal` enters the workflow engine and is also bridged to `run.cancel()` for implementation independence. The tool awaits `run.result` and calls `run.dispose()` in `finally`, so a cancelled parent step waits for the engine's bounded termination and child quiescence before returning.
 
+Trusted callers may supply `observeRun` to observe the concrete workflow handle before awaiting its result. Its disposer runs after workflow disposal on success, failure or cancellation; an observer-installation failure still disposes the workflow. This host-only hook is absent from tool arguments and child prompts.
+
 ## Render intent
 
 The pending call is a `generic` card titled `ralph`; the immutable objective is its `rawInput`. The result keeps the generic card. Both presentation functions depend only on tool arguments and the settled tool envelope.

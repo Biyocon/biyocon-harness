@@ -5,6 +5,23 @@ export const NS = 'subagent'
 
 /** Danish dictionary (the key-set source of truth). */
 export const da = {
+  'attempt': 'forsøg {attempt}',
+  'gate': 'Gate {gate}: {decision}',
+  'gate.abort': 'afbrudt',
+  'gate.escalate': 'eskaleret',
+  'gate.pass': 'bestået',
+  'gate.rework': 'rework {used}/{limit}',
+  'role.arbiter': 'The Arbiter',
+  'role.auditor': 'Auditor',
+  'role.detective': 'Detective',
+  'role.devils-advocate': 'Devil’s Advocate',
+  'role.headsman': 'Headsman',
+  'role.integrator': 'Integrator',
+  'role.ralph': 'Ralph-arbejder',
+  'role.strategist': 'Strategist',
+  'status.completed': 'færdig',
+  'status.failed': 'fejlet',
+  'status.running': 'kører',
   'diagnostic.corrupt': 'beskadiget sessionspost',
   'diagnostic.unsupported': 'underagentpostens version understøttes ikke',
   'diagnostic.unavailable': 'sessionsposten er midlertidigt utilgængelig',
@@ -40,8 +57,25 @@ export const da = {
   'readonly.body': 'Den overordnede session er offline; åbn den igen for at fortsætte med at sende beskeder.',
 } as const
 
-/** English dictionary, key-identical to the Chinese source of truth. */
+/** English dictionary, key-identical to the Danish source of truth. */
 export const en: Record<SubagentKey, string> = {
+  'attempt': 'attempt {attempt}',
+  'gate': 'Gate {gate}: {decision}',
+  'gate.abort': 'aborted',
+  'gate.escalate': 'escalated',
+  'gate.pass': 'pass',
+  'gate.rework': 'rework {used}/{limit}',
+  'role.arbiter': 'The Arbiter',
+  'role.auditor': 'Auditor',
+  'role.detective': 'Detective',
+  'role.devils-advocate': 'Devil’s Advocate',
+  'role.headsman': 'Headsman',
+  'role.integrator': 'Integrator',
+  'role.ralph': 'Ralph-worker',
+  'role.strategist': 'Strategist',
+  'status.completed': 'completed',
+  'status.failed': 'failed',
+  'status.running': 'running',
   'diagnostic.corrupt': 'corrupted session record',
   'diagnostic.unsupported': 'unsupported subagent record version',
   'diagnostic.unavailable': 'session record temporarily unavailable',

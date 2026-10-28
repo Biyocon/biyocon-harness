@@ -26,6 +26,7 @@ import {
   admitIntake,
   admittedRoute,
   currentAuditHash,
+  conductorChildrenProjection,
 } from '@deepseek-ai/dsh-conductor'
 import type {
   ConductorAuthority,
@@ -49,6 +50,7 @@ import { captureMaterials } from './materials.ts'
 import type { MaterialLimits } from './materials.ts'
 import { ANALYSIS_CRITERIA_INSTRUCTION, ANALYSIS_SCHEMA, REPORT_DECISION_SCHEMA } from './analysis-schema.ts'
 import { ralphDirective } from './ralph.ts'
+import { observeConductorChildren, publishChildGates } from './children.ts'
 import { ROLE_SKILL } from '@deepseek-ai/dsh-conductor-presets'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CallId, ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -507,6 +509,7 @@ async function runWorkflowChild(
     childPersona: persona,
     ...childToolContribution === undefined ? {} : { childToolContribution },
   })
+  const stopChildPresentation = observeConductorChildren(ctx, parent.session, workflow, run, stage as Exclude<ConductorStage, 'intake' | 'closeout' | 'report-complete'>)
   let childFailure: string | undefined
   let childStarted = false
   const completedTurns = new Set<SessionId>()
@@ -540,6 +543,7 @@ async function runWorkflowChild(
       } finally {
         stopObserving()
         stopSessionObserving()
+        stopChildPresentation()
       }
     }
   } catch (cause) {
@@ -734,6 +738,7 @@ async function runSpecialist(
   try {
     const ralphOutcome = stage === 'headsman' && run.budget.maxRalphRounds > 0
       ? await runRalphWorkflow(ctx, {
+        observeRun: workflow => observeConductorChildren(ctx, parent.session, workflow, run, 'ralph'),
         objective: ralphObjective,
         maxRounds: run.budget.maxRalphRounds,
         maxHandoffChars: maxRalphHandoffChars,
@@ -886,6 +891,9 @@ function presentResult(_args: ConductorCallArgs, _result: { content: ContentBloc
 
 /** Register the Conductor tool and its gated specialist driver. */
 export function apply(ctx: Context, config: Config): void {
+  ctx.inject(['sessionProjections'], (projectionCtx) => {
+    projectionCtx.sessionProjections.register(conductorChildrenProjection)
+  })
   const resolved = resolveConfig(config)
   requireFreshProvider(ctx, resolved.subagentProvider)
   if (config.routeTasks === true) installModeRouting(ctx)
@@ -1080,6 +1088,7 @@ export function apply(ctx: Context, config: Config): void {
 
         const outcome = await drive(run, dispatcher, async (checkpoint) => {
           await store.save(checkpoint)
+          publishChildGates(parent.session, checkpoint)
           activeRun = checkpoint
         })
 

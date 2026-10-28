@@ -85,6 +85,8 @@ type RalphTerminalResult = RalphRunResult | RalphRoundFailure
 
 /** Trusted runtime request shared by the model-facing tool and Conductor. */
 export interface RalphWorkflowRequest {
+  /** Trusted observer installed after workflow creation; disposed after child cleanup. */
+  observeRun?: (run: WorkflowRun) => () => void
   /** Immutable objective shared with every fresh round. */
   readonly objective: string
   /** Positive round cap and workflow child ceiling. */
@@ -485,10 +487,12 @@ export async function runRalphWorkflow(ctx: Context, request: RalphWorkflowReque
     ...request.childPersona !== undefined ? { childPersona: request.childPersona } : {},
   })
   const onAbort = (): void => { run.cancel('parent step aborted') }
+  let stopObserving: (() => void) | undefined
   request.signal.addEventListener('abort', onAbort, { once: true })
   if (request.signal.aborted) run.cancel('parent step aborted')
 
   try {
+    stopObserving = request.observeRun?.(run)
     const settled = await run.result
     const error = stopReasonError(settled)
     if (error !== undefined) throw new Error(error)
@@ -497,7 +501,7 @@ export async function runRalphWorkflow(ctx: Context, request: RalphWorkflowReque
     return { runId: run.id, agentsStarted: settled.agentsStarted, result: value }
   } finally {
     request.signal.removeEventListener('abort', onAbort)
-    await run.dispose()
+    try { await run.dispose() } finally { stopObserving?.() }
   }
 }
 

@@ -10,6 +10,8 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { NS } from './locales.ts'
+import { conductorChildPresentation } from './conductor-child.ts'
+import type {} from '@deepseek-ai/dsh-conductor/child-types'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-subagent/client'
 import type {} from '@deepseek-ai/dsh-token-meter/client'
@@ -270,12 +272,14 @@ function CatalogRows({
         const childLoading = childCatalog === undefined
           || (childCatalog.state === 'loading' && childCatalog.entries.length === 0)
         const summary = summaries[entry.id]
-        const label = entry.label ?? entry.id
+        const conductor = summaries[parentSessionId]?.projectionValues?.conductorChildren?.[entry.id]
+        const presentation = conductor === undefined ? undefined : conductorChildPresentation(conductor, t)
+        const label = presentation?.label ?? entry.label ?? entry.id
         const mode = entry.mode === 'one-shot' ? t('mode.oneShot') : t('mode.continuable')
         const activity = entry.activity === 'running' ? t('activity.running') : t('activity.inactive')
-        const secondary = [summary?.title, mode, activity]
+        const secondary = presentation === undefined ? [summary?.title, mode, activity]
           .filter(value => value !== undefined)
-          .join(' · ')
+          .join(' · ') : `${presentation.detail} · ${entry.id}`
         const totalTokens = tokenTotal(summary?.projectionValues?.tokenUsage)
         const durationMs = activityDuration(
           summary,

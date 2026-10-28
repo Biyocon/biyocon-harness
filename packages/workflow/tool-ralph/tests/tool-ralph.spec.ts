@@ -144,6 +144,31 @@ async function settleCompleted(
 }
 
 describe('dsh-tool-ralph', () => {
+  it.each(['completed', 'error'] as const)('disposes the exact trusted observer after a %s workflow', async (stopReason) => {
+    const { ctx, engine, parent } = await setup()
+    const cleanup = vi.fn(() => { expect(engine.disposed).toBe(1) })
+    const observeRun = vi.fn(() => cleanup)
+    const pending = toolRalph.runRalphWorkflow(ctx, {
+      objective: 'Observe fresh workers.', maxRounds: 2, maxHandoffChars: 9000, maxResultChars: 9000,
+      subagentProvider: 'fresh', parent, signal: new AbortController().signal, observeRun,
+    })
+    expect(observeRun.mock.calls).toHaveLength(1)
+    engine.settle({ value: { status: 'complete', roundsStarted: 1, report: COMPLETE }, stopReason, agentsStarted: 1, error: 'worker failed' })
+    if (stopReason === 'completed') await expect(pending).resolves.toMatchObject({ result: { status: 'complete' } })
+    else await expect(pending).rejects.toThrow('worker failed')
+    expect(cleanup).toHaveBeenCalledOnce()
+  })
+
+  it('disposes a workflow if installing its trusted observer fails', async () => {
+    const { ctx, engine, parent } = await setup()
+    await expect(toolRalph.runRalphWorkflow(ctx, {
+      objective: 'Observe fresh workers.', maxRounds: 2, maxHandoffChars: 9000, maxResultChars: 9000,
+      subagentProvider: 'fresh', parent, signal: new AbortController().signal,
+      observeRun: () => { throw new Error('observer unavailable') },
+    })).rejects.toThrow('observer unavailable')
+    expect(engine.disposed).toBe(1)
+  })
+
   it('forwards one trusted child contribution to every Ralph round', async () => {
     const { ctx, engine, parent } = await setup()
     const childToolContribution = () => () => {}

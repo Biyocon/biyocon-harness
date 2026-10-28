@@ -9,7 +9,10 @@ import {
   SubagentCatalogAction, type SubagentCatalogActionProps,
 } from '../src/client/SubagentCatalogAction.tsx'
 import { SubagentReadOnlyComposer } from '../src/client/SubagentReadOnlyComposer.tsx'
-import { da } from '../src/client/locales.ts'
+import { da, en } from '../src/client/locales.ts'
+import type { ConductorChild } from '@deepseek-ai/dsh-conductor/child-types'
+import { ConductorRunId } from '@deepseek-ai/dsh-conductor/types'
+import { conductorChildPresentation } from '../src/client/conductor-child.ts'
 
 afterEach(() => {
   cleanup()
@@ -21,6 +24,13 @@ const PARENT = 'parent' as SessionId
 const CHILD = 'child' as SessionId
 const GRANDCHILD = 'grandchild' as SessionId
 const t: SubagentCatalogActionProps['t'] = makeTranslate(da)
+
+it.each(['pass', 'escalate', 'abort'] as const)('presents a failed Ralph worker and the %s gate as text', (decision) => {
+  const child: ConductorChild = { childId: CHILD, runId: ConductorRunId('CON-2026-0028'), role: 'ralph',
+    attempt: 2, historyOffset: 1, status: 'failed', gate: { id: 'D', decision, reworks: 0, limit: 2 } }
+  expect(conductorChildPresentation(child, t)).toEqual({ label: 'Ralph-arbejder · forsøg 2',
+    detail: `fejlet · Gate D: ${decision === 'pass' ? 'bestået' : decision === 'abort' ? 'afbrudt' : 'eskaleret'}` })
+})
 
 function catalog(over: Partial<SubagentCatalogSnapshot> = {}): SubagentCatalogSnapshot {
   return {
@@ -88,6 +98,33 @@ function summary(id: SessionId, updatedAt: number): SessionSummary {
 }
 
 describe('SubagentCatalogAction', () => {
+  it.each([
+    { dictionary: da, attempt: 'forsøg', completed: 'færdig', running: 'kører' },
+    { dictionary: en, attempt: 'attempt', completed: 'completed', running: 'running' },
+  ])('shows both concrete attempts and their own gate/status in $attempt', ({ dictionary, attempt, completed, running }) => {
+    const second = 'second-strategist' as SessionId
+    const first: ConductorChild = { childId: CHILD, runId: ConductorRunId('CON-2026-0028'), role: 'strategist', attempt: 1,
+      historyOffset: 1, status: 'completed', gate: { id: 'B', decision: 'rework', reworks: 1, limit: 2 } }
+    const next: ConductorChild = { ...first, childId: second, attempt: 2, historyOffset: 2, status: 'running' }
+    delete next.gate
+    const input = props(catalog({ entries: [CHILD, second].map(id => ({ kind: 'child', id, mode: 'one-shot',
+      label: 'do not infer a role from this label', activity: id === CHILD ? 'inactive' : 'running', hasChildren: false })) }), {}, {
+      [PARENT]: { ...summary(PARENT, 1), projectionValues: { conductorChildren: { [CHILD]: first, [second]: next } } },
+      [CHILD]: { ...summary(CHILD, 1), title: 'a completely different prompt' },
+      [second]: { ...summary(second, 1), title: 'another irrelevant title' },
+    })
+    render(<SubagentCatalogAction {...input} t={makeTranslate(dictionary)} />)
+    fireEvent.click(screen.getByRole('button', { name: /2 / }))
+    const firstRow = screen.getByRole('treeitem', { name: new RegExp(`Strategist · ${attempt} 1`) })
+    const secondRow = screen.getByRole('treeitem', { name: new RegExp(`Strategist · ${attempt} 2`) })
+    expect(firstRow.textContent).toContain(completed)
+    expect(firstRow.textContent).toContain('Gate B: rework 1/2')
+    expect(secondRow.textContent).toContain(running)
+    expect(secondRow.textContent).not.toContain('Gate B')
+    expect(secondRow.textContent).toContain(second)
+    expect(secondRow.textContent).not.toContain('irrelevant title')
+  })
+
   it('aggregates live descendant activity onto the closed trigger', () => {
     const summaries: Record<SessionId, SessionSummary> = {
       [CHILD]: {

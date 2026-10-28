@@ -261,6 +261,17 @@ describe('installed Conductor through the headless example', () => {
           }
           const evaluated = run.history.filter(gate => gate.kind === 'evaluated' && gate.origin === undefined)
           expect(evaluated.map(gate => gate.stage)).toEqual(stages)
+          const presentation = new Map(parent.events.flatMap(event => event.type === 'conductor/child'
+            ? [[event.data.childId, event.data] as const] : []))
+          expect([...presentation.values()].map(child => child.role)).toEqual(stages)
+          for (const child of presentation.values()) {
+            expect(child.status).not.toBe('running')
+            expect(child.gate).toBeDefined()
+          }
+          if (scenario === 'criteria-rework') {
+            const attempts = [...presentation.values()].filter(child => child.role === 'strategist')
+            expect(attempts.map(child => [child.attempt, child.gate?.decision])).toEqual([[1, 'rework'], [2, 'pass']])
+          }
           if (scenario === 'plan' || scenario === 'rework') expect(run.history.slice(0, 2).map(gate => gate.kind)).toEqual(['skipped', 'skipped'])
           if (scenario === 'rework') expect(run.history.filter(gate => gate.gate === 'C').map(gate => gate.decision)).toEqual(['rework', 'pass'])
           if (scenario === 'criteria-rework') {
