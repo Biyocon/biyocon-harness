@@ -2,6 +2,8 @@
 
 Biyocon Harness runs a local web server. The launcher `start-biyocon.bat` in `C:\Users\Biyocon\biyocon-harness` starts it on port 10822 and opens `http://127.0.0.1:10822` in the default browser.
 
+Run only one Biyocon Harness server at a time. Every launch method below stores sessions in the same `DSH_HOME` (by default `%USERPROFILE%\.dsh`), and two servers writing the same sessions can overwrite each other's data. Stop any server started on another port, for example a plain `pnpm dsh web` on port 3080, before using the launcher.
+
 ## Method 1: Pin the Launcher
 
 1. **Create a Shortcut to the Launcher**:
@@ -36,7 +38,10 @@ Create `biyocon-launcher.ps1`, create a shortcut to it, and pin the shortcut:
 ```powershell
 Set-Location "C:\Users\Biyocon\biyocon-harness"
 Start-Process -FilePath "pnpm" -ArgumentList "dsh web --port 10822" -WindowStyle Hidden
-Start-Sleep -Seconds 3
+$deadline = (Get-Date).AddSeconds(120)
+while (-not (Get-NetTCPConnection -LocalPort 10822 -State Listen -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+    Start-Sleep -Seconds 1
+}
 Start-Process "http://127.0.0.1:10822"
 ```
 

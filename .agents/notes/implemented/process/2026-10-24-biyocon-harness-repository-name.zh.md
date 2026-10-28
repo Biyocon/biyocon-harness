@@ -16,6 +16,8 @@ Status: implemented
 
 只有在源码变更合并、本地 master 完成 fast-forward 且 Codex 与应用已停止后，才能移动 checkout。在目标位置安装依赖并运行 `node scripts/install-lefthook.mjs`，可恢复 checkout 本地链接及其所有的钩子。移动后 checkout 的 `core.hooksPath` 必须指向其自身的 `.git/dsh-hooks`；工作区注册和快捷方式必须引用新位置。绕过钩子不是迁移方法。
 
+该 checkout 的 Windows 启动器是 `start-biyocon.bat`，窗口标题为 "Biyocon Harness"。它通过 `--port` 在 10822 端口提供 Web UI；产品默认端口 3080 保持不变。它与 `dsh` 一样解析 `DSH_HOME`，不再强制覆盖，因此 `PIN_TO_TASKBAR_GUIDE.md` 中的每种启动方式都使用相同的数据。只有当占用该端口的进程是 `node.exe` 时，该端口上的 `LISTENING` 套接字才被视为已在运行的 harness；其他进程占用会被报告为端口冲突，且不会打开任何页面。冷启动时，启动器只在服务器开始监听后、并在有限的等待时间内打开浏览器。会话持久化没有跨进程锁，因此同一 `DSH_HOME` 只能由一个服务器使用；启动器不会检测其他端口上的服务器，指南要求所有者先停止这类服务器。
+
 [仅允许向 fork 推送的决策](2026-10-18-fork-only-push-destination.md)保持活跃，因为其中关于传输、凭据隐藏、分发器和上游集成的依据仍有独立价值。本决策只替换其中具体的 fork 标识。
 
 ## Alternatives considered
@@ -30,4 +32,4 @@ Status: implemented
 
 ## Verification
 
-目标 spec 覆盖允许的 HTTPS/SSH 形式，并通过验证器和实际安装的钩子证明原 fork 会在 typecheck 前被拒绝。分发器与钩子安装器测试保留参数隔离和 worktree 本地路径检查。无密钥的翻译提示词快照通过其可运行场景刷新，因为其中嵌入了开发指南。文档配对、doc-sync、lint 和 typecheck 覆盖其余集成。
+目标 spec 覆盖允许的 HTTPS/SSH 形式，并通过验证器和实际安装的钩子证明原 fork 会在 typecheck 前被拒绝。分发器与钩子安装器测试保留参数隔离和 worktree 本地路径检查。无密钥的翻译提示词快照通过其可运行场景刷新，因为其中嵌入了开发指南。文档配对、doc-sync、lint 和 typecheck 覆盖其余集成。CI 不运行 `cmd.exe` 脚本，因此启动器行为通过在所有者的 Windows 机器上手动运行来验证。

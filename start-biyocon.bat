@@ -1,6 +1,5 @@
 @echo off
 title Biyocon Harness Desktop
-set DSH_HOME=C:\Users\Biyocon\.dsh
 set DSH_PORT=10822
 set DSH_START_TIMEOUT=120
 set DSH_URL=http://127.0.0.1:%DSH_PORT%

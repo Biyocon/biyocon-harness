@@ -16,6 +16,8 @@ The GitHub repository rename and the named remote's URL update precede publicati
 
 The checkout moves only after the source changes are merged and local master is fast-forwarded, with Codex and the app stopped. Dependency installation and `node scripts/install-lefthook.mjs` restore checkout-local links and owned hooks at the destination. The relocated checkout's `core.hooksPath` must resolve to its own `.git/dsh-hooks`; workspace registration and shortcuts must reference the new location. Hook bypass is not a relocation procedure.
 
+The checkout's Windows launcher is `start-biyocon.bat`, titled "Biyocon Harness". It serves the Web UI on port 10822 through `--port`; the product default port 3080 is unchanged. It resolves `DSH_HOME` the way `dsh` does instead of overriding it, so every launch method in `PIN_TO_TASKBAR_GUIDE.md` uses the same data. A `LISTENING` socket on the port counts as a running harness only when its owning process is `node.exe`; any other owner is reported as a port collision and nothing opens. On a cold start the launcher opens the browser only after the server listens, within a bounded wait. Session persistence has no cross-process lock, so only one server may use a given `DSH_HOME`; the launcher does not detect a server on another port, and the guide tells the owner to stop such servers first.
+
 The [fork-only push decision](2026-10-18-fork-only-push-destination.md) remains active because its transport, credential-redaction, dispatcher, and upstream-integration rationale is independently useful. This decision replaces only its concrete fork identity.
 
 ## Alternatives considered
@@ -30,4 +32,4 @@ The prepared branch cannot publish to the former fork URL. Repository and checko
 
 ## Verification
 
-The destination specs cover accepted HTTPS/SSH forms and former-fork rejection through both the validator and a real installed hook before typecheck. Dispatcher and hook-installer tests retain their argument-isolation and worktree-local-path checks. The keyless translation-prompt snapshot is refreshed through its runnable scenario because it embeds the development guide. Documentation pairing, doc-sync, lint, and typecheck cover the remaining integration.
+The destination specs cover accepted HTTPS/SSH forms and former-fork rejection through both the validator and a real installed hook before typecheck. Dispatcher and hook-installer tests retain their argument-isolation and worktree-local-path checks. The keyless translation-prompt snapshot is refreshed through its runnable scenario because it embeds the development guide. Documentation pairing, doc-sync, lint, and typecheck cover the remaining integration. CI does not run `cmd.exe` scripts, so launcher behavior is verified by manual runs on the owner's Windows machine.
