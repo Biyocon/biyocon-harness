@@ -15,7 +15,7 @@ Biyocon Harness runs a local web server. The launcher `start-biyocon.bat` in `C:
    - Right-click on the new shortcut
    - Select "Pin to Taskbar"
 
-When the server is already listening on port 10822, the launcher only opens the browser and does not start a second server.
+On a cold start the launcher starts the server in a "Biyocon Server" window and opens the browser once the server listens on port 10822, waiting up to `DSH_START_TIMEOUT` seconds. When a Node.js process already listens on the port, the launcher only opens the browser and does not start a second server. When another program holds the port, the launcher reports that program's PID and opens nothing.
 
 ## Method 2: Pin the Web UI
 
@@ -61,6 +61,6 @@ cmd /c "cd C:\Users\Biyocon\biyocon-harness && pnpm dsh web --port 10822"
    netstat -ano | findstr /C:":10822 " | findstr LISTENING
    ```
 
-3. If the port is occupied by another program, change `DSH_PORT` in `start-biyocon.bat` and use the same port in any shortcut or bookmark.
+3. If the launcher reports that another program uses the port, change `DSH_PORT` in `start-biyocon.bat` and use the same port in any shortcut or bookmark.
 
 Browser settings that the Web UI stores per address, such as theme and language, apply to `http://127.0.0.1:10822` only. Sessions and conversations stay in `C:\Users\Biyocon\.dsh` regardless of the port.
