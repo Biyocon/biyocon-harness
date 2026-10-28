@@ -22,7 +22,7 @@ function Exit-Launcher([string]$Message, [int]$Code) {
 # (apps/cli/src/bin.ts from source, lib/bin.js when built) with the web command.
 function Get-HarnessServer {
     Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
-        Where-Object { $_.CommandLine -match 'bin\.(ts|js)"?\s+web(\s|$)' }
+        Where-Object { $_.CommandLine -match 'bin\.(ts|js)"?\s+(?:"web"|web)(\s|$)' }
 }
 
 function Get-ListenPort([int]$ProcessId) {
@@ -37,6 +37,19 @@ if (-not $script:ownsMutex) {
 Write-Host 'Checking if Biyocon Harness is already running...'
 $servers = @(Get-HarnessServer)
 $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+
+# Session persistence has no cross-process lock, so a second server sharing
+# DSH_HOME could overwrite the running server's session data.
+$otherServers = @($servers | Where-Object { -not $listener -or $_.ProcessId -ne $listener.OwningProcess })
+if ($otherServers.Count -gt 0) {
+    $running = foreach ($server in $otherServers) {
+        $ports = Get-ListenPort $server.ProcessId
+        $where = if ($ports.Count -gt 0) { "port $($ports -join ', ')" } else { 'no port yet' }
+        "PID $($server.ProcessId) on $where"
+    }
+    Exit-Launcher "Another Biyocon Harness server is running: $($running -join '; '). Stop it before starting one on port $Port." 1
+}
+
 if ($listener) {
     if ($servers.ProcessId -contains $listener.OwningProcess) {
         $mutex.ReleaseMutex()
@@ -45,17 +58,6 @@ if ($listener) {
         exit 0
     }
     Exit-Launcher "Port $Port is used by another program, PID $($listener.OwningProcess). Change `$Port in start-biyocon.ps1." 1
-}
-
-# Session persistence has no cross-process lock, so a second server sharing
-# DSH_HOME could overwrite the running server's session data.
-if ($servers.Count -gt 0) {
-    $running = foreach ($server in $servers) {
-        $ports = Get-ListenPort $server.ProcessId
-        $where = if ($ports.Count -gt 0) { "port $($ports -join ', ')" } else { 'no port yet' }
-        "PID $($server.ProcessId) on $where"
-    }
-    Exit-Launcher "Another Biyocon Harness server is running: $($running -join '; '). Stop it before starting one on port $Port." 1
 }
 
 Write-Host 'Starting Biyocon Harness Web UI...'

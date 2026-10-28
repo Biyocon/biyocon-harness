@@ -16,7 +16,7 @@ Status: implemented
 
 只有在源码变更合并、本地 master 完成 fast-forward 且 Codex 与应用已停止后，才能移动 checkout。在目标位置安装依赖并运行 `node scripts/install-lefthook.mjs`，可恢复 checkout 本地链接及其所有的钩子。移动后 checkout 的 `core.hooksPath` 必须指向其自身的 `.git/dsh-hooks`；工作区注册和快捷方式必须引用新位置。绕过钩子不是迁移方法。
 
-该 checkout 的 Windows 启动器是 `start-biyocon.ps1`，通过快捷方式指向的 `start-biyocon.bat` 包装脚本运行。它通过 `--port` 在 10822 端口提供 Web UI；产品默认端口 3080 保持不变。它与 `dsh` 一样解析 `DSH_HOME`，不再强制覆盖。Biyocon Harness 服务器是指命令行以 `web` 命令运行 `dsh` CLI 入口（`bin.ts` 或 `bin.js`）的 `node.exe` 进程。会话持久化没有跨进程锁，因此同一 `DSH_HOME` 只能由一个服务器使用：若此类服务器已在启动器端口上监听，启动器只打开浏览器；若它在其他任何端口上运行，启动器拒绝启动。该端口上的其他监听者会被报告为冲突，且不会打开任何页面。一个命名互斥体保证同一时间只有一个启动器运行；启动器进程退出时 Windows 会释放它，因此崩溃不会留下失效的锁。冷启动时，启动器只在服务器开始监听后、并在有限的等待时间内打开浏览器。这些检查只在启动器中运行，而不在 `dsh` 内部；手动启动的第二个服务器仍会绕过它们。
+该 checkout 的 Windows 启动器是 `start-biyocon.ps1`，通过快捷方式指向的 `start-biyocon.bat` 包装脚本运行。它通过 `--port` 在 10822 端口提供 Web UI；产品默认端口 3080 保持不变。它与 `dsh` 一样解析 `DSH_HOME`，不再强制覆盖。Biyocon Harness 服务器是指命令行以 `web` 命令运行 `dsh` CLI 入口（`bin.ts` 或 `bin.js`）的 `node.exe` 进程，其中 `web` 参数可带双引号或不带引号。会话持久化没有跨进程锁，因此同一 `DSH_HOME` 只能由一个服务器使用：若此类服务器已在启动器端口上监听，启动器会先检查其他服务器进程，再复用其配置端口上的监听者。只有不存在其他 Harness 服务器时，它才为该监听者打开浏览器。该端口上的其他监听者会被报告为冲突，且不会打开任何页面。一个命名互斥体保证同一时间只有一个启动器运行；启动器进程退出时 Windows 会释放它，因此崩溃不会留下失效的锁。冷启动时，启动器只在服务器开始监听后、并在有限的等待时间内打开浏览器。这些检查只在启动器中运行，而不在 `dsh` 内部；手动启动的第二个服务器仍会绕过它们。
 
 [仅允许向 fork 推送的决策](2026-10-18-fork-only-push-destination.md)保持活跃，因为其中关于传输、凭据隐藏、分发器和上游集成的依据仍有独立价值。本决策只替换其中具体的 fork 标识。
 
@@ -32,4 +32,4 @@ Status: implemented
 
 ## Verification
 
-目标 spec 覆盖允许的 HTTPS/SSH 形式，并通过验证器和实际安装的钩子证明原 fork 会在 typecheck 前被拒绝。分发器与钩子安装器测试保留参数隔离和 worktree 本地路径检查。无密钥的翻译提示词快照通过其可运行场景刷新，因为其中嵌入了开发指南。文档配对、doc-sync、lint 和 typecheck 覆盖其余集成。CI 不运行 `cmd.exe` 脚本，因此启动器行为通过在所有者的 Windows 机器上手动运行来验证。
+目标 spec 覆盖允许的 HTTPS/SSH 形式，并通过验证器和实际安装的钩子证明原 fork 会在 typecheck 前被拒绝。分发器与钩子安装器测试保留参数隔离和 worktree 本地路径检查。无密钥的翻译提示词快照通过其可运行场景刷新，因为其中嵌入了开发指南。文档配对、doc-sync、lint 和 typecheck 覆盖其余集成。CI 不运行 `cmd.exe` 脚本，因此启动器行为通过在所有者的 Windows 机器上手动运行来验证。Windows 验证覆盖 pnpm 的带引号命令参数、配置端口与其他端口同时监听，以及启动器互斥体。

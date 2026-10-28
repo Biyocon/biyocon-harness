@@ -19,13 +19,13 @@ Run only one Biyocon Harness server at a time. Every launch method below stores 
 
 The launcher handles these cases:
 
-- **Server already running on port 10822:** it opens the browser and does not start a second server.
+- **Server already running on port 10822:** it opens the browser and does not start a second server, provided no other Biyocon Harness server is running.
 - **Another program holds port 10822:** it reports that program's PID and opens nothing.
-- **A Biyocon Harness server runs on another port:** it reports that server's PID and port and starts nothing. Stop that server first.
+- **A Biyocon Harness server runs on another port:** it reports that server's PID and port and opens nothing, even when a server also listens on port 10822. Stop that other server first.
 - **Another launcher is still starting the server:** it reports that and starts nothing.
 - **Cold start:** it starts the server in a "Biyocon Server" window and opens the browser once the server listens, waiting up to `$StartTimeoutSeconds` seconds. If the server fails, the Biyocon Server window stays open with the error.
 
-A Biyocon Harness server is recognised as a `node.exe` process whose command line runs the `dsh` CLI entry (`bin.ts` or `bin.js`) with the `web` command.
+A Biyocon Harness server is recognised as a `node.exe` process whose command line runs the `dsh` CLI entry (`bin.ts` or `bin.js`) with the `web` command, including the quoted `"web"` argument emitted by `pnpm dsh web`.
 
 ## Method 2: Pin the Web UI
 
