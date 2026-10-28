@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-面向模型的 Conductor 工具（`conductor`）。它要求目标、purpose、A/B/C 入口及 mandate owner 归属信息；新运行还要求 intake 理由，分析要求 answer/recommendations。可选输入包括约束、标准、引用材料 selector 和恢复 id。代码准入路线，为每个适用阶段生成全新结构化输出专家。模型不能授予写入、quality execution 或 closeout 权限。Gate C 验证精确 baseline 后，工具会通过 host approval seam 发起一次请求，其中包含 baseline hash、规范化绝对路径、所选 command binding 和必需 effect profile；拒绝、取消或无法审批都会在任何可写 child 或 quality child 启动前停止。它返回实现 GO/NO-GO、已审计分析报告或阻塞；GO 本身不会提交、推送、合并或部署。
+面向模型的 Conductor 工具（`conductor`）。它要求目标、purpose、A/B/C 入口及 mandate owner 归属信息；新运行还要求 intake 理由，分析在任何专家启动前要求 answer/recommendations 和至少一项可衡量的 `acceptanceCriteria`。约束描述限制，交付要求属于验收标准。其他输入包括引用材料 selector 和恢复 id。代码准入路线，为每个适用阶段生成全新结构化输出专家。模型不能授予写入、quality execution 或 closeout 权限。Gate C 验证精确 baseline 后，工具会通过 host approval seam 发起一次请求，其中包含 baseline hash、规范化绝对路径、所选 command binding 和必需 effect profile；拒绝、取消或无法审批都会在任何可写 child 或 quality child 启动前停止。它返回实现 GO/NO-GO、已审计分析报告或阻塞；GO 本身不会提交、推送、合并或部署。
 
 状态机、gate 引擎和 Session 日志持久化位于 [`@deepseek-ai/dsh-conductor`](../conductor/README.md)；专家角色 skill 来自 [`@deepseek-ai/dsh-conductor-presets`](../conductor-presets/README.md)。每个 stage 都通过现有 workflow engine 运行一个单 agent workflow。Runtime 加载对应角色和 `conductor-specialist`，要求结构化输出，并在 child executor 中同时应用工具名称 allowlist 与参数感知 guard。Headsman 的 `allowed_paths`/`excluded_paths` 检查前会规范化写入目标；Integrator 还仅限 `docs` 与 `.agents/notes`。
 
@@ -14,7 +14,7 @@
 
 第一个调用提出 `purpose: implementation | analysis`、`entry: detective | strategist | devils-advocate`、理由和来源 selector；分析另选 `deliverable: answer | recommendations`。`current-request` 标识实际用户消息。`materialFiles` 只包含该消息明确引用的规范化工作区相对文件；`scopeSources` 与 `planSources` 引用这些 selector，不接受模型虚构 ID。运行时通过文件系统服务捕获有界完整 UTF-8 输入和哈希，拒绝路径逃逸/替换，在分派前保存准入检查点，恢复重用捕获输入。`maxMaterialFiles` 默认 16，`maxMaterialBytes` 默认每输入 65536，`maxMaterialTotalBytes` 默认序列化准入 262144；均验证为正安全整数。
 
-分析使用准入生产者 → Auditor → Arbiter；从 Detective 开始的建议由 Strategist 生成。子级过滤器与执行器守卫独立于提示词拒绝写入、shell、质量命令、批准和外部效果。Arbiter `accept | revise | blocked` 绑定精确候选/审计；接受终止为 `reported`，绝不是 GO 或宿主批准。修改要求新生产者版本及审计。实现保留执行 C 批准和质量/closeout 策略。[准入决策](../../../.agents/notes/implemented/feature/2026-10-25-conductor-intake-and-report-completion.md)规定路线、因果返工和格式 3。
+分析使用准入生产者 → Auditor → Arbiter；从 Detective 开始的建议由 Strategist 生成。分派包含不变的 `acceptance_criteria`、按原顺序逐字复制的指令，以及带有返工理由的 `gate_history`。候选标准不匹配时，返工给出完整预期列表及缺失、多余、变更的标准。子级过滤器与执行器守卫独立于提示词拒绝写入、shell、质量命令、批准和外部效果。Arbiter `accept | revise | blocked` 绑定精确候选/审计；接受终止为 `reported`，绝不是 GO 或宿主批准。修改要求新生产者版本及审计。实现保留执行 C 批准和质量/closeout 策略。[准入决策](../../../.agents/notes/implemented/feature/2026-10-25-conductor-intake-and-report-completion.md)规定路线、因果返工和格式 3。
 
 `maxReworkPerGate` 是经验证的正安全整数，默认值为 2；随附预设也设置为 2。报告格式和 baseline 提案错误在该门禁预算内重试同一角色，包括 Arbiter 报告修复。专家 schema 省略 `allowedPaths` 和 `excludedPaths`；运行时插入该运行的所有者路径和排除项，不扩大权限。专家编写路径属于报告错误，伪造宿主绑定或权限则立即停止。Workflow 或传输故障在保存已完成宿主质量记录的检查点后传播，不编造专家 envelope 或门禁决策。只有已完成但没有有效报告的工作才进入报告修复。
 

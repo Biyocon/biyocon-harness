@@ -27,7 +27,7 @@ import type {
   EvaluatedGateRecord,
 } from './types.ts'
 import { executionBaselineHash, executionEffectProfile } from './quality.ts'
-import { admittedRoute, GATED_STAGES, transitionRoute } from './intake.ts'
+import { admittedRoute, GATED_STAGES, requireAnalysisCriteria, transitionRoute } from './intake.ts'
 
 /** Current pre-release durable Conductor record format. */
 export const CONDUCTOR_RECORD_FORMAT_VERSION = 3
@@ -55,7 +55,7 @@ export interface CreateRunInput {
   authority: ConductorAuthority
   /** Non-negotiable constraints on the work. */
   constraints?: string[]
-  /** The measurable criteria each gate's pass is judged against. */
+  /** Measurable deliverable requirements; at least one is required for analysis. */
   acceptanceCriteria?: string[]
   /** Rework and Ralph round limits; defaults to `{ maxReworkPerGate: 2, maxRalphRounds: 0 }`. */
   budget?: ConductorBudget
@@ -68,6 +68,8 @@ export interface CreateRunInput {
  * @returns the initial run.
  */
 export function createRun(runId: ConductorRunId, input: CreateRunInput): ConductorRun {
+  const acceptanceCriteria = [...(input.acceptanceCriteria ?? [])]
+  requireAnalysisCriteria(input.admission, acceptanceCriteria)
   const run: ConductorRun = {
     recordFormatVersion: CONDUCTOR_RECORD_FORMAT_VERSION,
     admission: structuredClone(input.admission),
@@ -83,7 +85,7 @@ export function createRun(runId: ConductorRunId, input: CreateRunInput): Conduct
     sourceBaseline: input.sourceBaseline ?? null,
     authority: { owner: input.authority.owner },
     constraints: [...(input.constraints ?? [])],
-    acceptanceCriteria: [...(input.acceptanceCriteria ?? [])],
+    acceptanceCriteria,
     budget:
       input.budget === undefined
         ? { maxReworkPerGate: 2, maxRalphRounds: 0 }

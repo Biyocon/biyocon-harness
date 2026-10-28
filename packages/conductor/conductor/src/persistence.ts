@@ -31,7 +31,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { isValidRunId } from './run-id.ts'
 import { executionBaselineHash, executionEffectProfile } from './quality.ts'
 import { CONDUCTOR_RECORD_FORMAT_VERSION } from './state.ts'
-import { parseAdmission } from './intake.ts'
+import { parseAdmission, requireAnalysisCriteria } from './intake.ts'
 import { validateIntakeHistory } from './intake-history.ts'
 import { parseAnalysisState } from './analysis-persistence.ts'
 
@@ -461,6 +461,7 @@ export function parseRun(json: string): ConductorRun {
   requireNormalizedString(authority.owner, 'authority.owner')
   requireNormalizedStringArray(record.constraints, 'constraints', true)
   requireNormalizedStringArray(record.acceptanceCriteria, 'acceptanceCriteria', true)
+  requireAnalysisCriteria(admission, record.acceptanceCriteria)
   const budget = asObject(record.budget, 'budget')
   if (Object.keys(budget).some(key => key !== 'maxReworkPerGate' && key !== 'maxRalphRounds')) {
     throw new Error('Conductor run record budget contains unsupported fields; a fresh run is required')

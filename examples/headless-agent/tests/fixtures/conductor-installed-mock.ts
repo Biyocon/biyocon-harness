@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { CallId, LlmAdapter, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
-import type { CapturedReport, ConductorAdmission } from '@deepseek-ai/dsh-conductor'
+import type { CapturedReport, ConductorAdmission, GateRecord } from '@deepseek-ai/dsh-conductor'
 
 function* call(name: string, value: unknown): Generator<StreamChunk> {
   const id = CallId(`installed-${name}`)
@@ -165,6 +165,8 @@ class InstalledConductorAdapter extends LlmAdapter {
         report: CapturedReport
         audit_hash: string
         acceptance_criteria: string[]
+        gate_history: GateRecord[]
+        report_criteria_instruction: string
       }
       if (scenario === 'source-repair') {
         if (input.stage !== 'detective') throw new Error('Missing source baseline must dispatch Detective first')
@@ -199,6 +201,20 @@ class InstalledConductorAdapter extends LlmAdapter {
         ? 'strategist' : input.admission.entry
       const rework = scenario === 'rework' && input.stage === 'devils-advocate' && this.gateCAttempts++ === 0
       const blocked = scenario === 'authority' && input.stage === 'strategist'
+      let criteria = input.acceptance_criteria
+      if (scenario === 'criteria-rework' && input.stage === 'strategist') {
+        const repair = input.gate_history.findLast(gate => gate.kind === 'evaluated' && gate.gate === 'B' && gate.decision === 'rework')
+        if (repair?.kind === 'evaluated') {
+          const basis = repair.basis.join('\n')
+          if (!basis.includes(`Expected acceptance_criteria: ${JSON.stringify(criteria)}`)
+            || !basis.includes('Differences:') || !basis.includes('Unrequested criterion')
+            || !input.report_criteria_instruction.includes('verbatim and in the same order')) {
+            throw new Error('The first rework must deliver the exact criterion list and actionable differences to Strategist')
+          }
+        } else {
+          criteria = ['Unrequested criterion']
+        }
+      }
       yield* call('structured_output', {
         run_id: input.run_id, purpose: 'analysis', stage: input.stage, deliverable: input.admission.deliverable,
         status: blocked ? 'blocked' : rework ? 'rework' : 'ready',
@@ -213,7 +229,7 @@ class InstalledConductorAdapter extends LlmAdapter {
           content: input.admission.deliverable === 'recommendations'
             ? '1. Document ownership first because it removes ambiguity. 2. Add examples next because they make the plan reviewable.'
             : 'The supplied plan has a clear scope but needs explicit ownership. This is a report, not implementation approval.',
-          criteria: input.acceptance_criteria.map(criterion => ({ criterion, outcome: 'Assessed from the captured input.' })),
+          criteria: criteria.map(criterion => ({ criterion, outcome: 'Assessed from the captured input.' })),
           material_ids: ids, assumptions: [], limitations: ['No implementation or test verification was performed.'],
         } } : {},
       })
@@ -224,12 +240,14 @@ class InstalledConductorAdapter extends LlmAdapter {
       yield* call('conductor', {
         purpose: scenario === 'source-repair' ? 'implementation' : 'analysis',
         entry: scenario === 'forbidden' ? 'auditor' : later ? 'devils-advocate' : 'detective',
-        ...scenario === 'source-repair' ? {} : { deliverable: ['recommendations', 'authority'].includes(scenario) ? 'recommendations' : 'answer' },
+        ...scenario === 'source-repair' ? {} : { deliverable: ['recommendations', 'authority', 'criteria-rework'].includes(scenario) ? 'recommendations' : 'answer' },
         rationale: later ? 'The owner supplied a plan for review.' : 'Answer or recommend improvements from the current request.',
         objective: 'Analyze the supplied plan.md and report the findings without modifying files.',
         scope: ['plan.md'], scopeSources: ['current-request'], materialFiles: ['plan.md'],
         ...later ? { plan: ['Review the supplied plan.'], planSources: ['plan.md'] } : {},
-        authority: { owner: 'snapshot-user' }, acceptanceCriteria: ['Answer the owner task using the supplied evidence.'],
+        authority: { owner: 'snapshot-user' },
+        acceptanceCriteria: scenario === 'missing-criteria' ? [] : ['Answer the owner task using the supplied evidence.'],
+        ...scenario === 'missing-criteria' ? { constraints: ['Answer the owner task using the supplied evidence.'] } : {},
       })
       return
     }
@@ -238,7 +256,7 @@ class InstalledConductorAdapter extends LlmAdapter {
       if (result.toolCallId === 'installed-read' && result.isError) { yield* call('write', { file_path: 'plan.md', content: 'NO' }); return }
       if (result.toolCallId === 'installed-write' && result.isError) { yield* call('conductor', {}); return }
       if (!result.isError) throw new Error('Parent analysis fallback unexpectedly succeeded')
-    } else if (result.isError && scenario !== 'forbidden') throw new Error(`Unexpected intake failure: ${JSON.stringify(result)}`)
+    } else if (result.isError && scenario !== 'forbidden' && scenario !== 'missing-criteria') throw new Error(`Unexpected intake failure: ${JSON.stringify(result)}`)
     yield* text('Conductor returned its recorded report or explicit rejection; no implementation was performed.')
   }
 }

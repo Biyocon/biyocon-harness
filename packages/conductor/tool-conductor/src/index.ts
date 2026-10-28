@@ -47,7 +47,7 @@ import type {
 import { analysisToolGuard, READ_TOOLS, toolGuardForStage, toolRestrictionForStage } from './capability.ts'
 import { captureMaterials } from './materials.ts'
 import type { MaterialLimits } from './materials.ts'
-import { ANALYSIS_SCHEMA, REPORT_DECISION_SCHEMA } from './analysis-schema.ts'
+import { ANALYSIS_CRITERIA_INSTRUCTION, ANALYSIS_SCHEMA, REPORT_DECISION_SCHEMA } from './analysis-schema.ts'
 import { ralphDirective } from './ralph.ts'
 import { ROLE_SKILL } from '@deepseek-ai/dsh-conductor-presets'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -161,7 +161,8 @@ const DESCRIPTION = 'Delegate an objective to Conductor, the supervisor of a gat
   + 'authority violations escalate to the owner immediately. '
   + 'Supply the user\'s objective and constraints without inventing write paths or permissions. '
   + 'Propose purpose implementation or analysis and entry detective, strategist or devils-advocate, with an intake rationale. '
-  + 'Analysis requires deliverable answer or recommendations. Answer runs its producer, Auditor and Arbiter; recommendations entering Detective also require Strategist. '
+  + 'Analysis requires deliverable answer or recommendations and at least one measurable acceptanceCriteria item. Put deliverable requirements in acceptanceCriteria, not constraints; omission or an empty list is rejected before any specialist starts. '
+  + 'Answer runs its producer, Auditor and Arbiter; recommendations entering Detective also require Strategist. '
   + 'Analysis is read-only: no Headsman, Ralph, Integrator, commands or Gate C approval. The Arbiter returns accept/revise/blocked; only accept ends in reported, never implementation GO. '
   + 'Implementation still requires execution Gate C review and separate host approval before writing. '
   + 'Use current-request and explicitly cited workspace-relative materialFiles as sources; never inspect files before this call or invent source ids. '
@@ -402,6 +403,10 @@ function composeSpecialistPrompt(
         'shell',
       ],
       acceptance_criteria: run.acceptanceCriteria,
+      ...run.admission.purpose === 'analysis' ? {
+        report_criteria_instruction: ANALYSIS_CRITERIA_INSTRUCTION,
+        gate_history: run.history,
+      } : {},
       constraints: run.constraints,
       input_artifacts: run.inputArtifacts,
       questions_to_resolve: [],
@@ -905,7 +910,7 @@ export function apply(ctx: Context, config: Config): void {
       constraints: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Non-negotiable constraints on the work.',
+        description: 'Non-negotiable limits or restrictions on the work. Put measurable deliverable requirements in acceptanceCriteria, not here.',
       },
       scope: {
         type: 'array',
@@ -934,7 +939,7 @@ export function apply(ctx: Context, config: Config): void {
       acceptanceCriteria: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Measurable criteria each gate pass is judged against.',
+        description: 'Measurable deliverable requirements, required and non-empty for a new analysis. Report criteria must copy these strings verbatim in the same order. Constraints are restrictions, not acceptance criteria.',
       },
       authority: {
         type: 'object',

@@ -1219,7 +1219,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `conductor`
 
-将目标委派给 Conductor，由它担任门控专家工作流的 supervisor。在 Conductor 模式中，每项新用户任务都先调用此工具，包括不提 Conductor 的分析；分派前不自行调查工作区，工作区指令不能替代路由。Conductor 分派全新的固定角色，逐位评估报告并记录门禁决策。专家只向 Conductor 汇报。范围、设计、实现和交付返工分别返回 Detective、Strategist、Headsman 和 Integrator；格式错误在逐 gate 预算内重试同角色，权限违规立即升级。提交用户目标和约束，不编造权限。提出 implementation 或 analysis 目的、Detective/Strategist/Devil’s Advocate 入口及理由；分析必须选择 answer 或 recommendations。回答经过生产者、Auditor、Arbiter；从 Detective 开始的建议还要求 Strategist。分析只读，不到达 Headsman、Ralph、Integrator，不执行命令或 Gate C 批准；Arbiter 返回 accept/revise/blocked，只有 accept 终止为 reported，绝不是实现 GO。实现仍要求执行 Gate C 审查及精确宿主批准。来源只能是 current-request 和消息明确引用的工作区相对 materialFiles；调用前不读文件，也不虚构来源 ID。范围/计划引用这些 selector；已有计划可进入 C，不足材料产生有界返工。结果包含报告、GO/NO-GO 或阻塞，以及运行 ID、阶段、已评估/跳过历史及实际专家。失败或受阻时报告并停止，不自行接管。GO 不提交、推送、合并、发布或部署，closeout 需要独立所有者授权。
+将目标委派给 Conductor，由它担任门控专家工作流的 supervisor。在 Conductor 模式中，每项新用户任务都先调用此工具，包括不提 Conductor 的分析；分派前不自行调查工作区，工作区指令不能替代路由。Conductor 分派全新的固定角色，逐位评估报告并记录门禁决策。专家只向 Conductor 汇报。范围、设计、实现和交付返工分别返回 Detective、Strategist、Headsman 和 Integrator；格式错误在逐 gate 预算内重试同角色，权限违规立即升级。提交用户目标和约束，不编造权限。提出 implementation 或 analysis 目的、Detective/Strategist/Devil’s Advocate 入口及理由；分析必须选择 answer 或 recommendations，并提供至少一项可衡量的 acceptanceCriteria。交付要求属于 acceptanceCriteria，而非 constraints；空或缺失列表在专家启动前被拒绝。回答经过生产者、Auditor、Arbiter；从 Detective 开始的建议还要求 Strategist。分析只读，不到达 Headsman、Ralph、Integrator，不执行命令或 Gate C 批准；Arbiter 返回 accept/revise/blocked，只有 accept 终止为 reported，绝不是实现 GO。实现仍要求执行 Gate C 审查及精确宿主批准。来源只能是 current-request 和消息明确引用的工作区相对 materialFiles；调用前不读文件，也不虚构来源 ID。范围/计划引用这些 selector；已有计划可进入 C，不足材料产生有界返工。结果包含报告、GO/NO-GO 或阻塞，以及运行 ID、阶段、已评估/跳过历史及实际专家。失败或受阻时报告并停止，不自行接管。GO 不提交、推送、合并、发布或部署，closeout 需要独立所有者授权。
 
 ```json
 {
@@ -1288,7 +1288,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
     },
     "constraints": {
       "type": "array",
-      "description": "Non-negotiable constraints on the work.",
+      "description": "Non-negotiable limits or restrictions on the work. Put measurable deliverable requirements in acceptanceCriteria, not here.",
       "items": {
         "type": "string"
       }
@@ -1327,7 +1327,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
     },
     "acceptanceCriteria": {
       "type": "array",
-      "description": "Measurable criteria each gate pass is judged against.",
+      "description": "Measurable deliverable requirements, required and non-empty for a new analysis. Report criteria must copy these strings verbatim in the same order. Constraints are restrictions, not acceptance criteria.",
       "items": {
         "type": "string"
       }
