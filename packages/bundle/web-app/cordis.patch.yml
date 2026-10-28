@@ -422,3 +422,6 @@
       name: '@deepseek-ai/dsh-agent-presets'
       config:
         default: standard
+
+    - id: ui-conductor-subagent
+      name: '@deepseek-ai/dsh-client-ui-conductor-subagent'

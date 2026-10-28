@@ -24,10 +24,21 @@ import { WorkflowEngine, WorkflowRunId } from '@deepseek-ai/dsh-workflow'
 import type { WorkflowResult, WorkflowRun, WorkflowStartRequest } from '@deepseek-ai/dsh-workflow'
 import { describe, expect, it, vi } from 'vitest'
 import * as toolConductor from '../src/index.ts'
+import SessionProjections from '@deepseek-ai/dsh-session-projection'
 import { mountQualityServices } from './quality-services.ts'
 import { resolveQualityCatalog } from '../src/quality-catalog.ts'
 
 const signal = new AbortController().signal
+
+it('removes the standalone child projection when the tool fiber is disposed', async () => {
+  const ctx = await services()
+  await ctx.plugin(SessionProjections)
+  const fiber = await ctx.plugin(toolConductor, { subagentProvider: 'fresh' })
+  const session = ctx.sessions.create(SessionId('projection-disposal'))
+  expect(ctx.sessionProjections.snapshot(session).values.conductorChildren).toEqual({})
+  await fiber.dispose()
+  expect(ctx.sessionProjections.snapshot(session).values.conductorChildren).toBeUndefined()
+})
 const roleSkills = [
   'conductor-detective', 'conductor-strategist', 'conductor-devils-advocate',
   'conductor-headsman', 'conductor-auditor', 'conductor-integrator', 'conductor-arbiter',

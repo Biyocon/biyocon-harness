@@ -29,3 +29,5 @@ Conductor 在父 Session 中记录模型不可见的 `conductor/child` 完整快
 ## 验证
 
 聚焦运行时测试覆盖独立 Strategist 尝试、工作流身份过滤、无伪造门禁的失败、投影重放及种子清除。英/丹客户端测试覆盖返工与运行状态，并保留普通子代理行为。已安装 preset 的 keyless runnable example 检查实际工作流子会话的角色数据，包括两次独立 Strategist 尝试。分支服务器上的真实简短回答分析提供 GUI 演示；媒体保存在独立 assets 分支。
+
+Conductor 自有客户端插件通过通用目录内容 chain 渲染。通用目录不依赖 Conductor，也不解释角色。无障碍行引用选出的文本和精确指标；无贡献时保留普通 fallback。

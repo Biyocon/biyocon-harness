@@ -8,10 +8,8 @@ import {
 import {
   IconChevronDownOutline14, IconChevronRightOutline14, IconRefreshOutline14, StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRuntime, PropsRenderSlots, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { NS } from './locales.ts'
-import { conductorChildPresentation } from './conductor-child.ts'
-import type {} from '@deepseek-ai/dsh-conductor/child-types'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-subagent/client'
 import type {} from '@deepseek-ai/dsh-token-meter/client'
@@ -29,9 +27,9 @@ export interface SubagentCatalogInjected {
 
 /** Full props for the session-header catalog action. */
 export type SubagentCatalogActionProps =
-  PropsRuntime<'conversation.session.header.actions'> & SubagentCatalogInjected & PropsLocale<typeof NS>
+  PropsRuntime<'conversation.session.header.actions'> & SubagentCatalogInjected & PropsLocale<typeof NS> & PropsRenderSlots<'subagent.catalog.content'>
 
-interface CatalogRowsProps {
+interface CatalogRowsProps extends Pick<PropsRenderSlots<'subagent.catalog.content'>, 'renderSlotChain'> {
   parentSessionId: SessionId
   catalog: SubagentCatalogSnapshot
   catalogs: Catalogs
@@ -213,7 +211,7 @@ function CatalogLoadingRows({
 /** Render one catalog level and recurse only through explicitly expanded rows. */
 function CatalogRows({
   parentSessionId, catalog, catalogs, summaries, expanded, level, now,
-  openChild, refresh, toggleBranch, closeCatalog, t,
+  openChild, refresh, toggleBranch, closeCatalog, t, renderSlotChain,
 }: CatalogRowsProps & { t: TranslateNS<typeof NS> }) {
   const emptyLoading = catalog.state === 'loading' && catalog.entries.length === 0
   const reserveDisclosure = catalog.entries.some(
@@ -272,14 +270,12 @@ function CatalogRows({
         const childLoading = childCatalog === undefined
           || (childCatalog.state === 'loading' && childCatalog.entries.length === 0)
         const summary = summaries[entry.id]
-        const conductor = summaries[parentSessionId]?.projectionValues?.conductorChildren?.[entry.id]
-        const presentation = conductor === undefined ? undefined : conductorChildPresentation(conductor, t)
-        const label = presentation?.label ?? entry.label ?? entry.id
+        const label = entry.label ?? entry.id
         const mode = entry.mode === 'one-shot' ? t('mode.oneShot') : t('mode.continuable')
         const activity = entry.activity === 'running' ? t('activity.running') : t('activity.inactive')
-        const secondary = presentation === undefined ? [summary?.title, mode, activity]
+        const secondary = [summary?.title, mode, activity]
           .filter(value => value !== undefined)
-          .join(' · ') : `${presentation.detail} · ${entry.id}`
+          .join(' · ')
         const totalTokens = tokenTotal(summary?.projectionValues?.tokenUsage)
         const durationMs = activityDuration(
           summary,
@@ -329,7 +325,7 @@ function CatalogRows({
               role="treeitem"
               tabIndex={0}
               aria-level={level}
-              aria-label={[label, secondary, metrics].filter(value => value !== '').join(' ')}
+              aria-labelledby={`${entry.id}-name ${entry.id}-detail ${entry.id}-metrics`}
               {...knownLeaf ? {} : { 'aria-expanded': isExpanded }}
               className={css.row}
               onClick={open}
@@ -351,8 +347,8 @@ function CatalogRows({
               <div className={css.clickarea}>
                 <StateDot state={entry.activity === 'running' ? 'ongoing' : 'done'} />
                 <span className={css.content}>
-                  <span className={css.label}>{label}</span>
-                  <span className={css.summary}>{secondary}</span>
+                  {renderSlotChain('subagent.catalog.content', { parent: summaries[parentSessionId], childId: entry.id, nameId: entry.id + '-name', detailId: entry.id + '-detail', nameClass: css.label, detailClass: css.summary }, { fallback: <><span id={entry.id + '-name'} className={css.label}>{label}</span><span id={entry.id + '-detail'} className={css.summary}>{secondary}</span></> })}
+                  <span id={entry.id + '-metrics'} hidden>{metrics}</span>
                 </span>
                 {metrics !== '' && (
                   <span className={css.metrics}>
@@ -386,6 +382,7 @@ function CatalogRows({
                   )
                   : (
                     <CatalogRows
+                      renderSlotChain={renderSlotChain}
                       parentSessionId={entry.id}
                       catalog={childCatalog}
                       catalogs={catalogs}
@@ -415,7 +412,7 @@ function CatalogRows({
  * @returns The action while the catalog is pending or summaries establish descendants.
  */
 export function SubagentCatalogAction({
-  sessionId, useSessions, openChild, refresh, setCatalogOpen, t,
+  sessionId, useSessions, openChild, refresh, setCatalogOpen, t, renderSlotChain,
 }: SubagentCatalogActionProps) {
   const catalogs = useSessions(state => state.subagentsByParent)
   const summaries = useSessions(state => state.byId)
@@ -595,6 +592,7 @@ export function SubagentCatalogAction({
       {open && (
         <div className={css.menu} role="tree" aria-label={t('tree.aria')}>
           <CatalogRows
+            renderSlotChain={renderSlotChain}
             parentSessionId={sessionId}
             catalog={presentedCatalog}
             catalogs={catalogs}

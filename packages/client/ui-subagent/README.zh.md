@@ -12,7 +12,7 @@ one-shot child 始终选用只读编辑器，并将 transcript（文本记录）
 
 `@` source 仍然刻意保持独立且惰性。候选是从 `ctx.sessions.list` 零 RPC 得到的运行中 child；pick 会插入字面文本 `@label `，codec 投影为 `@label`。它不参与命令裁决，也不会把 label 解析成继续执行地址。
 
-Conductor 子会话按精确父子地址读取持久化 `conductorChildren` 投影。行显示运行时角色及按角色递增的尝试编号、文字形式的运行/完成/失败状态，以及可选门禁结果和独立返工计数。英/丹显示均保留 UUID 导航；角色身份绝不取自提示生成的标题。每次返工保留独立行，运行中的尝试不继承门禁结果。Ralph worker 没有专家门禁结果。[子会话显示决策](../../../.agents/notes/implemented/bug-fix/2026-10-28-conductor-child-role-status.md)拥有归属语义；普通子代理继续使用上述通用显示。
+通用 subagent.catalog.content chain 接收精确父子数据，允许领域插件替换名称与说明文本。目录按文本 id 和精确指标生成无障碍行名称。[Conductor 贡献](../ui-conductor-subagent/README.md)拥有专家显示；本包不解释角色或门禁结果。
 
 ## 模型体验
 

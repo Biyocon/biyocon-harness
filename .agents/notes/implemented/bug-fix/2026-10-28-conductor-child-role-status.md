@@ -29,3 +29,5 @@ Persisting presentation adds small parent events rather than reconstructing role
 ## Verification
 
 Focused runtime tests exercise separate Strategist attempts, workflow identity filtering, failure without an invented gate, projection replay and seed clearing. EN/DA client tests cover rework/running rows and preserve ordinary subagent behavior. The installed-preset keyless runnable example exercises role metadata for actual workflow children, including a criteria-repair run with distinct Strategist attempts. A real short-answer analysis on the branch server supplies the GUI demonstration; media lives on a separate assets branch.
+
+The Conductor-owned client plugin renders through the generic catalog content chain. The generic catalog has no Conductor dependency or role interpretation. Row accessibility references the elected text and exact metrics; absent contributions keep the ordinary fallback.

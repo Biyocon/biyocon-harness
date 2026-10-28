@@ -11,7 +11,7 @@ describe('durable Conductor child catalog', () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
     await ctx.plugin(SessionProjections)
-    await ctx.plugin(conductor)
+    const fiber = await ctx.plugin(conductor)
     const session = ctx.sessions.create(SessionId('catalog-parent'))
     session.append('turn/start', { turn: 1 })
     const child: ConductorChild = {
@@ -27,5 +27,10 @@ describe('durable Conductor child catalog', () => {
     expect(projection.schema.safeParse(state).success).toBe(true)
     const reset = { type: 'session/end-seed', data: {} } as Parameters<typeof projection.apply>[1]
     expect(projection.apply(state, reset)).toEqual({})
+    await fiber.dispose()
+    expect(ctx.sessionProjections.snapshot(session).values.conductorChildren).toBeUndefined()
+    const reloaded=await ctx.plugin(conductor)
+    expect(ctx.sessionProjections.snapshot(session).values.conductorChildren).toEqual(projection.view(state))
+    await reloaded.dispose()
   })
 })

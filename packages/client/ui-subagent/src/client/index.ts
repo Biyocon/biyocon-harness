@@ -12,7 +12,7 @@
  * references never enter command adjudication.
  */
 import type {
-  ClientContext, SessionId, SubagentAddress,
+  ClientContext, SessionId, SessionSummary, SubagentAddress,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ComposerChainProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ClientSessionContext, InputTriggerServiceContract, InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
@@ -24,6 +24,10 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import { en, NS, da, type SubagentKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotMap {
+    /** Override child text using domain-owned presentation. */
+    'subagent.catalog.content': { kind: 'chain'; scope: 'root'; owner: { parent: SessionSummary | undefined; childId: SessionId; nameId: string; detailId: string; nameClass: string | undefined; detailClass: string | undefined } }
+  }
   interface LocaleNamespaceMap {
     /** Subagent catalog and read-only composer copy. */
     'subagent': SubagentKey
@@ -112,6 +116,7 @@ export function apply(ctx: ClientContext): void {
     () => ctx.slots.register({
       name: 'conversation.session.header.actions',
       id: 'subagent-catalog',
+      children: { 'subagent.catalog.content': { kind: 'chain', scope: 'root' } },
       order: 10,
       locale: NS,
       inject: catalogActions,
