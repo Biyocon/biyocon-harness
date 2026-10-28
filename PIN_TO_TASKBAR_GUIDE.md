@@ -1,8 +1,8 @@
 # How to Pin Biyocon Harness to Taskbar
 
-Biyocon Harness runs a local web server. The launcher `start-biyocon.bat` in `C:\Users\Biyocon\biyocon-harness` starts it on port 10822 and opens `http://127.0.0.1:10822` in the default browser.
+Biyocon Harness runs a local web server. The launcher `start-biyocon.bat` in `C:\Users\Biyocon\biyocon-harness` runs `start-biyocon.ps1`, which starts the server on port 10822 and opens `http://127.0.0.1:10822` in the default browser.
 
-Run only one Biyocon Harness server at a time. Every launch method below stores sessions in the same `DSH_HOME` (by default `%USERPROFILE%\.dsh`), and two servers writing the same sessions can overwrite each other's data. Stop any server started on another port, for example a plain `pnpm dsh web` on port 3080, before using the launcher.
+Run only one Biyocon Harness server at a time. Every launch method below stores sessions in the same `DSH_HOME` (by default `%USERPROFILE%\.dsh`), and two servers writing the same sessions can overwrite each other's data. The launcher refuses to start a second server; the manual command in Method 2 does not check.
 
 ## Method 1: Pin the Launcher
 
@@ -17,11 +17,19 @@ Run only one Biyocon Harness server at a time. Every launch method below stores 
    - Right-click on the new shortcut
    - Select "Pin to Taskbar"
 
-On a cold start the launcher starts the server in a "Biyocon Server" window and opens the browser once the server listens on port 10822, waiting up to `DSH_START_TIMEOUT` seconds. When a Node.js process already listens on the port, the launcher only opens the browser and does not start a second server. When another program holds the port, the launcher reports that program's PID and opens nothing.
+The launcher handles these cases:
+
+- **Server already running on port 10822:** it opens the browser and does not start a second server.
+- **Another program holds port 10822:** it reports that program's PID and opens nothing.
+- **A Biyocon Harness server runs on another port:** it reports that server's PID and port and starts nothing. Stop that server first.
+- **Another launcher is still starting the server:** it reports that and starts nothing.
+- **Cold start:** it starts the server in a "Biyocon Server" window and opens the browser once the server listens, waiting up to `$StartTimeoutSeconds` seconds. If the server fails, the Biyocon Server window stays open with the error.
+
+A Biyocon Harness server is recognised as a `node.exe` process whose command line runs the `dsh` CLI entry (`bin.ts` or `bin.js`) with the `web` command.
 
 ## Method 2: Pin the Web UI
 
-1. **Start the server**:
+1. **Start the server** without the launcher's checks:
    ```cmd
    cd C:\Users\Biyocon\biyocon-harness
    pnpm dsh web --port 10822
@@ -31,27 +39,9 @@ On a cold start the launcher starts the server in a "Biyocon Server" window and 
 
 3. **Pin the site**: use the browser's "Pin to taskbar" or "Install this site as an app" option.
 
-## Method 3: PowerShell Launcher
-
-Create `biyocon-launcher.ps1`, create a shortcut to it, and pin the shortcut:
-
-```powershell
-Set-Location "C:\Users\Biyocon\biyocon-harness"
-Start-Process -FilePath "pnpm" -ArgumentList "dsh web --port 10822" -WindowStyle Hidden
-$deadline = (Get-Date).AddSeconds(120)
-while (-not (Get-NetTCPConnection -LocalPort 10822 -State Listen -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
-    Start-Sleep -Seconds 1
-}
-Start-Process "http://127.0.0.1:10822"
-```
-
 ## Start on Login
 
-In Task Scheduler, create a basic task that runs at log on with this action:
-
-```
-cmd /c "cd C:\Users\Biyocon\biyocon-harness && pnpm dsh web --port 10822"
-```
+Press Win+R, run `shell:startup`, and place a shortcut to `C:\Users\Biyocon\biyocon-harness\start-biyocon.bat` in the folder that opens. The launcher's checks then apply at every login.
 
 ## Troubleshooting
 
@@ -62,10 +52,10 @@ cmd /c "cd C:\Users\Biyocon\biyocon-harness && pnpm dsh web --port 10822"
    ```
 
 2. Check which process listens on port 10822:
-   ```cmd
-   netstat -ano | findstr /C:":10822 " | findstr LISTENING
+   ```powershell
+   Get-NetTCPConnection -LocalPort 10822 -State Listen
    ```
 
-3. If the launcher reports that another program uses the port, change `DSH_PORT` in `start-biyocon.bat` and use the same port in any shortcut or bookmark.
+3. If the launcher reports that another program uses the port, change `$Port` in `start-biyocon.ps1` and use the same port in any bookmark.
 
-Browser settings that the Web UI stores per address, such as theme and language, apply to `http://127.0.0.1:10822` only. Sessions and conversations stay in `C:\Users\Biyocon\.dsh` regardless of the port.
+Browser settings that the Web UI stores per address, such as theme and language, apply to `http://127.0.0.1:10822` only. Sessions and conversations stay in `DSH_HOME` regardless of the port.
