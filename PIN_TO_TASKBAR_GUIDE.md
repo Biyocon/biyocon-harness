@@ -10,7 +10,7 @@ Since the DeepSeek harness runs a local web server, you can create a shortcut an
 
 1. **Create a Batch File** (to make it easier to start):
    
-   Create a file called `start-deepseek.bat` in your DeepSeek directory (`C:\Users\Biyocon\biyocon-harness`) with the following content:
+   Create a file called `start-biyocon.bat` in your DeepSeek directory (`C:\Users\Biyocon\biyocon-harness`) with the following content:
    ```batch
    @echo off
    cd /d "C:\Users\Biyocon\biyocon-harness"
@@ -22,7 +22,7 @@ Since the DeepSeek harness runs a local web server, you can create a shortcut an
 2. **Create a Shortcut to the Batch File**:
    - Right-click on your Desktop or in a folder
    - Select "New" → "Shortcut"
-   - Enter the path: `C:\Users\Biyocon\biyocon-harness\start-deepseek.bat`
+   - Enter the path: `C:\Users\Biyocon\biyocon-harness\start-biyocon.bat`
    - Click "Next" and name it "DeepSeek Harness"
    - Click "Finish"
 
