@@ -1,21 +1,23 @@
 @echo off
-title DeepSeek Harness Desktop
+title Biyocon Harness Desktop
 set DSH_HOME=C:\Users\Biyocon\.dsh
+set DSH_PORT=10822
 cd /d "C:\Users\Biyocon\biyocon-harness"
 
-REM Check if server is already running
-echo Checking if DeepSeek Harness is already running...
-for /f "tokens=1" %%p in ('netstat -ano ^| findstr 3082') do (
-    echo DeepSeek Harness is already running on port 3082 (PID: %%p)
+REM Check if server is already listening on the port
+echo Checking if Biyocon Harness is already running...
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /C:":%DSH_PORT% " ^| findstr "LISTENING"') do (
+    echo Biyocon Harness is already running on port %DSH_PORT%, PID %%p
+    start http://127.0.0.1:%DSH_PORT%
     exit /b
 )
 
-echo Starting DeepSeek Harness Web UI...
-start http://127.0.0.1:3082
+echo Starting Biyocon Harness Web UI...
+start http://127.0.0.1:%DSH_PORT%
 
-REM Launch the server in background
-start "DeepSeek Server" cmd /c "cd /d C:\Users\Biyocon\biyocon-harness && pnpm dsh web --port 3082"
+REM Launch the server in its own window
+start "Biyocon Server" cmd /c "cd /d C:\Users\Biyocon\biyocon-harness && pnpm dsh web --port %DSH_PORT%"
 
-echo DeepSeek Harness started at http://127.0.0.1:3082
+echo Biyocon Harness started at http://127.0.0.1:%DSH_PORT%
 echo Press any key to close this window...
 pause
