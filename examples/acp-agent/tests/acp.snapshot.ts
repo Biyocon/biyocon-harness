@@ -434,8 +434,8 @@ const SCENARIOS: Scenario[] = [
   // continuable background child's log carries that override as a
   // `sandbox/mode` `source: 'delegation'` event, so the child's runtime
   // context states the inherited policy instead of the deployment default.
-  // The input also waits for the manager-owned settlement turn, keeping that
-  // delivery from racing transcript harvest.
+  // A fixture barrier holds the child until the parent's spawn turn ends; the
+  // input waits for the separate manager-owned settlement turn before harvest.
   {
     name: 'subagent-continuable-inheritance',
     hasModelTurn: true,
