@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/testing/2026-10-29-cordis-tool-round-wake-order.md
+2026-10-29-cordis-tool-round-wake-order.md: 918ff4d9693cf8a5c33f5c76b14b59d37cca9b81
+2026-10-29-cordis-tool-round-wake-order.zh.md: 4e00f1ab3deb8c318c1d22173153411ff31a684d

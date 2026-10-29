@@ -9,25 +9,23 @@
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
-- text: "Use only Cordis tools. First call cordis_inspect_self with no arguments. Then call cordis_define with plugin kind \"new\", idPrefix \"snap\", name \"snapshot noop\", purpose \"does nothing, for the snapshot\", code.host exactly \"return { name: \\\"snapshot-noop\\\", apply(ctx) {} }\" and code.client exactly \"return { inject: [\\\"slots\\\"], apply(ctx) { ctx.slots.register({ name: \\\"shell.overlay\\\", id: \\\"snapshot-probe\\\" }, () => React.createElement(\\\"div\\\", { \\\"data-snapshot-probe\\\": \\\"loaded\\\" })) } }\". Read its returned pluginId and packageId, then call cordis_run with those exact IDs and mode \"run\". After the run request returns, reply exactly CORDIS_UI_READY and stop. {{clock}}"
+- text: "Use only Cordis tools. First call cordis_inspect_self with no arguments. Then call cordis_define with plugin kind \"new\", idPrefix \"snap\", name \"snapshot noop\", purpose \"does nothing, for the snapshot\", code.host exactly \"return { name: \\\"snapshot-noop\\\", apply(ctx) {} }\" and code.client exactly \"return { inject: [\\\"slots\\\"], apply(ctx) { ctx.slots.register({ name: \\\"shell.overlay\\\", id: \\\"snapshot-probe\\\" }, () => React.createElement(\\\"div\\\", { \\\"data-snapshot-probe\\\": \\\"loaded\\\" })) } }\". Read its returned pluginId and packageId, then call cordis_run with those exact IDs and mode \"run\". After the run request returns, reply exactly CORDIS_UI_READY and stop. If you later receive a notice that Cordis activation completed, reply exactly CORDIS_UI_ACTIVE without calling any tools, then stop. {{clock}}"
 - button "Copy":
   - img
 - button "Context injection @deepseek-ai/dsh-system-prompt":
   - img
   - img
   - text: Context injection @deepseek-ai/dsh-system-prompt
-- button "Think I will inspect the current Session's dynamic Cordis Plugins before defining the snapshot Package.":
-  - img
-  - img
-  - text: Think I will inspect the current Session's dynamic Cordis Plugins before defining the snapshot Package.
+- paragraph: I'll start by inspecting the current session's plugins.
 - 'button "Tool call cordis_inspect_self · {}"':
   - img
   - img
   - text: "Tool call cordis_inspect_self · {}"
-- button "Think No dynamic Plugins are present, so I will define the requested Host and Client Package.":
+- button "Think No plugins yet. Now define.":
   - img
   - img
-  - text: Think No dynamic Plugins are present, so I will define the requested Host and Client Package.
+  - text: Think No plugins yet. Now define.
+- paragraph: No existing plugins. Now defining the new plugin exactly as specified.
 - button "Register Cordis Plugin snapshot noop does nothing, for the snapshot Ready" [expanded]:
   - img
   - text: Register Cordis Plugin snapshot noop does nothing, for the snapshot Ready
@@ -40,18 +38,14 @@
   - code: "return { name: \"snapshot-noop\", apply(ctx) {} }"
 - text: Result Defined snap-1/pkg-1 (snapshot noop); it is not running yet. Use cordis_run to activate this Package. Run controls live in the Cordis panel above Settings
 - button "Inspect"
-- button "Think The Host returned snap-1/pkg-1, so I will request its first activation.":
+- 'button "Think pluginId: snap-1, packageId: pkg-1. Run mode \"run\"."':
   - img
   - img
-  - text: Think The Host returned snap-1/pkg-1, so I will request its first activation.
+  - text: "Think pluginId: snap-1, packageId: pkg-1. Run mode \"run\"."
 - img
 - text: Run Cordis Plugin snap-1 · pkg-1 Ready
 - button "Inspect"
 - text: snap-1/pkg-1 is awaiting user approval (run-1).
-- button "Think The activation request has been submitted, so I will return the requested readiness marker.":
-  - img
-  - img
-  - text: Think The activation request has been submitted, so I will return the requested readiness marker.
 - paragraph: CORDIS_UI_READY
 - button "Copy":
   - img
@@ -61,11 +55,23 @@
   - img
 - button "Branch into a new conversation":
   - img
-- text: {{clock}} Ran for {{duration}}
+- text: {{clock}} Ran for {{duration}} TTFT {{duration}} {{throughput}} tok/s
 - button "Context injection cordis-host-runner":
   - img
   - img
   - text: Context injection cordis-host-runner
+- paragraph: CORDIS_UI_ACTIVE
+- button "Copy":
+  - img
+- button "Good response":
+  - img
+- button "Bad response":
+  - img
+- button "Branch into a new conversation":
+  - img
+- text: {{clock}} Ran for {{duration}} TTFT {{duration}} {{throughput}} tok/s Use only Cordis tools. Call cordis_stop with pluginId "snap-1". After it succeeds, reply exactly CORDIS_UI_DONE and stop. {{clock}}
+- button "Copy":
+  - img
 - img
 - text: Stop Cordis Plugin snap-1
 - button "Inspect"
@@ -79,12 +85,7 @@
   - img
 - button "Branch into a new conversation":
   - img
-- text: {{clock}} Ran for {{duration}} Use only Cordis tools. Call cordis_stop with pluginId "snap-1". After it succeeds, reply exactly CORDIS_UI_DONE and stop. {{clock}}
-- button "Copy":
-  - img
-- status:
-  - text: "This turn failedllm-replay: script exhausted — session requested model call #7 but its script has only 6; re-record the scenario"
-  - code: UNKNOWN
+- text: {{clock}} Ran for {{duration}} TTFT {{duration}} {{throughput}} tok/s
 - button "Back to bottom":
   - img
 - textbox "Message the agent"
@@ -94,6 +95,6 @@
 - button "Select model, current DeepSeek-V4-Flash":
   - text: DeepSeek-V4-Flash
   - img
-- button "0% of context used"
+- button "10% of context used"
 - button "Send message" [disabled]
-- text: 3 turns · 7 steps LLM {{duration}} · Tool call {{duration}} Cache hit 77% Input 66.5K tok · Output 318 tok
+- text: 3 turns · 7 steps LLM {{duration}} · Tool call {{duration}} TTFT avg {{duration}} · {{throughput}} tok/s Cache hit 85% Input 84.2K tok · Output 418 tok
