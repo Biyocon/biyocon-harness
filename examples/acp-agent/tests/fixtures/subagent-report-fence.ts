@@ -1,5 +1,5 @@
 /**
- * Loader fixture that holds the report child until its parent's spawn turn ends.
+ * Loader fixture that holds a background child until its parent's spawn turn ends.
  * @module subagent-report-fence
  */
 
@@ -10,7 +10,8 @@ import type {} from '@deepseek-ai/dsh-agent-loop'
 export const name = 'subagent-report-fence'
 
 /**
- * Keep replay scheduling from folding settlement into the parent's first turn.
+ * Hold a background child's execution until its parent's spawn turn ends so
+ * settlement starts a separate parent turn in live and replay scenarios.
  * @param ctx - assembled ACP-agent context.
  */
 export function apply(ctx: Context): void {
