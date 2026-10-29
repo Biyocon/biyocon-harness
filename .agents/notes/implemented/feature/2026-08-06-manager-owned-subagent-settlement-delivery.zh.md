@@ -56,7 +56,7 @@ Status: implemented
 
 ### 快照覆盖
 
-三个整体组装的 ACP 场景覆盖该通知：一个从不上报的 child、一个先上报的 child，以及一个被多轮 follow-up 驱动的 child。通知在 child 拆卸完成后才到达，会与父级当时正在做的事竞争，因此每个场景都会把 child 保持到父级启动轮次结束，再通过 `waitForTurnEnd.minimumTurn` 等待指定编号的父级轮次关闭，然后脚本才继续。[完成轮次等待](../testing/2026-10-27-acp-completed-turn-observation.md)也能观察到在两次轮询之间完成的轮次。场景仍须保证运行会产生该轮次；否则，已运行轮次所接收的通知不能满足等待条件。
+四个整体组装的 ACP 场景覆盖该通知：一个从不上报的 child、一个先上报的 child、一个被多轮 follow-up 驱动的 child，以及一个继承父级沙箱策略的可继续 child（`subagent-continuable-inheritance`）。通知在 child 拆卸完成后才到达，会与父级当时正在做的事竞争，因此每个场景都会把 child 保持到父级启动轮次结束，再通过 `waitForTurnEnd.minimumTurn` 等待指定编号的父级轮次关闭，然后脚本才继续。[完成轮次等待](../testing/2026-10-27-acp-completed-turn-observation.md)也能观察到在两次轮询之间完成的轮次。场景仍须保证运行会产生该轮次；否则，已运行轮次所接收的通知不能满足等待条件。
 
 `subagent-continuable` 是其中固定失败结局的那个。它的 child 最后一个轮次在被强制的持久化检查点上死亡，且未进入任何 step，因此该 transcript 正是上面那条终止原因规则的端到端可见之处：通知说该 child **失败**，把此前的 `SECOND_OK` 作为它最后产出的内容而非结果携带，而父级自己的确认轮次会到达 ACP 客户端。
 
@@ -87,7 +87,7 @@ Status: implemented
 - `Activation` 携带 `parentSession` 与 `announced`。前者存在是因为 child handle 在投递前已被 dispose；后者让被回滚的物化保持静默。
 - `foldConsumedWork()` 取代 `dsh-session` 的 `findLastMessageTurnEnd()`，并迁移到 `dsh-agent`——它拥有该 fold 所读取的 inbox 标记；一次性 in-process 路径折叠同一个答案，不会把被中途切断的一次性 child 归类为 `completed`。
 - 单元覆盖固定了无条件约定、每种终止原因、空闲与繁忙两种调度、批量语义、维护期回归、释放前顺序、父级已消失，以及一次不得让拆卸失败的发送被拒。
-- 三个 ACP 场景使用显式的结算栅栏，`subagent-report` 带有固定静默上报投递的配置 overlay。
+- 四个 ACP 场景使用显式的结算栅栏，`subagent-report` 带有固定静默上报投递的配置 overlay。
 - 一个无密钥的 headless Loader 快照固定了「后台启动 → 管理器写入的结算通知 → 父级最终答案」路径，其中没有轮询，也没有 child `report` 调用。
 
 ### 已接受的风险

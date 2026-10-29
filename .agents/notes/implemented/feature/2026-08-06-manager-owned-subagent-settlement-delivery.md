@@ -56,7 +56,7 @@ Both matter past the notice: `subagent/end` carries `stopReason` to the jsonrpc 
 
 ### Snapshot coverage
 
-Three assembled ACP scenarios cover the notice: a child that never reports, a child that reports first, and a child driven through several follow-up turns. The notice arrives once the child's teardown finishes, which races whatever the parent is already doing, so each scenario holds the child behind the parent's spawn turn and then waits for the numbered parent turn to close with `waitForTurnEnd.minimumTurn` before the script continues. The [completed-turn wait](../testing/2026-10-27-acp-completed-turn-observation.md) also observes a turn that finishes between polls. A scenario must still fence the run to produce that turn; otherwise a notice claimed by an already-running turn cannot satisfy the wait.
+Four assembled ACP scenarios cover the notice: a child that never reports, a child that reports first, a child driven through several follow-up turns, and a continuable child inheriting its parent's sandbox policy (`subagent-continuable-inheritance`). The notice arrives once the child's teardown finishes, which races whatever the parent is already doing, so each scenario holds the child behind the parent's spawn turn and then waits for the numbered parent turn to close with `waitForTurnEnd.minimumTurn` before the script continues. The [completed-turn wait](../testing/2026-10-27-acp-completed-turn-observation.md) also observes a turn that finishes between polls. A scenario must still fence the run to produce that turn; otherwise a notice claimed by an already-running turn cannot satisfy the wait.
 
 `subagent-continuable` is the one that pins a failure. Its child's last turn dies on the forced durability checkpoint without entering a step, so that transcript is where the stop-reason rule above is visible end to end: the notice says the child *failed*, carries the earlier `SECOND_OK` as its last content rather than as a result, and the parent's own acknowledgement turn reaches the ACP client.
 
@@ -87,7 +87,7 @@ The refusal and interruption wordings are pinned verbatim in unit tests rather t
 - `Activation` carries `parentSession` and `announced`. The first exists because the child handle is disposed before delivery; the second is what keeps a rolled-back materialization silent.
 - `foldConsumedWork()` replaces `dsh-session`'s `findLastMessageTurnEnd()` and moves to `dsh-agent`, which owns the inbox marker it reads; the one-shot in-process path folds the same answer and does not classify a cut-short one-shot child as `completed`.
 - Unit coverage pins the unconditional contract, each terminal reason, idle and busy scheduling, the batch, the maintenance regression, the pre-release ordering, a parent that is gone, and a rejected send that must not fail teardown.
-- Three ACP scenarios use an explicit settlement fence, and `subagent-report` has a config overlay that pins quiet report delivery.
+- Four ACP scenarios use an explicit settlement fence, and `subagent-report` has a config overlay that pins quiet report delivery.
 - A keyless headless Loader snapshot pins background start → manager-authored settlement notice → final parent answer with no polling or child `report` call.
 
 ### Accepted risks
