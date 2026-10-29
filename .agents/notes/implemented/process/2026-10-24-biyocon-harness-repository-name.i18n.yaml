@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-10-24-biyocon-harness-repository-name.md
-2026-10-24-biyocon-harness-repository-name.md: 9184846e2491de0bd4f2f337a3e02a540fc6e141
-2026-10-24-biyocon-harness-repository-name.zh.md: 68658e066d8916b9096562b7774817333ff99295
+2026-10-24-biyocon-harness-repository-name.md: 3a391e2ba468e4cada54a3ff1cfb594592895387
+2026-10-24-biyocon-harness-repository-name.zh.md: 2592a4986672163b536f0e950cd44a783cc0e274

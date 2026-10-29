@@ -1,132 +1,61 @@
-# How to Pin DeepSeek Harness to Taskbar
+# How to Pin Biyocon Harness to Taskbar
 
-To pin the DeepSeek harness web interface to your taskbar for easy access, follow these steps:
+Biyocon Harness runs a local web server. The launcher `start-biyocon.bat` in `C:\Users\Biyocon\biyocon-harness` runs `start-biyocon.ps1`, which starts the server on port 10822 and opens `http://127.0.0.1:10822` in the default browser.
 
-## Method 1: Pin the Web Interface Directly
+Run only one Biyocon Harness server at a time. Every launch method below stores sessions in the same `DSH_HOME` (by default `%USERPROFILE%\.dsh`), and two servers writing the same sessions can overwrite each other's data. The launcher refuses to start a second server; the manual command in Method 2 does not check.
 
-Since the DeepSeek harness runs a local web server, you can create a shortcut and pin it to your taskbar.
+## Method 1: Pin the Launcher
 
-### Step-by-Step Guide:
-
-1. **Create a Batch File** (to make it easier to start):
-   
-   Create a file called `start-deepseek.bat` in your DeepSeek directory (`C:\Users\Biyocon\biyocon-harness`) with the following content:
-   ```batch
-   @echo off
-   cd /d "C:\Users\Biyocon\biyocon-harness"
-   echo Starting DeepSeek Harness Web UI...
-   start http://127.0.0.1:3080
-   pnpm dsh web
-   ```
-
-2. **Create a Shortcut to the Batch File**:
+1. **Create a Shortcut to the Launcher**:
    - Right-click on your Desktop or in a folder
    - Select "New" → "Shortcut"
-   - Enter the path: `C:\Users\Biyocon\biyocon-harness\start-deepseek.bat`
-   - Click "Next" and name it "DeepSeek Harness"
+   - Enter the path: `C:\Users\Biyocon\biyocon-harness\start-biyocon.bat`
+   - Click "Next" and name it "Biyocon Harness"
    - Click "Finish"
 
-3. **Pinning to Taskbar**:
-   - Right-click on your newly created shortcut
+2. **Pin to Taskbar**:
+   - Right-click on the new shortcut
    - Select "Pin to Taskbar"
-   
-## Method 2: Pin Directly to the Web UI
 
-1. **Start DeepSeek at least once**:
+The launcher handles these cases:
+
+- **Server already running on port 10822:** it opens the browser and does not start a second server, provided no other Biyocon Harness server is running.
+- **Another program holds port 10822:** it reports that program's PID and opens nothing.
+- **A Biyocon Harness server runs on another port:** it reports that server's PID and port and opens nothing, even when a server also listens on port 10822. Stop that other server first.
+- **Another launcher is still starting the server:** it reports that and starts nothing.
+- **Cold start:** it starts the server in a "Biyocon Server" window and opens the browser once the server listens, waiting up to `$StartTimeoutSeconds` seconds. If the server fails, the Biyocon Server window stays open with the error.
+
+A Biyocon Harness server is recognised as a `node.exe` process whose command line runs the `dsh` CLI entry (`bin.ts` or `bin.js`) with the `web` command, including the quoted `"web"` argument emitted by `pnpm dsh web`.
+
+## Method 2: Pin the Web UI
+
+1. **Start the server** without the launcher's checks:
    ```cmd
    cd C:\Users\Biyocon\biyocon-harness
-   pnpm dsh web
+   pnpm dsh web --port 10822
    ```
 
-2. **Open your browser and navigate to the interface**:
-   - Open your web browser
-   - Go to `http://127.0.0.1:3080`
+2. **Open `http://127.0.0.1:10822`** in Edge or Chrome.
 
-3. **Pin the website to your taskbar**:
-   - In your browser, click on the address bar
-   - Drag the URL to your taskbar or right-click and select "Pin Site to Taskbar"
-   - Note: This works in some browsers but not all
+3. **Pin the site**: use the browser's "Pin to taskbar" or "Install this site as an app" option.
 
-## Method 3: Create a Desktop Application Launcher
+## Start on Login
 
-If you want a more native experience, create a simple launcher:
-
-1. **Create PowerShell Script** (`deepseek-launcher.ps1`):
-   ```powershell
-   # Set working directory to DeepSeek
-   Set-Location "C:\Users\Biyocon\biyocon-harness"
-   
-   # Start the web UI in background
-   Start-Process -FilePath "pnpm" -ArgumentList "dsh web" -WindowStyle Hidden
-   
-   # Wait a moment for server to start (adjust time as needed)
-   Start-Sleep -Seconds 3
-   
-   # Open in default browser
-   Start-Process "http://127.0.0.1:3080"
-   ```
-
-2. **Save the PowerShell script** in your DeepSeek directory 
-
-3. **Create shortcut to this PowerShell script** and pin it to the taskbar
-
-## Alternative: Use Task Scheduler
-
-If you want the DeepSeek server to start automatically on login:
-
-1. Open Task Scheduler
-2. Create a basic task that runs when you log in
-3. Set the action to run:
-   ```
-   cmd /c "cd C:\Users\Biyocon\biyocon-harness && pnpm dsh web"
-   ```
-
-## Tips for Best Experience
-
-1. **Keep server running**: When you start DeepSeek, leave it running. The taskbar pinned app will allow you to quickly open the browser.
-   
-2. **Use a browser with taskbar pinning support** - Edge and Chrome work best for pinning websites.
-
-3. **Create desktop shortcuts** for quick access:
-   ```
-   Target: cmd /c "cd C:\Users\Biyocon\biyocon-harness && pnpm dsh web"
-   Start in: C:\Users\Biyocon\biyocon-harness
-   ```
-
-4. **Adjust ports if needed**: If port 3080 is occupied, you can specify a different port:
-   ```cmd
-   pnpm dsh web --port 3081
-   ```
+Press Win+R, run `shell:startup`, and place a shortcut to `C:\Users\Biyocon\biyocon-harness\start-biyocon.bat` in the folder that opens. The launcher's checks then apply at every login.
 
 ## Troubleshooting
 
-If the web server doesn't start:
-
-1. Make sure you're in the correct directory:
-   ```
+1. Make sure dependencies are installed:
+   ```cmd
    cd C:\Users\Biyocon\biyocon-harness
-   ```
-
-2. Check if dependencies are installed:
-   ```
    pnpm install
    ```
 
-3. Check if another process is using port 3080:
-   ```
-   netstat -ano | findstr :3080
-   ```
-
-4. Try a different port:
-   ```
-   pnpm dsh web --port 3081
+2. Check which process listens on port 10822:
+   ```powershell
+   Get-NetTCPConnection -LocalPort 10822 -State Listen
    ```
 
-## Accessing Your Pinned App
+3. If the launcher reports that another program uses the port, change `$Port` in `start-biyocon.ps1` and use the same port in any bookmark.
 
-Once pinned, you can:
-- Click the taskbar icon to quickly launch the DeepSeek web interface in your browser
-- Right-click it to access additional options or close the application
-- Hover over it to see recent usage (if supported by your system)
-
-This approach gives you a persistent, quick-access way to start and use the DeepSeek harness as if it were a native desktop application.
+Browser settings that the Web UI stores per address, such as theme and language, apply to `http://127.0.0.1:10822` only. Sessions and conversations stay in `DSH_HOME` regardless of the port.
