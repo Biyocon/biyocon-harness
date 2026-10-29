@@ -30,4 +30,4 @@ The recording includes one explicit activation acknowledgment in addition to the
 
 ## Verification
 
-The focused browser file checks real approval, the mounted browser marker, all turn endings, successful tool results and the conversation golden. Repeated keyless replay verifies the successful ordering. A temporary inverse-order control holds the real activation notice until STOP is accepted; the three-turn assertion rejects that ordering with a named diagnostic. The control is investigation evidence and is not part of the committed runtime or test composition.
+The focused browser file checks real approval, the mounted browser marker, all turn endings, successful tool results and the conversation golden. Record and replay both reject an incomplete or failed turn lifecycle.
