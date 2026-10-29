@@ -4,10 +4,10 @@
 // and conversation accessibility tree.
 //
 // The approval is never in the fixture. The fixture pins what the MODEL said;
-// tools execute for real, and this test answers the approval before starting the
-// stop turn. The package therefore carries a browser half whose only
-// job is to be visible (`[data-snapshot-probe]`): its absence before the answer
-// and presence after it is the v3 user gate, proven rather than described.
+// tools execute for real. The initial turn completes before approval, and
+// the activation notice's turn completes before the stop prompt. The browser
+// half renders `[data-snapshot-probe]`; its absence before approval and presence
+// after the notice's turn prove the user gate and the running plugin.
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
@@ -38,16 +38,23 @@ const PROMPT = 'Use only Cordis tools. First call cordis_inspect_self with no ar
   + 'purpose "does nothing, for the snapshot", '
   + `code.host exactly ${JSON.stringify(PACKAGE_CODE)} and code.client exactly ${JSON.stringify(CLIENT_CODE)}. `
   + 'Read its returned pluginId and packageId, then call cordis_run with those exact IDs and mode "run". '
-  + 'After the run request returns, reply exactly CORDIS_UI_READY and stop.'
+  + 'After the run request returns, reply exactly CORDIS_UI_READY and stop. '
+  + 'If you later receive a notice that Cordis activation completed, '
+  + 'reply exactly CORDIS_UI_ACTIVE without calling any tools, then stop.'
 const STOP_PROMPT = 'Use only Cordis tools. Call cordis_stop with pluginId "snap-1". '
   + 'After it succeeds, reply exactly CORDIS_UI_DONE and stop.'
 
 function assertCompleteCordisLifecycle(events: readonly SessionEvent[]): void {
-  const turnEnd = events.findLast(
+  const turnEnds = events.filter(
     (event): event is Extract<SessionEvent, { type: 'turn/end' }> => event.type === 'turn/end',
   )
-  const reason = turnEnd?.data.reason
-  expect(reason).toEqual({ kind: 'completed' })
+  expect(turnEnds.map(event => event.data.reason),
+    'Cordis requires three completed turns: request, activation notice, then stop',
+  ).toEqual([
+    { kind: 'completed' },
+    { kind: 'completed' },
+    { kind: 'completed' },
+  ])
 
   const calls = events.filter(
     (event): event is Extract<SessionEvent, { type: 'tool/call' }> => event.type === 'tool/call',
@@ -108,10 +115,13 @@ describe('web e2e: Cordis tools use their owned cards', () => {
     // NOT the plugin running. Until a person answers, the browser half has not
     // been fetched, evaluated, or mounted anywhere on this page.
     expect(await page.locator('[data-snapshot-probe]').count()).toBe(0)
+    const sessionId = await runTurnSettled
+    const activationTurnSettled = scaffold.whenTurnSettled()
     await approve.click()
     await expect.poll(() => page.locator('[data-snapshot-probe]').count(), { timeout: 30_000 }).toBe(1)
+    expect(await activationTurnSettled).toBe(sessionId)
+    expect(await page.locator('[data-snapshot-probe]').count()).toBe(1)
 
-    const sessionId = await runTurnSettled
     const stopTurnSettled = scaffold.whenTurnSettled()
     await input.fill(STOP_PROMPT)
     await input.press('Enter')
