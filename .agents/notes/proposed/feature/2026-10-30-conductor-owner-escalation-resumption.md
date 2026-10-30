@@ -20,6 +20,8 @@ The seven specialist roles and their responsibilities remain unchanged. The owne
 
 ### Implementation phases
 
+P1 is delivered as the record-v4 domain foundation: an append-only owner ledger, exact child/report provenance, validated amendments and per-gate reassessment limits, with strict analysis and implementation reconstruction. It remains test-provider-only: existing required-on-read `conductor/checkpoint` events carry the complete ledger, and no new session event type, live answer controller, resumption turn, routing hook or UI is enabled. Dedicated interaction events and SDK event additions belong to P2. Installed-preset keyless scenarios exercise scripted acceptance, rejection and unavailable-provider parking. The note deliberately remains proposed until P3 delivers the complete interaction. Existing version-3 runs are rejected and cannot resume after upgrading.
+
 Implement #37 in three successive PRs, in this order. Stop after each PR for review by the owner and Claude; approval of the design or an earlier phase does not authorize the next phase or a merge.
 
 | Phase | Scope | Verification and review stop |
@@ -71,7 +73,7 @@ Allow at most two owner-directed reassessments per gate with the preset. Once bo
 
 ### Persistence and recovery
 
-[The record format](../../../../packages/conductor/conductor/src/state.ts) is currently version 3. #37 takes CONDUCTOR_RECORD_FORMAT_VERSION = 4 in P1, rejecting version 3 and other unsupported records with a clear version error and no compatibility layer. #47 and #30 phase 2 build on this version-4 foundation; neither independently claims version 4. Any later format change must allocate the next version from the then-current base. This design PR does not itself change any runtime format.
+[The record format](../../../../packages/conductor/conductor/src/state.ts) uses CONDUCTOR_RECORD_FORMAT_VERSION = 4 in P1, rejecting version 3 and other unsupported records with a clear version error and no compatibility layer. #47 and #30 phase 2 build on this version-4 foundation; neither independently claims version 4. Any later format change must allocate the next version from the then-current base.
 
 Keep GateRecord[] exclusively for gate decisions. Add an append-only owner-interaction ledger and a monotonically checked record revision. Each question binds its stable ID to the root session, run ID, originating gate index, stage, exact child attempt, candidate/report hash, mandate revision, required item IDs, reason, and any concrete proposal. Each accepted response records its action, answers, amendment, prior revision, and single-use resume plan. Validate the causal order between the ledger and gate history on load. Never trust client-supplied stage, paths, role, or resume arguments.
 

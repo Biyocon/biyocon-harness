@@ -14,13 +14,15 @@
 
 第一个调用提出 `purpose: implementation | analysis`、`entry: detective | strategist | devils-advocate`、理由和来源 selector；分析另选 `deliverable: answer | recommendations`。`current-request` 标识实际用户消息。`materialFiles` 只包含该消息明确引用的规范化工作区相对文件；`scopeSources` 与 `planSources` 引用这些 selector，不接受模型虚构 ID。运行时通过文件系统服务捕获有界完整 UTF-8 输入和哈希，拒绝路径逃逸/替换，在分派前保存准入检查点，恢复重用捕获输入。`maxMaterialFiles` 默认 16，`maxMaterialBytes` 默认每输入 65536，`maxMaterialTotalBytes` 默认序列化准入 262144；均验证为正安全整数。
 
-分析使用准入生产者 → Auditor → Arbiter；从 Detective 开始的建议由 Strategist 生成。分派包含不变的 `acceptance_criteria`、按原顺序逐字复制的指令，以及带有返工理由的 `gate_history`。候选标准不匹配时，返工给出完整预期列表及缺失、多余、变更的标准。子级过滤器与执行器守卫独立于提示词拒绝写入、shell、质量命令、批准和外部效果。Arbiter `accept | revise | blocked` 绑定精确候选/审计；接受终止为 `reported`，绝不是 GO 或宿主批准。修改要求新生产者版本及审计。实现保留执行 C 批准和质量/closeout 策略。[准入决策](../../../.agents/notes/implemented/feature/2026-10-25-conductor-intake-and-report-completion.md)规定路线、因果返工和格式 3。
+分析使用准入生产者 → Auditor → Arbiter；从 Detective 开始的建议由 Strategist 生成。分派包含不变的 `acceptance_criteria`、按原顺序逐字复制的指令，以及带有返工理由的 `gate_history`。候选标准不匹配时，返工给出完整预期列表及缺失、多余、变更的标准。子级过滤器与执行器守卫独立于提示词拒绝写入、shell、质量命令、批准和外部效果。Arbiter `accept | revise | blocked` 绑定精确候选/审计；接受终止为 `reported`，绝不是 GO 或宿主批准。修改要求新生产者版本及审计。实现保留执行 C 批准和质量/closeout 策略。[准入决策](../../../.agents/notes/implemented/feature/2026-10-25-conductor-intake-and-report-completion.md)规定路线与因果返工。
 
 `maxReworkPerGate` 是经验证的正安全整数，默认值为 2；随附预设也设置为 2。报告格式和 baseline 提案错误在该门禁预算内重试同一角色，包括 Arbiter 报告修复。专家 schema 省略 `allowedPaths` 和 `excludedPaths`；运行时插入该运行的所有者路径和排除项，不扩大权限。专家编写路径属于报告错误，伪造宿主绑定或权限则立即停止。Workflow 或传输故障在保存已完成宿主质量记录的检查点后传播，不编造专家 envelope 或门禁决策。只有已完成但没有有效报告的工作才进入报告修复。
 
 决策、报告和阻塞结果包含 `runId`、已达 `stage`、生命周期状态、含理由的完整 `gateHistory`，以及从运行时门禁尝试推导的 `specialistsRan`，包括被拒绝的报告。运行创建前的错误明确说明没有启动 Conductor 运行；创建后的错误包含最后持久化运行状态及已确认启动但失败的子级，不编造门禁决策。这些诊断不将报告、受阻运行或 Arbiter GO 转变为执行权限。
 
 每次工作流派发都在父日志中记录模型不可见的子会话身份与生命周期。运行时按该子会话派发时的历史偏移关联已保存的门禁，使每次返工独立保留。Ralph 的可信工作流观察器提供 worker 身份，但不把 Headsman 的 Gate D 赋予 worker。这些事件不影响提示、门禁决策或权限；[显示决策](../../../.agents/notes/implemented/bug-fix/2026-10-28-conductor-child-role-status.md)拥有其语义。
+
+可恢复澄清、具体授权提案或耗尽的报告返工可在已 flush 的 v4 检查点中停放绑定精确子会话的所有者问题。身份、路由、baseline、证据、sandbox 违规与批准被拒仍为终止。`maxOwnerReassessmentsPerGate` 是正安全整数，默认和预设均为 2；计数独立于自动返工，重启不会重置。实现问题来自 `change_requests`；分析使用专用只读 `clarifications` 字段。P1 不挂载生产回答提供者或控制器。仅可选测试组合值 `conductorOwnerTestProvider` 能记录并消费脚本化回答；提供者缺失或不可用时，问题继续等待且不授予权限。父级路由与 UI 不变。分派投影与校验器使用相同的持久台账及有效授权；授权变更仍要求新的执行 C 批准。升级后无法恢复现有格式 3 运行。
 
 ## 已知限制与延期工作
 

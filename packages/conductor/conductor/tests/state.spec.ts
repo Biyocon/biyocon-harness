@@ -15,7 +15,8 @@ import type { ConductorRun, ConductorStage, GateId, EvaluatedGateRecord as GateR
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
-    recordFormatVersion: 3,
+    recordFormatVersion: 4,
+    ownerSessionId: null, ownerCapabilities: null, ownerRevision: 0, ownerLedger: [],
     admission: implementationAdmission(), repairReturns: [], analysisReports: [], reportCandidates: [],
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
@@ -27,7 +28,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: [],
-    budget: { maxReworkPerGate: 2, maxRalphRounds: 0 },
+    budget: { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 },
     baselineHistory: [],
     baseline: null,
     executionAuthorization: null,
@@ -116,7 +117,7 @@ describe('dsh-conductor gate engine', () => {
       authority: { owner: 'user' },
     })
     expect(secondDefaulted.scope).toEqual([])
-    expect(secondDefaulted.budget).toEqual({ maxReworkPerGate: 2, maxRalphRounds: 0 })
+    expect(secondDefaulted.budget).toEqual({ maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 })
   })
 
   it('maps each gated stage to its gate letter and back', () => {
@@ -247,7 +248,7 @@ describe('dsh-conductor gate engine', () => {
   it('escalates a rework once the rework budget is exhausted', () => {
     const run = makeRun({
       currentStage: 'auditor',
-      budget: { maxReworkPerGate: 2, maxRalphRounds: 0 },
+      budget: { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 },
       history: [
         gateRecord({ kind: 'evaluated', gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
         gateRecord({ kind: 'evaluated', gate: 'E', stage: 'auditor', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
@@ -274,7 +275,7 @@ describe('dsh-conductor gate engine', () => {
     })).toThrow(/report rework must return to its reporting stage/)
     const run = makeRun({
       currentStage: 'auditor',
-      budget: { maxReworkPerGate: 2, maxRalphRounds: 4 },
+      budget: { maxReworkPerGate: 2, maxRalphRounds: 4, maxOwnerReassessmentsPerGate: 2 },
       history: [
         gateRecord({ kind: 'evaluated', gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
         gateRecord({ kind: 'evaluated', gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),

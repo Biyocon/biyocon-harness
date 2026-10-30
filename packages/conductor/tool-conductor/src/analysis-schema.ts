@@ -16,6 +16,12 @@ export const ANALYSIS_SCHEMA = {
     status: { type: 'string', enum: ['ready', 'rework', 'blocked', 'failed'] },
     summary: { type: 'string' }, material_ids: strings, blockers: strings, assumptions: strings, limitations: strings,
     defect: { type: 'string', enum: ['scope', 'plan', 'report'] }, candidate_hash: { type: 'string' },
+    clarifications: {
+      type: 'array', description: 'Read-only questions requiring owner input. Only valid with status blocked; never request paths, commands or execution authority.',
+      items: { type: 'object', additionalProperties: false,
+        properties: { id: { type: 'string' }, prompt: { type: 'string' }, options: strings },
+        required: ['id', 'prompt', 'options'] },
+    },
     candidate: {
       type: 'object', additionalProperties: false,
       properties: {

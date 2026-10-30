@@ -1,0 +1,16 @@
+# Keep the installed preset, real workflow worker, and child policies; substitute
+# only the model and scripted host answers for the P1 owner ledger.
+- id: installed
+  name: '@deepseek-ai/cordis-plugin-include'
+  config:
+    path: ./conductor-installed.cordis.snapshot.yml
+    patches:
+      - id: conductor-installed-mock
+        disabled: true
+
+- id: owner-model
+  name: ./tests/fixtures/conductor-owner-mock.ts
+
+- id: owner-script
+  name: ./tests/fixtures/conductor-owner-script.ts
+  disabled: !!js process.env.DSH_CONDUCTOR_OWNER_SCENARIO === 'unavailable'

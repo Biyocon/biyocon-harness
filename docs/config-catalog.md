@@ -2425,6 +2425,8 @@ export interface Config {
   subagentProvider?: string
   /** Maximum rework decisions per gate before escalation (default 2). */
   maxReworkPerGate?: number
+  /** Maximum owner-directed reassessments per gate, independent of rework (default 2). */
+  maxOwnerReassessmentsPerGate?: number
   /** Default Ralph round budget; 0 disables the Headsman sub-phase (default 0). */
   maxRalphRounds?: number
   /** Maximum serialized characters in one Ralph handoff (default 16384). */
@@ -2460,7 +2462,7 @@ export interface QualityCommandConfig {
 
 Depends on: [`QualityPolicyStage`](../packages/conductor/conductor/src/index.ts)
 
-Source: [`packages/conductor/tool-conductor/src/index.ts:80`](../packages/conductor/tool-conductor/src/index.ts)
+Source: [`packages/conductor/tool-conductor/src/index.ts:84`](../packages/conductor/tool-conductor/src/index.ts)
 
 <a id="deepseek-aidsh-tool-fs"></a>
 

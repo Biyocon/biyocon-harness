@@ -3,6 +3,7 @@ import type { AnalysisEnvelope, ConductorRun } from './types.ts'
 import { analysisEnvelopeProblem, reportDecisionProblem, reportHash } from './analysis.ts'
 import { reportProducer } from './intake.ts'
 import { validateIntakeHistory } from './intake-history.ts'
+import { ownerLifecycleStatus } from './owner-ledger.ts'
 
 import { reportObject as object, reportTexts as texts } from './report-json.ts'
 
@@ -19,7 +20,7 @@ export function parseAnalysisState(record: Record<string, unknown>): ConductorRu
     || !Array.isArray(record.specialistReports) || record.specialistReports.length) {
     throw new Error('Conductor analysis record cannot carry execution baselines, authorization, quality work or closeout')
   }
-  if (!['running', 'rework', 'escalated', 'aborted', 'reported'].includes(String(record.status))
+  if (!['running', 'rework', 'escalated', 'aborted', 'reported', 'awaiting_owner', 'continuation_pending'].includes(String(record.status))
     || !['detective', 'strategist', 'devils-advocate', 'auditor', 'arbiter', 'report-complete'].includes(String(record.currentStage))
     || !Array.isArray(record.history) || !Array.isArray(record.repairReturns)
     || !Array.isArray(record.analysisReports) || !Array.isArray(record.reportCandidates)) {
@@ -77,7 +78,7 @@ export function parseAnalysisState(record: Record<string, unknown>): ConductorRu
   const status = last === undefined ? 'running' : last.decision === 'pass'
     ? last.gate === 'G' ? 'reported' : 'running'
     : last.decision === 'rework' ? 'rework' : last.decision === 'abort' ? 'aborted' : 'escalated'
-  if (run.status !== status) throw new Error('Conductor analysis status does not match its last evaluated gate')
+  if (run.status !== (ownerLifecycleStatus(run) ?? status)) throw new Error('Conductor analysis status does not match its last evaluated gate')
   if (run.reportDecision !== undefined) {
     const problem = reportDecisionProblem(run.reportDecision, run)
     if (problem !== undefined || last?.gate !== 'G'

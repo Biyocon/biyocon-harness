@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import {
   ConductorRunId, createRun, executionBaselineHash, executionEffectProfile,
-  QualityCommandId, recordGate, SessionConductorRunStore,
+  QualityCommandId, ownerMandateHash, recordGate, SessionConductorRunStore,
 } from '@deepseek-ai/dsh-conductor'
 import type { ConductorAdmission, ConductorRun, CapturedReport, QualityCommandBinding } from '@deepseek-ai/dsh-conductor'
 import { CallId, createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -346,6 +346,112 @@ describe('Conductor analysis tool admission and execution policy', () => {
   })
 })
 
+describe('P1 owner configuration and observed child continuation', () => {
+  it('validates the per-gate owner limit through both Loader and direct resolution', async () => {
+    for (const value of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => { toolConductor.apply(new Context(), { maxOwnerReassessmentsPerGate: value }) })
+        .toThrow('maxOwnerReassessmentsPerGate must be a positive safe integer')
+      await expect(setup({ config: { subagentProvider: 'fresh', maxOwnerReassessmentsPerGate: value } }))
+        .rejects.toThrow()
+    }
+    for (const limit of [undefined, 1, 3]) {
+      const h = await setup({ config: { subagentProvider: 'fresh', ...limit === undefined ? {} : { maxOwnerReassessmentsPerGate: limit } } })
+      const result = await execute(h.ctx, baseArgs, h.parent)
+      expect(result.isError).toBe(false)
+      const event = h.parent.session.events.findLast(item => item.type === 'conductor/checkpoint')!
+      const run = JSON.parse(event.data.record!) as ConductorRun
+      expect(run.budget.maxOwnerReassessmentsPerGate).toBe(limit ?? 2)
+      expect(run.ownerSessionId).toBe(h.parent.session.id)
+      expect(run.ownerCapabilities).toEqual({ allowedPaths: ['.'], excludedPaths: [], qualityCommandIds: [] })
+    }
+  })
+
+  it('does not fabricate a child identity or question when the workflow publishes no child metadata', async () => {
+    const h = await setup({ factory: (request) => {
+      const args = request.args as { label: string; prompt: string }
+      return { stopReason: 'completed', agentsStarted: 1, value: { ...readyEnvelope(promptRunId(args.prompt), 'detective'),
+        status: 'blocked', blockers: ['Which evidence applies?'],
+        change_requests: [{ target: 'plan', reason: 'Which evidence applies?', impact: 'Cannot complete.' }] } }
+    } })
+    h.engine.publishChildren = false
+    const result = await execute(h.ctx, baseArgs, h.parent)
+    expect(result.isError).toBe(false)
+    expect(result.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked' } })
+    const event = h.parent.session.events.findLast(item => item.type === 'conductor/checkpoint')!
+    const run = JSON.parse(event.data.record!) as ConductorRun
+    expect(run.ownerLedger).toEqual([])
+    expect(h.engine.requests).toHaveLength(1)
+  })
+
+  it('refuses a Gate C command outside the exact owner-approved amendment', async () => {
+    const command = { id: 'unit', modelSafeDescription: 'Run the unit check.', argv: [process.execPath, '-e', 'process.exit(0)'], cwd: '.',
+      allowedStages: ['auditor' as const], sandboxMode: 'read-only' as const, timeoutMs: 1000, maxOutputBytes: 100, graceMs: 100 }
+    let detective = 0
+    const proposal = { allowedPaths: baseArgs.allowedPaths, excludedPaths: [], qualityCommandIds: ['unit'] }
+    const h = await setup({ config: { subagentProvider: 'fresh', qualityCommands: [command, { ...command, id: 'other' }] },
+      factory: (request) => {
+        const args = request.args as { label: string; prompt: string }
+        const result = successfulResult(request)
+        if (args.label === 'conductor-detective' && ++detective === 1) return { ...result,
+          value: { ...readyEnvelope(promptRunId(args.prompt), 'detective'), status: 'blocked', blockers: ['Approve the exact command.'],
+            change_requests: [{ target: 'authority', reason: 'Approve the exact command.', impact: 'Limit quality execution.', proposal }] } }
+        if (args.label === 'conductor-devils-advocate') {
+          const reply = result.value as Record<string, unknown>
+          return { ...result, value: { ...reply,
+            execution_baseline: { ...reply['execution_baseline'] as Record<string, unknown>, qualityCommandIds: ['other'] } } }
+        }
+        return result
+      } })
+    h.ctx.provide('conductorOwnerTestProvider', { kind: 'scripted-test-provider', answer: (run, question) => Promise.resolve({
+      source: 'scripted-test-provider', rootSessionId: h.parent.session.id, questionId: question.id, expectedRevision: run.ownerRevision,
+      action: 'approve', answers: question.items.map(item => ({ itemId: item.id, text: 'Use only the approved command.' })),
+      proposalHash: ownerMandateHash(proposal),
+    }) })
+    const result = await execute(h.ctx, baseArgs, h.parent)
+    expect(result.isError, JSON.stringify(result)).toBe(false)
+    expect(result.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked', blocker: 'Gate C command selection exceeds the effective owner mandate' } })
+    expect(h.engine.requests).toHaveLength(3)
+    expect(h.parent.session.events.filter(event => event.type === 'approval/asked')).toHaveLength(0)
+  })
+
+  it('flushes scripted answers and reassesses the same run using the exact new child attempt', async () => {
+    let detectiveAttempts = 0
+    const h = await setup({ factory: (request) => {
+      const args = request.args as { label: string }
+      const result = analysisResult(request)
+      if (args.label === 'conductor-detective' && ++detectiveAttempts === 1) {
+        const reply: Record<string, unknown> = { ...result.value as Record<string, unknown>, status: 'blocked', blockers: ['Choose the evidence.'],
+          clarifications: [{ id: 'evidence', prompt: 'Which evidence should be assessed?', options: [] }] }
+        delete reply['candidate']
+        return { ...result, value: reply }
+      }
+      return result
+    } })
+    h.ctx.provide('conductorOwnerTestProvider', { kind: 'scripted-test-provider', answer: (run, question) => {
+      expect(question.childId).toBe(SessionId('child-conductor-test-1'))
+      expect(question.attempt).toBe(1)
+      return Promise.resolve({ source: 'scripted-test-provider', rootSessionId: h.parent.session.id,
+        questionId: question.id, expectedRevision: run.ownerRevision, action: 'answer_continue',
+        answers: question.items.map(item => ({ itemId: item.id, text: 'Assess the supplied current request.' })) })
+    } })
+    const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }, h.parent)
+    expect(result.isError, JSON.stringify(result)).toBe(false)
+    expect(result.value).toMatchObject({ status: 'reported', result: { kind: 'report' } })
+    const checkpoints = h.parent.session.events.filter(item => item.type === 'conductor/checkpoint')
+      .map(event => JSON.parse(event.data.record!) as ConductorRun)
+    expect(checkpoints.map(run => run.status)).toEqual(expect.arrayContaining(['awaiting_owner', 'continuation_pending', 'rework', 'reported']))
+    const final = checkpoints.at(-1)!
+    expect(new Set(checkpoints.map(run => run.runId)).size).toBe(1)
+    expect(final.ownerLedger.map(entry => entry.kind)).toEqual(['question', 'answer', 'consumed'])
+    const children = h.parent.session.events.flatMap(event => event.type === 'conductor/child' && event.data.status === 'running'
+      ? [{ role: event.data.role, attempt: event.data.attempt }] : [])
+    expect(children.slice(0, 2))
+      .toEqual([{ role: 'detective', attempt: 1 }, { role: 'detective', attempt: 2 }])
+    expect(final.history.filter(gate => gate.gate === 'A').map(gate => gate.decision)).toEqual(['escalate', 'pass'])
+    expect(final.executionAuthorization).toBeNull()
+  })
+})
+
 describe('dsh-tool-conductor unit boundary', () => {
   it('rejects specialist-written paths, retries Gate C, and binds only owner paths to the approved baseline', async () => {
     let attempts = 0
@@ -388,7 +494,7 @@ describe('dsh-tool-conductor unit boundary', () => {
     expect(JSON.stringify(rejected.content)).toContain('No Conductor run was started')
     expect(engine.requests).toHaveLength(0)
     const result = await execute(ctx, baseArgs, parent)
-    expect(result.value).toMatchObject({ status: 'escalated', result: { run: {
+    expect(result.value).toMatchObject({ status: 'awaiting_owner', result: { run: {
       stage: 'devils-advocate', specialistsRan: ['detective', 'strategist', 'devils-advocate'],
       gateHistory: expect.arrayContaining([
         expect.objectContaining({ kind: 'evaluated', gate: 'A', decision: 'pass' }),
@@ -448,7 +554,7 @@ describe('dsh-tool-conductor unit boundary', () => {
       } })
       const result = await execute(ctx, baseArgs, parent)
       expect(result.isError, JSON.stringify(result)).toBe(false)
-      expect(result.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked' } })
+      expect(result.value).toMatchObject({ status: 'awaiting_owner', result: { kind: 'blocked' } })
       const event = parent.session.events.filter(event => event.type === 'conductor/checkpoint').at(-1)
       if (event?.type !== 'conductor/checkpoint' || event.data.record === null) throw new Error('missing checkpoint')
       const run = await new SessionConductorRunStore(parent.session, () => Promise.resolve()).load(event.data.runId)
@@ -742,7 +848,7 @@ describe('dsh-tool-conductor unit boundary', () => {
       })
       const result = await execute(empty.ctx, baseArgs, empty.parent)
       expect(result.isError).toBe(false)
-      expect(result.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked' } })
+      expect(result.value).toMatchObject({ status: 'awaiting_owner', result: { kind: 'blocked' } })
     }
 
     const unestablished = await setup({
@@ -751,7 +857,7 @@ describe('dsh-tool-conductor unit boundary', () => {
     const unestablishedResult = await execute(unestablished.ctx, {
       ...intakeArgs, objective: 'Establish the baseline.', authority: { owner: 'user' },
     }, unestablished.parent)
-    expect(unestablishedResult.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked' } })
+    expect(unestablishedResult.value).toMatchObject({ status: 'awaiting_owner', result: { kind: 'blocked' } })
 
     const arbiterEmpty = await setup({
       factory: (request) => {
@@ -762,7 +868,7 @@ describe('dsh-tool-conductor unit boundary', () => {
       },
     })
     const arbiterResult = await execute(arbiterEmpty.ctx, baseArgs, arbiterEmpty.parent)
-    expect(arbiterResult.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked' } })
+    expect(arbiterResult.value).toMatchObject({ status: 'awaiting_owner', result: { kind: 'blocked' } })
 
     const failed = await setup({
       factory: () => ({ stopReason: 'error', error: 'child failed', agentsStarted: 1, value: null }),

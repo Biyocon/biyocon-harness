@@ -4,10 +4,11 @@ import { fileURLToPath } from 'node:url'
 import { normalizeSessionLog, scrubRequestHeaders } from '@deepseek-ai/dsh-acp-snapshot'
 import { LOADER_SMOKE_TEST_TIMEOUT_MS, resolveExampleMode, runLoaderSmoke } from '@deepseek-ai/dsh-loader-smoke'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
-import type { ConductorRun } from '@deepseek-ai/dsh-conductor'
+import { contentHash, type ConductorRun } from '@deepseek-ai/dsh-conductor'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { generateConductorSkills } from '../../../apps/cli/scripts/generate-conductor-skills.ts'
 import { canonicalSessionFixture } from '../../../scripts/session-fixture-layout.ts'
+import { registerOwnerEscalationSnapshots } from './fixtures/conductor-owner-snapshots.ts'
 
 const root = fileURLToPath(new URL('../../../', import.meta.url))
 const configPath = join(root, 'examples/headless-agent/conductor-installed.cordis.snapshot.yml')
@@ -23,6 +24,8 @@ describe('installed Conductor through the headless example', () => {
     // Source replay prepares only resources; lib replay verifies the prior CLI build's assets.
     if (resolveExampleMode() === 'src') await generateConductorSkills()
   })
+  registerOwnerEscalationSnapshots()
+
   it('routes a task without a Conductor keyword before workspace tools despite contrary AGENTS instructions', async () => {
     const result = await runLoaderSmoke({
       label: 'installed Conductor external-workspace snapshot',
@@ -124,7 +127,7 @@ describe('installed Conductor through the headless example', () => {
         expect(parent.events.filter(row => row.type === 'tool/call').map(row => row.data.name)).toEqual(['conductor'])
         const checkpoint = parent.events.filter(row => row.type === 'conductor/checkpoint').at(-1)!
         const run = JSON.parse(checkpoint.data.record!) as ConductorRun
-        expect(run.recordFormatVersion).toBe(3)
+        expect(run.recordFormatVersion).toBe(4)
         expect(run.budget.maxReworkPerGate).toBe(2)
         expect(run.allowedPaths).toEqual(['owner-allowed'])
         expect(run.excludedPaths).toEqual(['owner-allowed/protected'])
@@ -135,7 +138,7 @@ describe('installed Conductor through the headless example', () => {
           expect(output).toContain(field)
         }
         expect(parent.events.filter(row => row.type === 'approval/asked')).toHaveLength(scenario === 'repair' ? 1 : 0)
-        expect(run.status).toBe(scenario === 'repair' ? 'awaiting_authorization' : 'escalated')
+        expect(run.status).toBe(scenario === 'repair' ? 'awaiting_authorization' : 'awaiting_owner')
         if (scenario === 'repair') {
           expect(run.baseline?.allowedPaths).toEqual(run.allowedPaths)
           expect(run.baseline?.excludedPaths).toEqual(run.excludedPaths)
@@ -151,6 +154,15 @@ describe('installed Conductor through the headless example', () => {
         } else {
           expect(run.history.at(-1)?.basis).toContain('Gate C exhausted its 2 reworks per gate')
           expect(run.baseline).toBeNull()
+          const entry = run.ownerLedger[0]!
+          expect(entry.kind).toBe('question')
+          if (entry.kind !== 'question') throw new Error('Exhausted report repair must park an exact owner question')
+          expect(entry.question.rootSessionId).toBe(parent.header.id)
+          expect(entry.question.childId).toBe(decoded.at(-1)!.header.id)
+          expect(entry.question.stage).toBe('devils-advocate')
+          expect(entry.question.attempt).toBe(3)
+          expect(entry.question.gateIndex).toBe(run.history.length - 1)
+          expect(entry.question.reportHash).toBe(contentHash(JSON.stringify(entry.question.report)))
         }
         expect(await readFile(join(cwd, 'probe.txt'), 'utf8')).toBe('DETECTIVE_EXTERNAL_OK\n')
         expect(await readFile(join(cwd, 'owner-allowed/protected/keep.txt'), 'utf8')).toBe('OWNER_EXCLUDED_UNCHANGED\n')
@@ -170,9 +182,13 @@ describe('installed Conductor through the headless example', () => {
               reason: `${reason.slice(0, separator)}\n${JSON.stringify(normalizedPayload, null, 2)}`,
             } })
           })].join('\n') + '\n' : log
-          const normalized = scrubRequestHeaders(normalizeSessionLog(fixtureLog, context))
+          let normalized = scrubRequestHeaders(normalizeSessionLog(fixtureLog, context))
             .replace(/CON-\d{4}-\d{4}/g, '{{runId}}')
             .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g, '{{isoTime}}')
+          // The raw question hash and exact child were checked before fixture canonicalization.
+          for (const entry of run.ownerLedger) if (entry.kind === 'question') {
+            normalized = normalized.replaceAll(entry.question.reportHash, '{{ownerReportHash}}')
+          }
           const snapshot = canonicalSessionFixture(normalized, names[index])!
           const expected = join(directory, `${names[index]!}.expected.jsonl`)
           if (process.env.DSH_SNAPSHOT === 'refresh') {
@@ -248,7 +264,7 @@ describe('installed Conductor through the headless example', () => {
             : 'No Conductor run was started: Conductor analysis requires at least one acceptanceCriteria')
         } else {
           const run = JSON.parse(checkpoints.at(-1)!.data.record!) as ConductorRun
-          expect(run.recordFormatVersion).toBe(3)
+          expect(run.recordFormatVersion).toBe(4)
           expect(run.baseline).toBeNull()
           expect(run.executionAuthorization).toBeNull()
           expect(run.qualityExecutions).toEqual([])

@@ -31,7 +31,8 @@ const QUALITY_BINDING: QualityCommandBinding = {
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
-    recordFormatVersion: 3,
+    recordFormatVersion: 4,
+    ownerSessionId: null, ownerCapabilities: null, ownerRevision: 0, ownerLedger: [],
     admission: implementationAdmission(), repairReturns: [], analysisReports: [], reportCandidates: [],
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
@@ -43,7 +44,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: ['feature works'],
-    budget: { maxReworkPerGate: 3, maxRalphRounds: 0 },
+    budget: { maxReworkPerGate: 3, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 },
     baselineHistory: [],
     baseline: null,
     executionAuthorization: null,
@@ -454,7 +455,7 @@ describe('dsh-conductor drive', () => {
     }
     const outcome = await drive(makeRun({ currentStage: 'detective' }), dispatcher)
     expect(outcome.kind).toBe('blocked')
-    if (outcome.kind === 'blocked') expect(outcome.blocker).toContain('authority change')
+    if (outcome.kind === 'blocked') expect(outcome.ownerEscalation).toMatchObject({ kind: 'recoverable', cause: 'clarification' })
   })
 
   it('escalates an arbiter NO-GO to the owner', async () => {
@@ -508,7 +509,7 @@ describe('dsh-conductor drive', () => {
       },
       async dispatchArbiter() { return makeDecision('go') },
     }
-    const outcome = await drive(makeRun({ currentStage: 'detective', budget: { maxReworkPerGate: 1, maxRalphRounds: 0 } }), dispatcher)
+    const outcome = await drive(makeRun({ currentStage: 'detective', budget: { maxReworkPerGate: 1, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 } }), dispatcher)
     expect(outcome.kind).toBe('blocked')
     if (outcome.kind === 'blocked') {
       expect(outcome.run.status).toBe('escalated')

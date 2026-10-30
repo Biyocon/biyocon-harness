@@ -110,10 +110,10 @@ describe('Conductor phase-one intake and report completion', () => {
     expect(() => admitIntake({ ...selection, rationale: 'Assess the owner task.' }, analysisRun().admission.materials)).toThrow(/purpose|deliverable/)
   })
 
-  it('uses record format 3 and rejects format 2 without migration', () => {
+  it('uses record format 4 and rejects format 3 without migration', () => {
     const run = analysisRun()
-    expect(run.recordFormatVersion).toBe(3)
-    expect(() => parseRun(JSON.stringify({ ...run, recordFormatVersion: 2 }))).toThrow(/format 2.*expected 3/)
+    expect(run.recordFormatVersion).toBe(4)
+    expect(() => parseRun(JSON.stringify({ ...run, recordFormatVersion: 3 }))).toThrow(/format 3.*expected 4/)
   })
 
   it('retains the full implementation authorization path while recording supplied-work skips', () => {

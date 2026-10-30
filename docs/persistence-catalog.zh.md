@@ -405,7 +405,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'conductor/checkpoint': ConductorCheckpointData
 ```
 
-来源：[`packages/conductor/conductor/src/persistence.ts:52`](../packages/conductor/conductor/src/persistence.ts)
+来源：[`packages/conductor/conductor/src/persistence.ts:53`](../packages/conductor/conductor/src/persistence.ts)
 
 <a id="conductorchild--log-only"></a>
 

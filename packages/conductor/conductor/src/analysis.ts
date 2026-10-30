@@ -3,6 +3,7 @@ import type { AnalysisEnvelope, CapturedReport, ConductorRun, ConductorStage, Re
 import type { ConductorCheckpoint, ConductorDispatcher, ConductorOutcome } from './drive.ts'
 import { contentHash, reportProducer } from './intake.ts'
 import { recordGate } from './state.ts'
+import { ownerEscalationForProblem } from './owner-ledger.ts'
 
 import { reportObject as object, reportTexts as texts } from './report-json.ts'
 
@@ -94,10 +95,11 @@ export function analysisEnvelopeProblem(value: unknown, stage: ConductorStage, r
   const authority = (message: string): SpecialistProblem => ({ kind: 'authority', message })
   if (!object(value)) return report('analysis specialist must return an object')
   if ((text(value.run_id) && value.run_id !== run.runId) || (text(value.purpose) && value.purpose !== 'analysis')) return authority('analysis report must belong to this run and purpose')
+  if (text(value.stage) && value.stage !== stage) return authority('analysis report stage must match the dispatched read-only role')
   if (['execution_baseline', 'executionAuthorization', 'allowedPaths', 'allowed_paths', 'quality_evidence_ids', 'change_requests', 'authorization'].some(key => key in value)) {
     return authority('analysis specialists cannot request execution authority, write paths or commands')
   }
-  const keys = ['run_id', 'purpose', 'stage', 'deliverable', 'status', 'summary', 'material_ids', 'blockers', 'assumptions', 'limitations', 'defect', 'candidate', 'candidate_hash']
+  const keys = ['run_id', 'purpose', 'stage', 'deliverable', 'status', 'summary', 'material_ids', 'blockers', 'assumptions', 'limitations', 'defect', 'candidate', 'candidate_hash', 'clarifications']
   if (Object.keys(value).some(key => !keys.includes(key)) || value.run_id !== run.runId || value.purpose !== 'analysis' || value.stage !== stage
     || run.admission.purpose !== 'analysis' || value.deliverable !== run.admission.deliverable
     || !['ready', 'rework', 'blocked', 'failed'].includes(String(value.status))
@@ -105,6 +107,14 @@ export function analysisEnvelopeProblem(value: unknown, stage: ConductorStage, r
     || !texts(value.blockers) || !texts(value.assumptions) || !texts(value.limitations)
     || (value.defect !== undefined && (!text(value.defect) || !['scope', 'plan', 'report'].includes(value.defect)))) return report('malformed analysis specialist envelope')
   if (value.status === 'ready' && value.blockers.length > 0) return report('ready analysis report cannot carry blockers')
+  if (value.clarifications !== undefined && (value.status !== 'blocked' || !Array.isArray(value.clarifications)
+    || value.clarifications.length === 0 || value.clarifications.length > 16
+    || value.clarifications.some(item => !object(item) || Object.keys(item).some(key => !['id', 'prompt', 'options'].includes(key))
+      || !text(item.id) || !text(item.prompt) || !texts(item.options)
+      || new Set(item.options).size !== item.options.length)
+    || new Set(value.clarifications.map(item => (item as { id: string }).id)).size !== value.clarifications.length)) {
+    return report('analysis clarifications require unique read-only questions on a blocked report')
+  }
   const prerequisite = stage === 'auditor' ? reportProducer(run.admission) : stage
   if (value.defect === 'plan' && prerequisite === 'detective') return report('Detective analysis has no earlier planning prerequisite')
   if (stage === 'auditor') {
@@ -166,7 +176,7 @@ export async function driveAnalysis(
       })
       await checkpoint(current)
       if (current.status === 'rework') continue
-      return { kind: 'blocked', blocker: problem.message, run: current }
+      return { kind: 'blocked', blocker: problem.message, run: current, ownerEscalation: ownerEscalationForProblem(problem) }
     }
     if (stage === 'arbiter') {
       const decision = structuredClone(raw as ReportDecision)
@@ -179,7 +189,8 @@ export async function driveAnalysis(
       await checkpoint(current)
       if (current.status === 'rework') continue
       return accepted ? { kind: 'report', report: current.reportCandidates.at(-1) as CapturedReport, decision, run: current }
-        : { kind: 'blocked', blocker: 'analysis report blocked or rework budget exhausted', run: current }
+        : { kind: 'blocked', blocker: 'analysis report blocked or rework budget exhausted', run: current,
+          ...decision.decision === 'revise' ? { ownerEscalation: { kind: 'recoverable', cause: 'rework-exhausted', reason: decision.basis.join('; ') } as const } : {} }
     }
     const envelope = structuredClone(raw as AnalysisEnvelope)
     let reportCandidates = current.reportCandidates
@@ -202,6 +213,9 @@ export async function driveAnalysis(
     })
     await checkpoint(current)
     if (current.status === 'running' || current.status === 'rework') continue
-    return { kind: 'blocked', blocker: `analysis ${current.status} at ${stage}`, run: current }
+    return { kind: 'blocked', blocker: `analysis ${current.status} at ${stage}`, run: current,
+      ...repair || (envelope.status === 'blocked' && envelope.clarifications !== undefined)
+        ? { ownerEscalation: { kind: 'recoverable', cause: repair ? 'rework-exhausted' : 'clarification', reason: envelope.summary } as const } : {},
+    }
   }
 }
