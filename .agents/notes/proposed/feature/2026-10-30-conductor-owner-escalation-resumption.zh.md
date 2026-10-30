@@ -14,13 +14,13 @@ Status: proposed
 
 ## 提案
 
-将可恢复的升级保存为持久化的所有者问题，再通过 Conductor 专属的宿主控制器恢复同一次运行。复用现有问题传输和根代理身份检查，并增加类型化的 Conductor 交互；Gate C 的批准服务保持独立。完整交互仍为 proposed；P1 交付范围如下。
+将可恢复的升级保存为持久化的所有者问题，再通过 Conductor 专属的宿主控制器恢复同一次运行。复用现有问题传输和根代理身份检查，并增加类型化的 Conductor 交互；Gate C 的批准服务保持独立。P1 交付下述记录与校验器基础；生产交互仍作为 P2/P3 提案。
 
 七个专家角色及其职责保持不变。所有者提供决定和澄清，而不是新的专家报告或 gate 通过结论。实施和分析保留现有路线；本功能不增加入口、分析批评、提供商、领域代理或文档格式。
 
 ### 实施阶段
 
-P1 已交付记录 v4 的领域基础：只追加的所有者台账、精确子会话与报告来源、经验证的授权变更和逐门禁重新评估上限，以及分析和实现的严格重建。它仍仅供测试提供者使用：现有 required-on-read `conductor/checkpoint` 事件携带完整台账，不启用新会话事件类型、真实回答控制器、恢复轮次、路由钩子或 UI。专用交互事件及 SDK 事件扩展属于 P2。通过已安装预设的 keyless 场景验证脚本化接受、拒绝与提供者不可用时的停放。完整交互由 P3 交付前，本说明有意保持 proposed。现有版本 3 运行被拒绝，升级后无法恢复。
+P1 已交付记录 v4 的领域基础：只追加的所有者台账、精确子会话与报告来源、经验证的授权变更和逐门禁重新评估上限，以及分析和实现的严格重建。Conductor 子会话写入校验即使在宽泛工作区授权下也拒绝 Git 元数据，包括规范化别名路径。它仍仅供测试提供者使用：现有 required-on-read `conductor/checkpoint` 事件携带完整台账，不启用新会话事件类型、真实回答控制器、恢复轮次、路由钩子或 UI。专用交互事件及 SDK 事件扩展属于 P2。通过已安装预设的 keyless 场景验证脚本化接受、拒绝与提供者不可用时的停放。完整交互由 P3 交付前，本说明有意保持 proposed。现有版本 3 运行被拒绝，升级后无法恢复。
 
 按以下顺序，以三个连续 PR 实施 #37。每个 PR 完成后均停止，等待所有者和 Claude 评审；设计或前一阶段获批，不代表授权下一阶段或合并。
 
@@ -122,7 +122,7 @@ GateRecord[] 仅用于 gate 决定。新增只能追加的所有者交互台账�
 - 增加真实浏览器覆盖，验证 EN/DA 控件、多项必答、刷新、等待和拒绝。未来 GUI PR 的 GIF 从 3090 上的专用服务器录制，并发布到单独的 assets 分支；不得使用所有者在 10822 上的应用。
 - 仅在新事件或 schema 产生影响时，更新现有模型可见 Conductor snapshots 及 TS/Python SDK 预期输出；实施时运行聚焦测试、类型检查、lint、doc-sync 和仓库推送前检查。
 
-[入口](../../implemented/feature/2026-10-25-conductor-intake-and-report-completion.md)、[gate 稳健性](../../implemented/bug-fix/2026-10-25-conductor-gate-robustness.md)、[路由](../../implemented/bug-fix/2026-10-25-conductor-mode-routing.md)、[批准接缝](../../implemented/feature/2026-07-06-approval-seam.md)及[子代理状态](../../implemented/bug-fix/2026-10-28-conductor-child-role-status.md)说明保留当前理由与契约。尚未实现的本提案并未完全取代任何已实现说明，因此不归档任何说明。实施时将更新并交叉链接部分改变的契约及所属 README 文档对。
+[入口](../../implemented/feature/2026-10-25-conductor-intake-and-report-completion.md)、[gate 稳健性](../../implemented/bug-fix/2026-10-25-conductor-gate-robustness.md)、[路由](../../implemented/bug-fix/2026-10-25-conductor-mode-routing.md)、[批准接缝](../../implemented/feature/2026-07-06-approval-seam.md)及[子代理状态](../../implemented/bug-fix/2026-10-28-conductor-child-role-status.md)说明保留当前理由与契约。部分实现的本提案并未完全取代任何已实现说明，因此不归档任何说明。实施时将更新并交叉链接部分改变的契约及所属 README 文档对。
 
 ## 已考虑的替代方案
 

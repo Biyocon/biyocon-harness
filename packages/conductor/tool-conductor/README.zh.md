@@ -22,7 +22,7 @@
 
 每次工作流派发都在父日志中记录模型不可见的子会话身份与生命周期。运行时按该子会话派发时的历史偏移关联已保存的门禁，使每次返工独立保留。Ralph 的可信工作流观察器提供 worker 身份，但不把 Headsman 的 Gate D 赋予 worker。这些事件不影响提示、门禁决策或权限；[显示决策](../../../.agents/notes/implemented/bug-fix/2026-10-28-conductor-child-role-status.md)拥有其语义。
 
-可恢复澄清、具体授权提案或耗尽的报告返工可在已 flush 的 v4 检查点中停放绑定精确子会话的所有者问题。身份、路由、baseline、证据、sandbox 违规与批准被拒仍为终止。`maxOwnerReassessmentsPerGate` 是正安全整数，默认和预设均为 2；计数独立于自动返工，重启不会重置。实现问题来自 `change_requests`；分析使用专用只读 `clarifications` 字段。P1 不挂载生产回答提供者或控制器。仅可选测试组合值 `conductorOwnerTestProvider` 能记录并消费脚本化回答；提供者缺失或不可用时，问题继续等待且不授予权限。父级路由与 UI 不变。分派投影与校验器使用相同的持久台账及有效授权；授权变更仍要求新的执行 C 批准。升级后无法恢复现有格式 3 运行。
+可恢复澄清、具体授权提案或耗尽的报告返工可在已 flush 的 v4 检查点中停放绑定精确子会话的所有者问题。身份、路由、baseline、证据、sandbox 违规与批准被拒仍为终止。`maxOwnerReassessmentsPerGate` 是正安全整数，默认和预设均为 2；计数独立于自动返工，重启不会重置。实现问题来自 `change_requests`；分析使用专用只读 `clarifications` 字段。P1 不挂载生产回答提供者或控制器。仅可选测试组合值 `conductorOwnerTestProvider` 能记录并消费脚本化回答；提供者缺失或不可用时，问题继续等待且不授予权限。即使 baseline 允许整个工作区，子会话写入校验也拒绝直接、嵌套及规范化别名路径中的 Git 元数据。父级路由与 UI 不变。分派投影与校验器使用相同的持久台账及有效授权；授权变更仍要求新的执行 C 批准。升级后无法恢复现有格式 3 运行。
 
 ## 已知限制与延期工作
 
