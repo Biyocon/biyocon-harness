@@ -18,6 +18,18 @@ Park a recoverable escalation as a durable owner question, then resume the same 
 
 The seven specialist roles and their responsibilities remain unchanged. The owner supplies decisions and clarification, not a new specialist report or a gate pass. Implementation and analysis retain their existing routes; this feature does not add intake entries, analysis criticism, providers, domain agents, or document formats.
 
+### Implementation phases
+
+Implement #37 in three successive PRs, in this order. Stop after each PR for review by the owner and Claude; approval of the design or an earlier phase does not authorize the next phase or a merge.
+
+| Phase | Scope | Verification and review stop |
+|---|---|---|
+| P1 | Record v4, owner-interaction ledger, escalation classification, and validators, including per-gate owner reassessment limits. | Exercise admission, answers, counter limits, and persistence with scripted host responses; stop for review before P2. |
+| P2 | Conductor-owned host controller, durable answer/resumption turn, and routing guard. | Exercise same-run continuation, crash/cancellation boundaries, stale replies, and parent tool denial; stop for review before P3. |
+| P3 | Typed owner-question UI card with EN/DA, accessible controls, browser e2e, and a GIF. | Verify the real interaction through the app; record the GIF from a PR server on port 3090 and publish it on a separate assets branch; stop for review. |
+
+Each phase must be independently safe. Do not enable an unfinished production interaction path: scripted test providers cover the earlier phases, and an unavailable production provider must leave the run parked without granting authority.
+
 ### Escalation classification and stage transitions
 
 Separate recoverable owner input from terminal failure before creating a question. Only explicit clarification requests, concrete authority-amendment proposals, and an exhausted recoverable rework route qualify. Wrong run identity, altered routing, unauthorized execution, baseline tampering, sandbox violations, or rejected Gate C approval remain terminal. A generic exception is never converted into an approvable question.
@@ -31,6 +43,7 @@ For analysis, introduce a dedicated read-only clarification request rather than 
 | Owner rejects | awaiting_owner → aborted | Record owner rejection; dispatch no further specialist. |
 | Dialog dismissed, client disconnects, or no provider is available | awaiting_owner remains | Report waiting/unavailable truthfully; grant nothing. |
 | Integrity or security breach | terminal escalated | Explain the failure; offer no continuation action. |
+| Owner reassessment limit exhausted | terminal escalated | Report the gate, count, limit, and unresolved reason; allow no further resumption. |
 
 Gate history is append-only. Reassessment adds a new gate result and a new child attempt; it never changes the old escalation to pass. Ordinary clarification resumes the originating role at its gate. If an authority amendment invalidates a plan or baseline, the resume plan returns through Strategist and Devil's Advocate before any further implementation; the original escalation remains linked to that repair route.
 
@@ -50,17 +63,23 @@ Analysis remains analysis: no Headsman, Ralph, Integrator, execution baseline, G
 
 Keep maxReworkPerGate at the configured value, currently 2 in the preset, counting by GateRecord.gate. Owner questions and answers live outside the gate array and consume no automatic rework allowance. They neither reset counters nor create an unbounded retry loop; Ralph's round limit is unchanged.
 
-After a substantive owner response, permit one explicitly linked reassessment of the affected gate, including when its automatic rework allowance is exhausted. This is a new owner-directed assessment, not a replenished budget: another rework result still uses the accumulated count and immediately escalates if it exceeds the limit. Identical already-consumed responses cannot authorize another assessment. If new owner input is needed, park a new question explaining the remaining obstacle; do not ask or retry automatically without that new obstacle.
+After a substantive owner response, permit one explicitly linked reassessment of the affected gate, including when its automatic rework allowance is exhausted. This is a new owner-directed assessment, not a replenished budget: another rework result still uses the accumulated count and immediately escalates if it exceeds the limit. Identical already-consumed responses cannot authorize another assessment. If new owner input is needed and its separate reassessment allowance remains, park a new question explaining the remaining obstacle; do not ask or retry automatically without that new obstacle.
+
+Bound owner-directed reassessments separately with the validated Config field maxOwnerReassessmentsPerGate: a positive safe integer, default and preset value 2, checked by both Loader schema and direct configuration resolution. Snapshot the limit in the run's durable budget and validate it on load. Count independently by the originating GateRecord.gate in the owner ledger; consume one allowance together with the accepted response and its resume plan in the same authoritative durable checkpoint/ledger revision in host-turn step 3, never in the temporary RPC reservation of step 2 or when a dialog opens. Duplicate replies, cancellation recovery, restart, and changed process configuration cannot reset or double-charge it.
+
+Allow at most two owner-directed reassessments per gate with the preset. Once both have been consumed, a further required reassessment becomes terminal escalated with the run ID, gate, count, limit, and unresolved reason. An already reserved second assessment remains consumable once; the cap rejects a third assessment. Create no further owner question or resume plan for that gate, and do not let approve or answer_continue reopen it. Rejection remains available for an already pending question, but never grants another assessment. This cap is separate from maxReworkPerGate and from Ralph rounds.
 
 ### Persistence and recovery
 
-[The record format](../../../../packages/conductor/conductor/src/state.ts) is version 3. Implement this proposal as version 4 if the base is still version 3, rejecting old records with a clear version error and no compatibility layer. Coordinate the next version with #30 phase 2 and #47 rather than letting separate changes claim the same version. This proposal does not itself change any format.
+[The record format](../../../../packages/conductor/conductor/src/state.ts) is currently version 3. #37 takes CONDUCTOR_RECORD_FORMAT_VERSION = 4 in P1, rejecting version 3 and other unsupported records with a clear version error and no compatibility layer. #47 and #30 phase 2 build on this version-4 foundation; neither independently claims version 4. Any later format change must allocate the next version from the then-current base. This design PR does not itself change any runtime format.
 
 Keep GateRecord[] exclusively for gate decisions. Add an append-only owner-interaction ledger and a monotonically checked record revision. Each question binds its stable ID to the root session, run ID, originating gate index, stage, exact child attempt, candidate/report hash, mandate revision, required item IDs, reason, and any concrete proposal. Each accepted response records its action, answers, amendment, prior revision, and single-use resume plan. Validate the causal order between the ledger and gate history on load. Never trust client-supplied stage, paths, role, or resume arguments.
 
 This preserves the exact-child [historyOffset contract](../../../../packages/conductor/tool-conductor/src/children.ts). Do not insert questions into run.history or silently attach a later gate result to an earlier child. Both analysis and implementation record validators must understand pending and answered owner interactions, instead of merely relaxing validateResumable.
 
-Browser reconnection reprojects the same pending question. Host restart reconstructs it from the durable ledger with the same question ID and a fresh transport request ID; stale transport replies are rejected. A response is accepted only for the current run/question/revision in the owning root session. Duplicate identical replies return the recorded receipt without another dispatch; conflicting, foreign, expired, or superseded replies fail explicitly.
+Questions do not expire automatically: there is no TTL, inactivity deadline, or restart-based expiry. A dismissed dialog, transport timeout, client disconnect, or host restart leaves the durable question pending until an explicit owner response or a recorded run cancellation/supersession. A transport request can end without ending the question.
+
+Browser reconnection reprojects the same pending question. Host restart reconstructs it from the durable ledger with the same question ID and a fresh transport request ID; stale transport replies are rejected. A response is accepted only for the current run/question/revision in the owning root session. Duplicate identical replies return the recorded receipt without another dispatch; conflicting, foreign, or superseded replies fail explicitly. Stale means a non-current transport request, question ID, or record revision, not elapsed time.
 
 Use a completed host-only interaction turn to record an answer before scheduling continuation:
 
@@ -74,7 +93,7 @@ The [goal round driver](../../../../packages/goal/goal-round-driver/src/index.ts
 
 [Session repair](../../../../packages/core/session/src/repair.ts) preserves fully written events from interrupted turns and closes interrupted activity. Recovery must reconcile a written response/checkpoint even if the turn was interrupted before the receipt, without applying it twice. Disposal or cancellation never triggers automatic continuation. Preserve an accepted response as continuation pending until the owning session is explicitly resumed.
 
-Do not promise exactly-once external effects across a crash. If dispatch occurred but its durable child identity or settlement is ambiguous, park and report that ambiguity rather than dispatching again. This design assumes one writer per session store: the current in-process reservation is not a cross-process DSH_HOME lock. A second writer must be excluded operationally until that separate persistence issue is resolved.
+Do not promise exactly-once external effects across a crash. If dispatch occurred but its durable child identity or settlement is ambiguous, park and report that ambiguity rather than dispatching again. This design assumes one writer per session store: the current in-process reservation is not a cross-process DSH_HOME lock. [Session persistence: lock pr. DSH_HOME (#51)](https://github.com/Biyocon/biyocon-harness/issues/51) is a prerequisite for operation with multiple processes. Until that issue is implemented and verified, exclude a second writer operationally; #37 does not implement the lock.
 
 ### Parent routing, UI, and provenance
 
@@ -82,7 +101,9 @@ Extend the [Conductor routing guard](../../../../packages/conductor/tool-conduct
 
 Add a Conductor-specific typed interaction intent because the [current plan-review presentation](../../../../packages/client/ui-user-questions/src/client/contract/slots.ts) is not the required three-action flow. The card shows run ID, gate, role and attempt, reason, all required questions, and exact proposed authority changes, with textual waiting/accepted/rejected status and accessible controls. Support EN/DA and keyboard use. Refreshing the browser must show the same question and accepted receipt.
 
-Persist typed session events for question created, response recorded, continuation consumed, and terminal rejection, plus the complete Conductor checkpoint. Define their decoders and transport/SDK coverage in the implementation; adding event types alone need not change the generic session format version. The model-visible continuation context is projected from these same canonical events: exact owner answers, effective mandate revision, evidence references, and any still-required Gate C approval. Never claim that an unanswered question was approved or that specialists ran when they did not.
+Persist typed session events for question created, response recorded, continuation consumed, and terminal rejection, plus the complete Conductor checkpoint. All new owner-interaction events are required-on-read: omit the envelope's ignorable field, never set ignorable: true; ignorable: false is not a valid envelope either. A reader that does not recognize these events must refuse session reconstruction. Define their decoders and transport/SDK coverage in the implementation; adding event types alone need not change the generic session format version.
+
+Regenerate [KNOWN_SESSION_EVENT_TYPES](../../../../packages/core/session/src/known-event-types.ts) and the persistence catalog with pnpm run gen-persistence-catalog, using the [generator](../../../../scripts/gen-persistence-catalog.ts). Check both generated artifacts with pnpm run verify-persistence-catalog, also run by doc-sync; never edit the known-event set by hand. The model-visible continuation context is projected from these same canonical events: exact owner answers, effective mandate revision, evidence references, and any still-required Gate C approval. Never claim that an unanswered question was approved or that specialists ran when they did not.
 
 Keep existing role/attempt/gate display attached to the exact child. Display the owner question separately; resumption creates a new specialist attempt when reassessment is needed. Logs include the interaction IDs and gate decisions, without copying credentials or unrelated private file contents.
 
@@ -93,9 +114,9 @@ Extend the real installed-preset examples in [conductor-installed.snapshot.ts](.
 - Cover Strategist asking two plan questions and an authority proposal: answer once, retain the run ID, show the original escalation, and reassess the affected gate.
 - Cover clarification without new authority, explicit rejection, unavailable interaction provider, dialog dismissal, browser reconnection, and host restart before/after answer persistence and before continuation consumption.
 - Verify stale, duplicate, conflicting, wrong-session, wrong-run, wrong-revision, and forged-reservation responses; preserve unrelated queued user messages and deny parent read/write fallback.
-- Verify rework counts across resumption and independent gates, exactly one assessment per accepted response, fresh Gate C after mandate change, no writes before approval, and unchanged analysis prohibitions.
+- Verify cumulative rework counts and independent maxOwnerReassessmentsPerGate limits: two owner assessments allowed, the third terminally escalated, no counter reset after restart, and no duplicate charge. Also verify exactly one assessment per accepted response, fresh Gate C after mandate change, no writes before approval, and unchanged analysis prohibitions.
 - Exercise cancellation at each persistence boundary and ambiguous child dispatch; assert no silent grant, lost accepted response, or automatic duplicate dispatch.
-- Check model-visible answers against typed session events and validate both record variants, version rejection, exact child attempts, and historical baseline links.
+- Check model-visible answers against required-on-read session events and validate both record variants, version-3 rejection, exact child attempts, and historical baseline links. Unknown required events must fail reconstruction; regeneration and verify-persistence-catalog must cover the known-event set. Pending questions must survive elapsed time without automatic expiry.
 - Add real browser coverage for EN/DA controls, multiple required answers, refresh, waiting and rejection. Record the eventual GUI PR's GIF from its server on 3090 on a separate assets branch; do not use the owner's app on 10822.
 - Update existing model-visible Conductor snapshots and TS/Python SDK expected outputs only where the new events or schemas affect them; run focused tests, typecheck, lint, doc-sync, and the repository pre-push checks during implementation.
 
@@ -114,14 +135,14 @@ The [intake](../../implemented/feature/2026-10-25-conductor-intake-and-report-co
 - A recoverable Gate B escalation becomes an answerable host-owned question after durable persistence; the owner's response resumes the same run with the original gate and specialist evidence visible.
 - All three actions have distinct validated semantics. Required questions cannot be skipped; rejection dispatches nothing, and disconnection grants nothing.
 - Only a validated explicit mandate amendment changes effective authority. Every affected execution baseline requires a fresh exact Gate C approval; analysis remains read-only and cannot reach implementation or closeout.
-- Gate records, owner interactions, mandate revisions, and child attempts survive restart consistently. Rework limits remain cumulative, and stale or repeated replies cannot cause another continuation.
+- Gate records, owner interactions, mandate revisions, and child attempts survive restart consistently. Rework and owner reassessment limits remain cumulative and independent; an exhausted owner limit produces terminal escalation with an explanation. Questions have no automatic expiry, and stale or repeated replies cannot cause another continuation.
 - Integrity failures and rejected Gate C authorization remain terminal. The parent cannot inspect, write, or start a replacement run while awaiting or processing the owner response.
 - Keyless installed-preset snapshots, recovery tests, EN/DA browser checks, and affected SDK fixtures cover the planned contracts; no real API recording is required for the host-scripted scenarios.
 
 ## Risks
 
-The main review decisions are the durable controller boundary, the one owner-directed reassessment without resetting rework budgets, and the format-version change. Approval of this note is design approval only; implementation still requires the owner's instruction.
+The main implementation risks are the durable controller boundary, enforcing the separate owner reassessment cap without resetting rework budgets, and the version-4 record change. The three implementation PRs each stop for owner and Claude review; design approval alone does not authorize implementation or merge.
 
-A typed amendment preview is essential: free text that silently expands authority would recreate the original safety problem. Recovery must not claim cross-process locking or exactly-once dispatch that the current host cannot guarantee. Single-writer enforcement remains a prerequisite to safe multi-process operation.
+A typed amendment preview is essential: free text that silently expands authority would recreate the original safety problem. Recovery must not claim cross-process locking or exactly-once dispatch that the current host cannot guarantee. Safe multi-process operation depends on the DSH_HOME lock issue linked above; a design assumption is not lock enforcement.
 
 A parked interaction needs clear waiting and cancellation states to avoid appearing complete. Questions and receipts may contain sensitive project information; keep them in the existing session store and avoid unrelated content in events, examples, GIFs, or logs. This design does not add providers, secret storage, or retention policy.
