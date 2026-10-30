@@ -163,6 +163,11 @@ describe('installed Conductor through the headless example', () => {
           expect(entry.question.attempt).toBe(3)
           expect(entry.question.gateIndex).toBe(run.history.length - 1)
           expect(entry.question.reportHash).toBe(contentHash(JSON.stringify(entry.question.report)))
+          const rendered = parent.events.flatMap(event => event.type === 'tool/result' ? event.data.message.content : [])
+            .flatMap(block => block.content).flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
+          expect(rendered).toContain(`Conductor is awaiting owner input: ${entry.question.reason}\nAnswering owner questions is not available in this build yet; the run stays parked and grants nothing.`)
+          expect(rendered).not.toContain('P1')
+          expect(rendered).not.toContain('production answer provider')
         }
         expect(await readFile(join(cwd, 'probe.txt'), 'utf8')).toBe('DETECTIVE_EXTERNAL_OK\n')
         expect(await readFile(join(cwd, 'owner-allowed/protected/keep.txt'), 'utf8')).toBe('OWNER_EXCLUDED_UNCHANGED\n')

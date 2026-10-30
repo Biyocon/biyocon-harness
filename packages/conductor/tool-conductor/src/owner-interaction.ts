@@ -92,11 +92,15 @@ export async function settleOwnerEscalation(
   if (provider !== undefined && provider.kind !== 'scripted-test-provider') throw new Error('Conductor P1 accepts only scripted test-provider responses')
   const response = provider === undefined ? null : await provider.answer(run, question)
   if (response === null) {
-    return { outcome: { kind: 'blocked', blocker: 'Conductor is awaiting owner input; P1 has no production answer provider.', run } }
+    return { outcome: { kind: 'blocked',
+      blocker: `Conductor is awaiting owner input: ${outcome.ownerEscalation.reason}\n`
+        + 'Answering owner questions is not available in this build yet; the run stays parked and grants nothing.', run } }
   } else {
     run = applyScriptedOwnerAnswer(run, response)
     await save(run)
-    if (run.status === 'aborted') return { outcome: { kind: 'blocked', blocker: 'Conductor owner rejected the question; no continuation was dispatched.', run } }
+    if (run.status === 'aborted') return { outcome: { kind: 'blocked',
+      blocker: `Conductor owner rejected the question: ${outcome.ownerEscalation.reason}\n`
+        + 'The run is aborted; no continuation was dispatched.', run } }
     run = consumeOwnerContinuation(run, question.id)
     await save(run)
     return { outcome: { ...outcome, run }, continuation: run }

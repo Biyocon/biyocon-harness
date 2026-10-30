@@ -30,7 +30,7 @@ Implement #37 in three successive PRs, in this order. Stop after each PR for rev
 | P2 | Conductor-owned host controller, durable answer/resumption turn, and routing guard. | Exercise same-run continuation, crash/cancellation boundaries, stale replies, and parent tool denial; stop for review before P3. |
 | P3 | Typed owner-question UI card with EN/DA, accessible controls, browser e2e, and a GIF. | Verify the real interaction through the app; record the GIF from a PR server on port 3090 and publish it on a separate assets branch; stop for review. |
 
-Each phase must be independently safe. Do not enable an unfinished production interaction path: scripted test providers cover the earlier phases, and an unavailable production provider must leave the run parked without granting authority.
+Each phase must be independently safe. Do not enable an unfinished production interaction path: scripted test providers cover the earlier phases, and an unavailable production provider must leave the run parked without granting authority. Parked and owner-rejected outcomes retain the original escalation reason. The user-facing unavailable-answer message explains that limitation without naming an implementation phase.
 
 ### Escalation classification and stage transitions
 

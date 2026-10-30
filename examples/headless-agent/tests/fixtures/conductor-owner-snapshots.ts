@@ -75,6 +75,17 @@ export function registerOwnerEscalationSnapshots(): void {
             if (answer) expect(records.some(record => record.status === 'continuation_pending')).toBe(true)
             expect(run.status).toBe(scenario === 'analysis-answer' ? 'reported' : scenario === 'approved' ? 'escalated'
               : scenario === 'rejected' ? 'aborted' : 'awaiting_owner')
+            if (!answer) {
+              const entry = run.ownerLedger[0]!
+              if (entry.kind !== 'question') throw new Error('Owner outcome requires its original durable question')
+              const rendered = parent.events.flatMap(event => event.type === 'tool/result' ? event.data.message.content : [])
+                .flatMap(block => block.content).flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
+              expect(rendered).toContain(scenario === 'rejected'
+                ? `Conductor owner rejected the question: ${entry.question.reason}\nThe run is aborted; no continuation was dispatched.`
+                : `Conductor is awaiting owner input: ${entry.question.reason}\nAnswering owner questions is not available in this build yet; the run stays parked and grants nothing.`)
+              expect(rendered).not.toContain('P1')
+              expect(rendered).not.toContain('production answer provider')
+            }
             expect(run.baseline).toBeNull()
             expect(run.executionAuthorization).toBeNull()
             expect(run.baselineHistory).toEqual([])

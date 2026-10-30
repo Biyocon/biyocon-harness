@@ -84,6 +84,9 @@ describe('P1 owner parking and the explicit scripted provider', () => {
     expect(result.outcome.run.ownerLedger.map(entry => entry.kind)).toEqual(['question'])
     expect(saved).toHaveLength(1)
     expect(result.outcome.run.history).toEqual(run.history)
+    expect(result.outcome).toMatchObject({ kind: 'blocked',
+      blocker: `Conductor is awaiting owner input: ${cause.reason}\n`
+        + 'Answering owner questions is not available in this build yet; the run stays parked and grants nothing.' })
   })
 
   it('flushes question, response/reservation and consumption before returning the exact continuation', async () => {
@@ -123,6 +126,9 @@ describe('P1 owner parking and the explicit scripted provider', () => {
     expect(result.outcome.run.status).toBe('aborted')
     expect(result.outcome.run.ownerLedger.map(entry => entry.kind)).toEqual(['question', 'rejected'])
     expect(result.continuation).toBeUndefined()
+    expect(result.outcome).toMatchObject({ kind: 'blocked',
+      blocker: `Conductor owner rejected the question: ${cause.reason}\n`
+        + 'The run is aborted; no continuation was dispatched.' })
   })
 
   it('does not reinterpret malformed model fields when exhausted rework needs owner evidence', async () => {
