@@ -3,14 +3,14 @@
  * registered as the `question` entry of the conversation-declared composer
  * slot with ZERO business face (data and verbs ride the dispatched carrier),
  * declaration-aware activation, and fiber-teardown unregistration. Component and
- * domain-face behavior is covered props-direct in question-composer.spec.tsx;
+ * domain-face behavior is covered props-direct in user-questions-composer.client.spec.tsx;
  * no renderer machinery here.
  */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import { ConversationEventRegistry, SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
-import { QuestionComposer } from '../src/client/QuestionComposer.tsx'
+import { QuestionComposer } from '../src/client/QuestionTakeover.tsx'
 import { apply, inject } from '../src/client/index.ts'
 
 async function bench() {

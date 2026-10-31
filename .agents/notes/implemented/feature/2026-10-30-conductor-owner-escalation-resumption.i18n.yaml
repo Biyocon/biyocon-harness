@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-30-conductor-owner-escalation-resumption.md
-2026-10-30-conductor-owner-escalation-resumption.md: 63832478e0d76c5c16e8d86e8dce20d2909874ca
-2026-10-30-conductor-owner-escalation-resumption.zh.md: 816439acc1c6aa1d3216e2c44eac0aba24a876b2
+2026-10-30-conductor-owner-escalation-resumption.md: a358d45094955c8e82f2749b06bb8b9b94c164f1
+2026-10-30-conductor-owner-escalation-resumption.zh.md: f081cac45b91219a6812331a53ed877ca12b48b5

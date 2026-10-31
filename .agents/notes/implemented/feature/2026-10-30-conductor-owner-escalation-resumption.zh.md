@@ -78,6 +78,8 @@ UI 将英/丹标签映射至机器操作 `approve`、`reject` 和 `answer_contin
 
 回答仅通过生产提供者和 P2 控制器。UI 文本不选择阶段、不授权工具，也不提供模型参数。原有角色/尝试/门禁行仍关联精确子会话，问题是独立交互。恢复可创建另一专家尝试，不覆盖先前结果。
 
+宿主[问题注册表](../../../../packages/host/apiproxy/src/question-requests.ts)拥有请求身份、协议验证/规范化、持久接受结算、重复/合并规则、取消及重放。网关仅保留组装和委派。已注册[问题接管组件](../../../../packages/client/ui-user-questions/src/client/QuestionTakeover.tsx)拥有待处理载体身份、Conductor/计划/通用选择及稳定渲染键；现有通用表单保留普通问题编辑。把这些完整决策保存在各自被测量的模块中，使 P3 行为可独立执行验证，而不是藏在 coverage 豁免的旧适配器里。[Issue #55](https://github.com/Biyocon/biyocon-harness/issues/55)单独跟踪这些旧文件的更广覆盖，不豁免新的所有者交互行为。
+
 [准入](2026-10-25-conductor-intake-and-report-completion.md)、[门禁稳健性](../bug-fix/2026-10-25-conductor-gate-robustness.md)、[路由](../bug-fix/2026-10-25-conductor-mode-routing.md)、[批准 seam](2026-07-06-approval-seam.md)及[子会话状态](../bug-fix/2026-10-28-conductor-child-role-status.md)决策保留其独立约定并互相链接；没有完全取代或归档任何说明。
 
 ## 验证

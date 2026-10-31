@@ -78,6 +78,8 @@ The typed Conductor card shows run ID, gate, runtime role and attempt, cause, ev
 
 Responses go only through the production provider and P2 controller. UI text does not select a stage, authorize a tool or supply model arguments. Existing role/attempt/gate rows remain attached to exact children, while questions are separate interactions. Resumption may create another specialist attempt without overwriting the earlier result.
 
+The host [question registry](../../../../packages/host/apiproxy/src/question-requests.ts) owns request identity, wire validation/normalization, durable-acceptance settlement, duplicate/coalescing rules, cancellation and replay. The gateway retains only composition and delegation. The registered [question takeover](../../../../packages/client/ui-user-questions/src/client/QuestionTakeover.tsx) owns pending-carrier identity, Conductor/plan/generic selection and stable render keys; the existing generic form retains ordinary question editing. Keeping these complete decisions in their own measured modules makes P3 behavior independently exercisable, rather than hiding it inside coverage-exempt legacy adapters. [Issue #55](https://github.com/Biyocon/biyocon-harness/issues/55) tracks broader coverage of those legacy files separately; it does not exempt new owner-interaction behavior.
+
 The [intake](2026-10-25-conductor-intake-and-report-completion.md), [gate robustness](../bug-fix/2026-10-25-conductor-gate-robustness.md), [routing](../bug-fix/2026-10-25-conductor-mode-routing.md), [approval seam](2026-07-06-approval-seam.md) and [child status](../bug-fix/2026-10-28-conductor-child-role-status.md) decisions remain active and cross-linked for their independent contracts; none is fully superseded or archived.
 
 ## Verification

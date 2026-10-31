@@ -15,7 +15,7 @@ import type { ComposerChainProps } from '@deepseek-ai/dsh-client-ui-conversation
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { QuestionWait } from './contract/slots.ts'
-import { QuestionComposer } from './QuestionComposer.tsx'
+import { QuestionComposer } from './QuestionTakeover.tsx'
 import { conductorOwnerHistoryDefinition } from './conductor-owner-history.ts'
 import { ConductorOwnerReceipt } from './ConductorOwnerReceipt.tsx'
 import { en, da, type QuestionKey } from './locales.ts'

@@ -20,7 +20,7 @@ async function harness(): Promise<{ ctx: Context; api: ApiProxy }> {
 
 function agent(ctx: Context): Agent {
   const session = ctx.sessions.create()
-  const value = { id: session.id, session, status: 'idle', ctx } as Agent
+  const value = { id: session.id, session, status: 'idle', ctx, inbox: { hasPending: false } } as Agent
   ctx.agents.register(value)
   return value
 }
@@ -121,6 +121,27 @@ describe('question response validation', () => {
 
 
 describe('durable Conductor answer transport', () => {
+  it('replays the exact pending question to reconnected mux clients and settles it once', async () => {
+    const { ctx, api } = await harness()
+    const asked = ctx.userQuestions.ask({ agent: agent(ctx), questions: [{ id: 'reconnect', question: 'Which evidence?' }] })
+    const firstAbort = new AbortController()
+    const first = openMux(api, firstAbort)
+    const frame = await first.waitForQuestion()
+    const nextAbort = new AbortController()
+    const next = openMux(api, nextAbort)
+    const replayed = await next.waitForQuestion()
+    expect(replayed).toEqual(frame)
+    const submitted = answer(replayed, [], 'Use documented evidence.')
+    expect(await api.respond(submitted)).toEqual({ accepted: true })
+    await expect(asked).resolves.toEqual({ answers: [{ id: 'reconnect', selected: [], custom: 'Use documented evidence.' }] })
+    expect(await api.respond(submitted)).toEqual({ accepted: false, reason: 'not-pending' })
+    expect(first.envelopes.some(value => value.payload.type === 'question/resolved')).toBe(true)
+    expect(next.envelopes.some(value => value.payload.type === 'question/resolved')).toBe(true)
+    firstAbort.abort()
+    nextAbort.abort()
+    await ctx.fiber.dispose()
+  })
+
   it('preserves stable option IDs and the exact proposal hash through wire decoding', async () => {
     const { ctx, api } = await harness()
     const abort = new AbortController()

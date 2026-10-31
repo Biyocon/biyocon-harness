@@ -37,7 +37,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type {
   ApiProxy, ConfigurableProviderView, CredentialView, GoalRef, HistoryEntry, HostFrame,
   ModelCatalogFailure, ModelProviderGroup,
-  ModelReasoning, MuxFrame, PromptContentPart, QuestionResponsePayload, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
+  ModelReasoning, MuxFrame, PromptContentPart, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
   QueuedInboxItem, SessionSummary, SettingsNamespaceView, SubagentAddress, JobView, ToolEventView,
   WorkspaceId, WorkspaceView,
 } from './api/index.ts'
@@ -90,13 +90,9 @@ import type { ApprovalOutcome, ApprovalRequestId } from '@deepseek-ai/dsh-user-a
 import type {} from '@deepseek-ai/dsh-user-approval'
 import { approvalResponsePayloadSchema } from './api/approvals.schema.ts'
 import { imageLimitsProjectionSchema, sessionListMetadataProjectionSchema } from './api/sessions.schema.ts'
-import { questionResponsePayloadSchema } from './api/questions.schema.ts'
+import { QuestionRequests } from './question-requests.ts'
 import type { ClientResponse, RpcError, RpcReceipt, RpcRequest, RpcResponse } from './api/rpc.ts'
 import { RpcId } from './api/rpc.ts'
-import type {
-  AskUserQuestionAnswer, AskUserQuestionItem, AskUserQuestionRequest,
-} from '@deepseek-ai/dsh-user-questions'
-import { UserQuestionError } from '@deepseek-ai/dsh-user-questions'
 import { DirectoryPickerError } from '@deepseek-ai/dsh-host-directory-picker'
 import {
   ApiRemoteSessionNotFound as SessionNotFound,
@@ -670,46 +666,6 @@ function requestedFrame(pending: PendingApproval): RpcRequest<MuxFrame> {
   }
 }
 
-/** One host-owned question wait, addressed by the stable server-request id. */
-interface PendingQuestion {
-  rpcId: RpcId
-  sessionId: SessionId
-  questions: AskUserQuestionItem[]
-  accept?: (answer: AskUserQuestionAnswer) => Promise<void>
-  accepting?: { answer: AskUserQuestionAnswer; receipt: Promise<RpcReceipt> }
-  resolve: (answer: AskUserQuestionAnswer) => void
-  reject: (error: UserQuestionError) => void
-  signal?: AbortSignal
-  onAbort?: () => void
-}
-
-/** Validate one answer batch against the exact question request it resolves. */
-function matchesQuestions(payload: QuestionResponsePayload, pending: PendingQuestion): boolean {
-  if (payload.sessionId !== pending.sessionId) return false
-  const intent = pending.questions.length === 1 ? pending.questions[0]?.intent : undefined
-  if (intent?.kind === 'conductor-owner') {
-    return payload.answer.answers.length === 0 && payload.answer.conductor !== undefined
-      && payload.answer.conductor.questionId === intent.questionId
-      && payload.answer.conductor.revision === intent.revision
-  }
-  if (payload.answer.conductor !== undefined) return false
-  const answers = payload.answer.answers
-  if (answers.length !== pending.questions.length) return false
-  return answers.every((answer, index) => {
-    const question = pending.questions[index] as AskUserQuestionItem
-    if (answer.id !== question.id) return false
-    if (new Set(answer.selected).size !== answer.selected.length) return false
-    const custom = answer.custom?.trim()
-    if (custom !== undefined && custom === '') return false
-    if (question.multiSelect !== true) {
-      if (custom !== undefined && answer.selected.length > 0) return false
-      if (answer.selected.length > 1) return false
-    }
-    const labels = new Set(question.options?.map(option => option.label) ?? [])
-    return answer.selected.every(label => labels.has(label))
-  })
-}
-
 /**
  * Compute the render intent for a tool/call or tool/result event through the
  * presenters registered at this moment; every other event type gets none. A
@@ -1105,7 +1061,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
   const sessionCreations = new Map<SessionId, Promise<Agent>>()
   /** Serializes path ownership and explicit title checks with Workspace mutations. */
   let workspaceCreationChain = Promise.resolve()
-  const pendingQuestions = new Map<RpcId, PendingQuestion>()
   const pendingApprovals = new Map<RpcId, PendingApproval>()
   const muxQueues = new Set<FrameQueue<RpcRequest<MuxFrame>>>()
   const imageAdmissionChains = new WeakMap<Agent, Promise<void>>()
@@ -1332,55 +1287,13 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     broadcast({ type: 'session/queue', sessionId: session.id, items: queueItems(agent, event.data) })
   })
 
-  /** Remove a wait before settling it: synchronous deletion makes the first claimant win. */
-  function claimQuestion(pending: PendingQuestion, outcome: 'answered' | 'cancelled'): void {
-    pendingQuestions.delete(pending.rpcId)
-    if (pending.signal !== undefined && pending.onAbort !== undefined) {
-      pending.signal.removeEventListener('abort', pending.onAbort)
-    }
-    broadcast({
-      type: 'question/resolved', sessionId: pending.sessionId,
-      questionRpcId: pending.rpcId, outcome,
-    })
-  }
-
-  const disposeProvider = ctx.userQuestions.registerProvider({
-    ask(request: AskUserQuestionRequest): Promise<AskUserQuestionAnswer> {
-      const sessionId = request.agent?.id
-      if (sessionId === undefined) {
-        return Promise.reject(new UserQuestionError(
-          'web user interaction requires an agent-owned session', 'ASK_MISSING_AGENT'))
-      }
-      return new Promise<AskUserQuestionAnswer>((resolve, reject) => {
-        const rpcId = RpcId(randomUUID())
-        const pending: PendingQuestion = {
-          rpcId, sessionId, questions: request.questions, resolve, reject,
-          ...(request.accept === undefined ? {} : { accept: request.accept }),
-          ...(request.signal === undefined ? {} : { signal: request.signal }),
-        }
-        const onAbort = (): void => {
-          claimQuestion(pending, 'cancelled')
-          reject(new UserQuestionError(
-            'ask_user_question was aborted before the user answered', 'ASK_ABORTED'))
-        }
-        pending.onAbort = onAbort
-        pendingQuestions.set(rpcId, pending)
-        request.signal?.addEventListener('abort', onAbort, { once: true })
-        const envelope: RpcRequest<MuxFrame> = {
-          rpcId,
-          payload: { type: 'question/requested', sessionId, questions: request.questions },
-        }
-        for (const queue of muxQueues) queue.push(envelope)
-      })
-    },
-  })
+  const questionRequests = new QuestionRequests((envelope) => {
+    for (const queue of muxQueues) queue.push(envelope)
+  }, broadcast)
+  const disposeProvider = ctx.userQuestions.registerProvider({ ask: request => questionRequests.ask(request) })
   ctx.effect(() => () => {
     disposeProvider()
-    for (const pending of [...pendingQuestions.values()]) {
-      claimQuestion(pending, 'cancelled')
-      pending.reject(new UserQuestionError(
-        'web user-questions provider was disposed', 'ASK_ABORTED'))
-    }
+    questionRequests.dispose()
   }, 'api-proxy: user-questions provider')
 
   // --- Approval pending registry ------------------------------------------
@@ -3380,19 +3293,11 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         for (const session of ctx.sessions.list()) {
           subscribeSession(queue, session)
         }
-        for (const pending of pendingQuestions.values()) {
-          queue.push({
-            rpcId: pending.rpcId,
-            payload: {
-              type: 'question/requested', sessionId: pending.sessionId,
-              questions: pending.questions,
-            },
-          })
-        }
+        for (const envelope of questionRequests.frames()) queue.push(envelope)
         // Refresh recovery: still-pending approval questions replay with their
         // stable rpcId so a reconnecting client can still answer them.
         for (const pending of pendingApprovals.values()) queue.push(requestedFrame(pending))
-        // Queue snapshot baseline (pendingQuestions precedent): frames replayed
+        // Queue snapshot baseline (pending question precedent): frames replayed
         // in arrival order per session; a reconnecting client rebuilds its
         // queue view from these alone.
         for (const session of ctx.sessions.list()) {
@@ -3655,64 +3560,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         approval.resolve(parsed.data.outcome)
         return Promise.resolve({ accepted: true })
       }
-      const pending = pendingQuestions.get(message.rpcId)
-      if (pending === undefined) return Promise.resolve({ accepted: false, reason: 'not-pending' })
-      if (!message.result.ok) {
-        if (message.result.error.code !== 'cancelled') {
-          return Promise.resolve({ accepted: false, reason: 'bad-response' })
-        }
-        claimQuestion(pending, 'cancelled')
-        pending.reject(new UserQuestionError(
-          'the user cancelled ask_user_question', 'ASK_CANCELLED'))
-        return Promise.resolve({ accepted: true })
-      }
-      const parsed = questionResponsePayloadSchema.safeParse(message.result.value)
-      if (!parsed.success) {
-        return Promise.resolve({ accepted: false, reason: 'bad-response' })
-      }
-      const payload: QuestionResponsePayload = {
-        sessionId: parsed.data.sessionId,
-        answer: {
-          ...(parsed.data.answer.conductor === undefined ? {} : { conductor: {
-            questionId: parsed.data.answer.conductor.questionId, revision: parsed.data.answer.conductor.revision,
-            action: parsed.data.answer.conductor.action,
-            answers: parsed.data.answer.conductor.answers.map(item => ({ itemId: item.itemId, text: item.text,
-              ...(item.optionId === undefined ? {} : { optionId: item.optionId }) })),
-            ...(parsed.data.answer.conductor.proposalHash === undefined ? {} : { proposalHash: parsed.data.answer.conductor.proposalHash }),
-          } }),
-          answers: parsed.data.answer.answers.map(answer => ({
-            id: answer.id,
-            selected: answer.selected,
-            ...(answer.custom === undefined ? {} : { custom: answer.custom }),
-          })),
-        },
-      }
-      if (!matchesQuestions(payload, pending)) {
-        return Promise.resolve({ accepted: false, reason: 'bad-response' })
-      }
-      if (pending.accepting !== undefined) {
-        return JSON.stringify(pending.accepting.answer) === JSON.stringify(payload.answer)
-          ? pending.accepting.receipt : Promise.resolve({ accepted: false, reason: 'bad-response' })
-      }
-      if (pending.accept !== undefined) {
-        const accept = pending.accept
-        const receipt = (async (): Promise<RpcReceipt> => {
-          try { await accept(payload.answer) } catch {
-            // The consumer owns durable validation; a rejected answer leaves the question pending.
-            return { accepted: false, reason: 'bad-response' }
-          }
-          if (pendingQuestions.get(pending.rpcId) !== pending) return { accepted: false, reason: 'not-pending' }
-          claimQuestion(pending, 'answered')
-          pending.resolve(payload.answer)
-          return { accepted: true }
-        })()
-        pending.accepting = { answer: payload.answer, receipt }
-        void receipt.then(() => { delete pending.accepting })
-        return receipt
-      }
-      claimQuestion(pending, 'answered')
-      pending.resolve(payload.answer)
-      return Promise.resolve({ accepted: true })
+      return questionRequests.respond(message)
     },
   }
 }

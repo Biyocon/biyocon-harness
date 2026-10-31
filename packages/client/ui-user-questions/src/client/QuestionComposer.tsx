@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
+import { useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import clsx from 'clsx'
 import {
   Button, IconCheckOutline14, IconChevronDownOutline14, IconChevronLeftOutline14,
@@ -6,11 +6,9 @@ import {
   IconEditOutline16, MarkdownText,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
-  PendingQuestion, planReviewOf, conductorOwnerOf,
+  type PendingQuestion,
   type QuestionAnswer, type QuestionComposerProps,
 } from './contract/slots.ts'
-import { ConductorOwnerPanel } from './ConductorOwnerPanel.tsx'
-import { PlanReviewPanel } from './PlanReviewPanel.tsx'
 import css from './QuestionComposer.module.css'
 
 interface DraftAnswer {
@@ -47,29 +45,11 @@ function isComposing(event: KeyboardEvent<HTMLTextAreaElement | HTMLInputElement
 }
 
 /**
- * Composer takeover boundary; the carrier key keys local drafts, so a
- * same-request replay (same key, new carrier object) preserves them.
- *
- * Typed Conductor interactions and plan reviews have distinct decision cards;
- * ordinary questions retain the generic flow. The one composer entry owns
- * this choice so the renderers cannot compete for the same pending request.
- *
- * @param props - the selector-matched pending question carrier plus the framework standard kit.
- * @returns The question flow, or the intent's own surface, for this request.
+ * Render the generic question editor without typed takeover selection.
+ * @param props - generic question face and localized composer copy.
+ * @returns the paginated question editor.
  */
-export function QuestionComposer(props: QuestionComposerProps) {
-  // Domain-face mint rides the carrier's stable identity (never minted in a
-  // select/render dispatch — per-dispatch minting would churn memo identity).
-  const question = useMemo(() => new PendingQuestion(props.matched), [props.matched])
-  const review = useMemo(() => planReviewOf(question.questions), [question])
-  const owner = useMemo(() => conductorOwnerOf(question.questions), [question])
-  if (owner !== undefined) return <ConductorOwnerPanel key={question.key} pending={question} owner={owner} t={props.t} />
-  return review === undefined
-    ? <QuestionFlow key={question.key} pending={question} t={props.t} />
-    : <PlanReviewPanel key={question.key} pending={question} review={review} t={props.t} />
-}
-
-function QuestionFlow({ pending, t }: { pending: PendingQuestion } & Pick<QuestionComposerProps, 't'>) {
+export function QuestionFlow({ pending, t }: { pending: PendingQuestion } & Pick<QuestionComposerProps, 't'>) {
   const questions = pending.questions
   const [index, setIndex] = useState(0)
   const [drafts, setDrafts] = useState<DraftAnswer[]>(() => questions.map(() => ({

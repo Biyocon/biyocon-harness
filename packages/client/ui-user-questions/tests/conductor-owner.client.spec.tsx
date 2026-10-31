@@ -6,7 +6,7 @@ import type { RpcReceipt } from '@deepseek-ai/dsh-api-remotes/client'
 import { RpcId } from '@deepseek-ai/dsh-client-connection/client'
 import type { ConductorOwnerQuestion, QuestionComposerProps } from '../src/client/contract/slots.ts'
 import { conductorOwnerOf } from '../src/client/contract/slots.ts'
-import { QuestionComposer } from '../src/client/QuestionComposer.tsx'
+import { QuestionComposer } from '../src/client/QuestionTakeover.tsx'
 import { da, en } from '../src/client/locales.ts'
 
 afterEach(cleanup)
@@ -68,6 +68,29 @@ describe('Conductor owner card', () => {
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' })
     expect(respond).not.toHaveBeenCalled()
   })
+  it.each([{ language: en, label: 'Answer and continue' }, { language: da, label: 'Svar og fortsæt' }])(
+    'keeps owner drafts on same-carrier replay and sends through its current transport: $label', ({ language, label }) => {
+      const firstRespond = vi.fn(() => Promise.resolve<RpcReceipt>({ accepted: true }))
+      const secondRespond = vi.fn(() => Promise.resolve<RpcReceipt>({ accepted: true }))
+      const carrier = (rpcId: string, respond: typeof firstRespond) => new PendingWait('question', RpcId(rpcId), 'session-1' as never,
+        { questions: [{ id: 'owner-1', question: owner().reason, intent: owner() }] }, respond)
+      const first = carrier('owner-request', firstRespond)
+      const copy: QuestionComposerProps['t'] = key => language[key as keyof typeof language] ?? key
+      const view = render(<QuestionComposer {...kit} t={copy} matched={first} interactions={[first]} />)
+      fill()
+      const replay = carrier('owner-request', secondRespond)
+      view.rerender(<QuestionComposer {...kit} t={copy} matched={replay} interactions={[replay]} />)
+      expect(screen.getByRole('textbox')).toHaveProperty('value', '  canonical  ')
+      expect(screen.getByRole('combobox').querySelector('option:checked')?.textContent).toBe('local')
+      fireEvent.click(screen.getByRole('button', { name: label }))
+      expect(firstRespond).not.toHaveBeenCalled()
+      expect(secondRespond).toHaveBeenCalledWith(result('answer_continue'))
+      const fresh = carrier('fresh-owner-request', firstRespond)
+      view.rerender(<QuestionComposer {...kit} t={copy} matched={fresh} interactions={[fresh]} />)
+      expect(screen.getByRole('textbox')).toHaveProperty('value', '')
+      expect(screen.getByRole('button', { name: label }).hasAttribute('disabled')).toBe(true)
+    },
+  )
   it('requires every answer and a non-default option, then sends machine identities', () => {
     const respond = mount()
     const submit = screen.getByRole('button', { name: 'Answer and continue' })
