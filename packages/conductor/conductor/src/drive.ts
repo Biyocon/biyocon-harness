@@ -137,7 +137,7 @@ export async function drive(
 ): Promise<ConductorOutcome> {
   let current = run
   if (current.status === 'awaiting_owner' || current.status === 'continuation_pending') {
-    throw new Error('Conductor P1 has no production owner resumption; the run remains parked')
+    throw new Error('Conductor owner resumption requires an exact host reservation; the run remains parked')
   }
   if (!current.history.some(record => record.kind === 'evaluated') && current.admission.entry !== 'detective') {
     const lacksBaseline = current.admission.purpose === 'implementation' && current.sourceBaseline === null

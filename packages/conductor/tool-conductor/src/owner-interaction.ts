@@ -1,4 +1,4 @@
-/** P1 parking and scripted test responses; no live answer controller or routing hook. */
+/** Park child-bound owner questions; domain tests can settle scripted answers inline. */
 import type { Context } from '@deepseek-ai/cordis'
 import {
   applyScriptedOwnerAnswer, consumeOwnerContinuation, contentHash, parkOwnerQuestion,
@@ -59,11 +59,12 @@ function questionMaterial(
  * @param observation - host-captured child and raw report for the last gate.
  * @param cwd - admitted workspace for canonical proposal validation.
  * @param save - authoritative flushed checkpoint writer.
+ * @param parkOnly - production tool parking; answers belong to the scoped host controller.
  * @returns parked/terminal outcome, or a single consumed test continuation.
  */
 export async function settleOwnerEscalation(
   ctx: Context, outcome: ConductorOutcome, observation: OwnerDispatchObservation | undefined,
-  cwd: string, save: (run: ConductorRun) => Promise<void>,
+  cwd: string, save: (run: ConductorRun) => Promise<void>, parkOnly = false,
 ): Promise<{ outcome: ConductorOutcome; continuation?: ConductorRun }> {
   if (outcome.kind !== 'blocked' || outcome.ownerEscalation?.kind !== 'recoverable'
     || observation === undefined || observation.historyOffset !== outcome.run.history.length - 1) return { outcome }
@@ -86,6 +87,9 @@ export async function settleOwnerEscalation(
   const id = `${outcome.run.runId}:owner:${outcome.run.ownerRevision + 1}`
   let run = parkOwnerQuestion(outcome.run, id, outcome.ownerEscalation, source, material.items, material.proposal)
   await save(run)
+  if (parkOnly) return { outcome: { kind: 'blocked',
+    blocker: `Conductor is awaiting owner input: ${outcome.ownerEscalation.reason}\n`
+      + 'Answering owner questions is not available in this build yet; the run stays parked and grants nothing.', run } }
   const question = pendingOwnerQuestion(run)
   if (question === undefined) throw new Error('Conductor owner question disappeared before the scripted response')
   const provider: { kind: unknown; answer: ConductorOwnerTestProvider['answer'] } | undefined = ctx.get('conductorOwnerTestProvider')

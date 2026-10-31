@@ -35,6 +35,8 @@ import { parseAdmission, requireAnalysisCriteria } from './intake.ts'
 import { validateIntakeHistory } from './intake-history.ts'
 import { parseAnalysisState } from './analysis-persistence.ts'
 import { assertOwnerLedger, effectiveOwnerMandate, ownerCommandAllowed, ownerLifecycleStatus } from './owner-ledger.ts'
+import { publishOwnerInteractions, replayOwnerInteractions } from './owner-events.ts'
+import type { OwnerTransportBinding } from './owner-types.ts'
 
 /** One whole-run checkpoint in the parent Session log. A null record is a tombstone. */
 export interface ConductorCheckpointData {
@@ -384,11 +386,18 @@ export class SessionConductorRunStore implements ConductorRunStore {
     private readonly flush: () => Promise<void>,
   ) {}
 
-  async save(run: ConductorRun): Promise<void> {
+  /**
+   * Save owner facts before their complete checkpoint and flush both together.
+   * @param run - exact owner-bound record to serialize.
+   * @param transport - host response binding preserved for duplicate receipts.
+   */
+  async save(run: ConductorRun, transport?: OwnerTransportBinding): Promise<void> {
     if (run.ownerSessionId !== null && run.ownerSessionId !== this.session.id) {
       throw new Error('Conductor checkpoint belongs to another owning root session')
     }
-    this.session.append('conductor/checkpoint', { runId: run.runId, record: serializeRun(run) })
+    const record = serializeRun(run)
+    publishOwnerInteractions(this.session, run, transport)
+    this.session.append('conductor/checkpoint', { runId: run.runId, record })
     await this.flush()
   }
 
@@ -401,7 +410,7 @@ export class SessionConductorRunStore implements ConductorRunStore {
       if (run.runId !== runId || run.ownerSessionId !== null && run.ownerSessionId !== this.session.id) {
         throw new Error('Conductor checkpoint does not match its owning root session and run id')
       }
-      return Promise.resolve(run)
+      return Promise.resolve(replayOwnerInteractions(run, this.session.events.slice(index + 1)))
     }
     return Promise.resolve(undefined)
   }
@@ -781,7 +790,7 @@ export function validateResumable(run: ConductorRun): void {
     throw new Error(`Conductor run ${run.runId} is escalated; an owner resolution is required before resume`)
   }
   if (run.status === 'awaiting_owner' || run.status === 'continuation_pending') {
-    throw new Error(`Conductor run ${run.runId} is ${run.status}; no production owner resumption is enabled in P1`)
+    throw new Error(`Conductor run ${run.runId} is ${run.status}; owner resumption requires an exact host reservation`)
   }
   assertOwnerLedger(run)
   validateIntakeHistory(run)
@@ -799,5 +808,9 @@ export async function resumeRun(store: ConductorRunStore, runId: ConductorRunId)
     throw new Error(`Conductor run ${runId} not found; cannot resume`)
   }
   validateResumable(run)
+  const last = run.ownerLedger.at(-1)
+  if (last?.kind === 'consumed' && last.historyLength === run.history.length) {
+    throw new Error(`Conductor run ${runId} has an ambiguous consumed owner dispatch; it remains parked and will not dispatch again`)
+  }
   return run
 }

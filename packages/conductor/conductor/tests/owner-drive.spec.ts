@@ -158,7 +158,7 @@ describe('P1 owner escalation classification in the driver', () => {
       questionId: 'owner-question', expectedRevision: 1, action: 'answer_continue', answers: [{ itemId: 'naming', text: 'Use the repository convention.' }] })
     const dispatch = vi.fn()
     await expect(drive(run, { dispatchSpecialist: dispatch, dispatchArbiter: dispatch, authorizeExecution: dispatch }))
-      .rejects.toThrow('no production owner resumption')
+      .rejects.toThrow('owner resumption requires an exact host reservation')
     expect(dispatch).not.toHaveBeenCalled()
   })
 })

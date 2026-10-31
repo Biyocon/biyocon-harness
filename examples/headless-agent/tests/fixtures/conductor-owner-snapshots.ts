@@ -60,7 +60,8 @@ export function registerOwnerEscalationSnapshots(): void {
             const parent = sessions.find(session => session.header.parentSession === undefined)!
             const diagnostic = JSON.stringify(sessions.map(session => ({ id: session.header.id, events: session.events.filter(event => event.type === 'tool/result' || event.type === 'turn/end' || event.type === 'conductor/child' || event.type === 'conductor/checkpoint') })))
             expect(sessions, diagnostic).toHaveLength(stages.length + 1)
-            expect(parent.events.filter(event => event.type === 'tool/call').map(event => event.data.name)).toEqual(['conductor'])
+            expect(parent.events.filter(event => event.type === 'tool/call').map(event => event.data.name))
+              .toEqual(answer ? ['conductor', 'conductor'] : ['conductor'])
             expect(parent.events.filter(event => event.type === 'approval/asked')).toEqual([])
             const records = parent.events.flatMap(event => event.type === 'conductor/checkpoint' && event.data.record !== null
               ? [parseRun(event.data.record)] : [])
@@ -80,9 +81,9 @@ export function registerOwnerEscalationSnapshots(): void {
               if (entry.kind !== 'question') throw new Error('Owner outcome requires its original durable question')
               const rendered = parent.events.flatMap(event => event.type === 'tool/result' ? event.data.message.content : [])
                 .flatMap(block => block.content).flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
-              expect(rendered).toContain(scenario === 'rejected'
-                ? `Conductor owner rejected the question: ${entry.question.reason}\nThe run is aborted; no continuation was dispatched.`
-                : `Conductor is awaiting owner input: ${entry.question.reason}\nAnswering owner questions is not available in this build yet; the run stays parked and grants nothing.`)
+              expect(rendered).toContain(`Conductor is awaiting owner input: ${entry.question.reason}\nAnswering owner questions is not available in this build yet; the run stays parked and grants nothing.`)
+              if (scenario === 'rejected') expect(parent.events.some(event => event.type === 'conductor/owner-terminal-rejection'
+                && event.data.interaction.questionId === entry.question.id)).toBe(true)
               expect(rendered).not.toContain('P1')
               expect(rendered).not.toContain('production answer provider')
             }
@@ -143,11 +144,31 @@ export function registerOwnerEscalationSnapshots(): void {
             // Hashes include the minted run ID. Raw source/hash/child bindings were checked above.
             const ownerReportHashes = new Map(run.ownerLedger.flatMap((entry, index) => entry.kind === 'question'
               ? [[entry.question.reportHash, `{{ownerReportHash${index + 1}}}`] as const] : []))
+            const hostIds = new Map<string, string>()
+            for (const event of parent.events) {
+              if ((event.type === 'conductor/owner-response-recorded' || event.type === 'conductor/owner-terminal-rejection')
+                && event.data.transport !== undefined) {
+                expect(event.data.transport.rootSessionId).toBe(parent.header.id)
+                expect(event.data.transport.runId).toBe(run.runId)
+                expect(event.data.transport.questionId).toBe(event.data.interaction.questionId)
+                expect(event.data.transport.revision).toBe(event.data.interaction.previousRevision)
+                hostIds.set(event.data.transport.transportId, '{{ownerTransportId}}')
+              }
+              if (event.type === 'agent/inbox/spliced') for (const item of event.data.inserted) {
+                const text = item.content.find(block => block.type === 'text')
+                if (item.source.kind !== 'plugin' || text?.type !== 'text') continue
+                const match = /^Record owner reservation ([0-9a-f-]+)\.$/.exec(text.text)
+                if (match !== null) hostIds.set(match[1]!, '{{ownerReservationId}}')
+                expect(text.text).not.toContain('provider-canonical')
+                expect(text.text).not.toContain('Documented scope')
+              }
+            }
             for (const [index, session] of sessions.entries()) {
               let normalized = scrubRequestHeaders(normalizeSessionLog(session.log, context))
                 .replace(/CON-\d{4}-\d{4}/g, '{{runId}}')
                 .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g, '{{isoTime}}')
               for (const [hash, token] of ownerReportHashes) normalized = normalized.replaceAll(hash, token)
+              for (const [id, token] of hostIds) normalized = normalized.replaceAll(id, token)
               const name = session.header.parentSession === undefined ? 'parent' : `${index}-${stages[index - 1]!}`
               const snapshot = canonicalSessionFixture(normalized, name)!
               const expected = join(directory, `${name}.expected.jsonl`)
@@ -157,7 +178,7 @@ export function registerOwnerEscalationSnapshots(): void {
           },
         })
         expect(result.stderr).toBe('')
-        expect(result.stdout).toContain('no implementation was performed')
+        expect(result.stdout).toContain('"output":""')
       }, LOADER_SMOKE_TEST_TIMEOUT_MS,
     )
   })

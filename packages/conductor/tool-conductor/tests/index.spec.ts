@@ -1,12 +1,15 @@
 import { toolAdmission } from './intake-fixtures.ts'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
+import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import {
   ConductorRunId, createRun, executionBaselineHash, executionEffectProfile,
   QualityCommandId, ownerMandateHash, recordGate, SessionConductorRunStore,
 } from '@deepseek-ai/dsh-conductor'
 import type { ConductorAdmission, ConductorRun, CapturedReport, QualityCommandBinding } from '@deepseek-ai/dsh-conductor'
-import { CallId, createUserMessage } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { CallId, createUserMessage, LlmAdapter } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
@@ -18,7 +21,7 @@ import type {
   SubagentRun,
 } from '@deepseek-ai/dsh-subagent'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { ToolRunContext, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import UserApproval from '@deepseek-ai/dsh-user-approval'
 import { WorkflowEngine, WorkflowRunId } from '@deepseek-ai/dsh-workflow'
 import type { WorkflowResult, WorkflowRun, WorkflowStartRequest } from '@deepseek-ai/dsh-workflow'
@@ -165,6 +168,7 @@ class StubProvider implements SubagentProvider {
 async function services(provider: SubagentProvider = new StubProvider()): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
+  await ctx.plugin(AgentRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(SubagentRuntime)
@@ -182,9 +186,14 @@ async function setup(options: {
   skills?: readonly string[]
   approval?: boolean
   workspace?: boolean
+  liveParent?: boolean
 } = {}) {
   const providerName = options.config?.subagentProvider ?? (options.config === undefined ? 'fresh' : 'spawn')
   const ctx = await services(new StubProvider({ name: providerName }))
+  if (options.liveParent === true) {
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(AgentLoop, { agents: [] })
+  }
   const engine = ctx.workflowEngine as StubEngine
   if (options.approval !== false) {
     await ctx.plugin(UserApproval, { policy: 'ask' })
@@ -195,14 +204,82 @@ async function setup(options: {
   for (const name of options.skills ?? roleSkills) {
     ctx.skills.register({ name, description: name, content: `${name} instructions`, source: 'test' })
   }
-  await ctx.plugin(toolConductor, options.config ?? { subagentProvider: 'fresh' })
-  const session = ctx.sessions.create(SessionId(`conductor-tool-${Math.random()}`), {
+  await ctx.plugin(toolConductor, Object.assign({}, options.config ?? { subagentProvider: 'fresh' },
+    options.liveParent === true ? { routeTasks: true } : {}))
+  const sessionId = SessionId(`conductor-tool-${Math.random()}`)
+  if (options.liveParent === true) {
+    const { agent: parent } = await ctx.agents.create({ sessionId,
+      meta: { cwd: process.cwd() }, agentOptions: { provider: 'owner-unit', model: 'owner-unit' } })
+    return { ctx, engine, parent }
+  }
+  const session = ctx.sessions.create(sessionId, {
     ...options.workspace === false ? {} : { meta: { cwd: process.cwd() } },
   })
   session.append('turn/start', { turn: 1 })
   session.append('user/message', createUserMessage({ content: [{ type: 'text', text: baseArgs.objective }], source: { kind: 'user' } }), { surfaceOp: 'append' })
   const parent = { ctx, session } as unknown as Agent
   return { ctx, engine, parent }
+}
+
+async function executeOwnerTask(
+  h: Awaited<ReturnType<typeof setup>>,
+  args: typeof baseArgs | (typeof baseArgs & { purpose: string; deliverable: string }),
+) {
+  const done = Promise.withResolvers<undefined>()
+  h.ctx.provide('conductorOwnerHostTest', { kind: 'scripted-test-provider', settled: done.promise,
+    interact: async (controller, parent, runId, signal) => {
+      try {
+        const binding = await controller.reconnect(parent, runId)
+        const store = new SessionConductorRunStore(parent.session, () => Promise.resolve())
+        const run = (await store.load(runId))!
+        const entry = run.ownerLedger.at(-1)!
+        if (entry.kind !== 'question') throw new Error('Expected owner question')
+        const response = await h.ctx.get('conductorOwnerTestProvider')!.answer(run, entry.question)
+        if (response === null) throw new Error('Expected scripted unit answer')
+        await controller.respond(parent, binding, response, signal)
+        await parent.whenIdle()
+        done.resolve(undefined)
+      } catch (error: unknown) { done.reject(error); throw error }
+    },
+  })
+  const results: ToolExecutionResult[] = []
+  h.ctx.on('tools/result', (exec, result) => { if (exec.agent === h.parent && exec.name === 'conductor') results.push(result) })
+  h.ctx.llm.registerAdapter(['owner-unit'], new class extends LlmAdapter {
+    private calls = 0
+    async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+      const result = options.messages.at(-1)?.content.find(block => block.type === 'tool-result')
+      if (result !== undefined) {
+        yield { type: 'finish', reason: { kind: 'stop' } }
+        return
+      }
+      const input = options.messages.flatMap(message => message.content).findLast(block => block.type === 'text'
+        && block.text.startsWith('Continue only the stored Conductor run.'))
+      let callArgs: unknown = args
+      if (input?.type === 'text') {
+        const stored = JSON.parse(input.text.slice(input.text.indexOf('\n') + 1)) as {
+          runId: string
+          objective: string
+          admission: ConductorAdmission
+          authority: { owner: string }
+          allowedPaths: string[]
+          excludedPaths: string[]
+        }
+        callArgs = { runId: stored.runId, objective: stored.objective, purpose: stored.admission.purpose, entry: stored.admission.entry,
+          ...stored.admission.purpose === 'analysis' ? { deliverable: stored.admission.deliverable } : {},
+          authority: stored.authority, allowedPaths: stored.allowedPaths, excludedPaths: stored.excludedPaths }
+      }
+      const block = { type: 'tool-call' as const, id: CallId(`owner-unit-${++this.calls}`), name: 'conductor', arguments: JSON.stringify(callArgs) }
+      yield { type: 'block-start', index: 0, blockType: 'tool-call' }
+      yield { type: 'tool-call-delta', index: 0, id: block.id, name: block.name, argumentsDelta: block.arguments }
+      yield { type: 'block-end', index: 0, block }
+      yield { type: 'finish', reason: { kind: 'tool-calls' } }
+    }
+  }())
+  h.parent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: args.objective }] }))
+  await h.parent.whenIdle()
+  await done.promise
+  await h.parent.whenIdle()
+  return results.at(-1)!
 }
 
 function execute(ctx: Context, args: unknown, agent?: Agent) {
@@ -388,7 +465,7 @@ describe('P1 owner configuration and observed child continuation', () => {
       allowedStages: ['auditor' as const], sandboxMode: 'read-only' as const, timeoutMs: 1000, maxOutputBytes: 100, graceMs: 100 }
     let detective = 0
     const proposal = { allowedPaths: baseArgs.allowedPaths, excludedPaths: [], qualityCommandIds: ['unit'] }
-    const h = await setup({ config: { subagentProvider: 'fresh', qualityCommands: [command, { ...command, id: 'other' }] },
+    const h = await setup({ liveParent: true, config: { subagentProvider: 'fresh', qualityCommands: [command, { ...command, id: 'other' }] },
       factory: (request) => {
         const args = request.args as { label: string; prompt: string }
         const result = successfulResult(request)
@@ -407,16 +484,16 @@ describe('P1 owner configuration and observed child continuation', () => {
       action: 'approve', answers: question.items.map(item => ({ itemId: item.id, text: 'Use only the approved command.' })),
       proposalHash: ownerMandateHash(proposal),
     }) })
-    const result = await execute(h.ctx, baseArgs, h.parent)
+    const result = await executeOwnerTask(h, baseArgs)
     expect(result.isError, JSON.stringify(result)).toBe(false)
     expect(result.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked', blocker: 'Gate C command selection exceeds the effective owner mandate' } })
     expect(h.engine.requests).toHaveLength(3)
     expect(h.parent.session.events.filter(event => event.type === 'approval/asked')).toHaveLength(0)
   })
 
-  it('flushes scripted answers and reassesses the same run using the exact new child attempt', async () => {
+  it.each(['complete', 'interrupted'] as const)('flushes scripted answers and preserves exact same-run provenance when %s', async (boundary) => {
     let detectiveAttempts = 0
-    const h = await setup({ factory: (request) => {
+    const h = await setup({ liveParent: true, factory: (request) => {
       const args = request.args as { label: string }
       const result = analysisResult(request)
       if (args.label === 'conductor-detective' && ++detectiveAttempts === 1) {
@@ -434,7 +511,20 @@ describe('P1 owner configuration and observed child continuation', () => {
         questionId: question.id, expectedRevision: run.ownerRevision, action: 'answer_continue',
         answers: question.items.map(item => ({ itemId: item.id, text: 'Assess the supplied current request.' })) })
     } })
-    const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }, h.parent)
+    const unmount = h.ctx.on('session/flush', (session) => {
+      if (boundary === 'interrupted' && session.events.some(event => event.type === 'conductor/owner-continuation-consumed')) {
+        throw new Error('Injected consumption persistence failure')
+      }
+    })
+    const result = await executeOwnerTask(h, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' })
+    unmount()
+    if (boundary === 'interrupted') {
+      expect(result.isError).toBe(true)
+      expect(JSON.stringify(result)).toContain('consumption boundary')
+      expect(JSON.stringify(result)).not.toContain('No Conductor run was started')
+      expect(detectiveAttempts).toBe(1)
+      return
+    }
     expect(result.isError, JSON.stringify(result)).toBe(false)
     expect(result.value).toMatchObject({ status: 'reported', result: { kind: 'report' } })
     const checkpoints = h.parent.session.events.filter(item => item.type === 'conductor/checkpoint')

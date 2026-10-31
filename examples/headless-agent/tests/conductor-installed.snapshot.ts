@@ -205,7 +205,7 @@ describe('installed Conductor through the headless example', () => {
       },
     })
     expect(result.stderr).toBe('')
-    expect(result.stdout).toContain('Conductor returned its recorded gate history and final status.')
+    expect(result.stdout).toContain(scenario === 'blocked' ? '"output":""' : 'Conductor returned its recorded gate history and final status.')
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
   it('rejects a shipped preset missing its installed roles before a model request', async () => {

@@ -5,6 +5,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { ConductorOwnerController } from './owner-controller.ts'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 
 type Phase = 'waiting' | 'running' | 'stopped' | 'complete'
@@ -14,13 +15,14 @@ type Phase = 'waiting' | 'running' | 'stopped' | 'complete'
  * Specialist scopes retain their independently restricted tools. Registrations
  * belong to the mounting fiber; no generic instruction or loop policy changes.
  * @param ctx - context of the mode-enabled Conductor tool.
+ * @param owner - private controller governing parked and reserved continuations.
  */
-export function installModeRouting(ctx: Context): void {
+export function installModeRouting(ctx: Context, owner?: ConductorOwnerController): void {
   const phases = new WeakMap<object, Phase>()
   const isParent = (agent: Agent): boolean => agent.session.header.origin !== 'subagent'
 
   ctx.on('agent/inbox/claimed', ({ agent, message }) => {
-    if (isParent(agent) && message.source.kind === 'user') {
+    if (isParent(agent) && message.source.kind === 'user' && owner?.phase(agent) === undefined) {
       phases.set(agent, 'waiting')
     }
   })
@@ -29,8 +31,10 @@ export function installModeRouting(ctx: Context): void {
     const assembly = await next()
     const agent = context.agent
     if (agent !== undefined && isParent(agent)) {
+      const ownerPhase = owner?.phase(agent)
       const phase = phases.get(agent) ?? 'waiting'
-      assembly.tools = assembly.tools.filter(tool => phase === 'waiting' && tool.name === 'conductor')
+      assembly.tools = assembly.tools.filter(tool => (ownerPhase === 'reserved-continuation'
+        || ownerPhase === undefined && phase === 'waiting') && tool.name === 'conductor')
     }
     return assembly
   })
@@ -38,6 +42,10 @@ export function installModeRouting(ctx: Context): void {
   ctx.tools.guard((exec) => {
     const agent = exec.agent
     if (agent === undefined || !isParent(agent)) return undefined
+    const ownerPhase = owner?.phase(agent)
+    if (ownerPhase === 'awaiting-owner') return 'Conductor is awaiting owner input; parent tools and replacement runs are denied.'
+    if (ownerPhase === 'reserved-continuation') return exec.name === 'conductor'
+      ? undefined : 'Only the host-reserved Conductor continuation may run.'
     const phase = phases.get(agent) ?? 'waiting'
     if (phase === 'waiting' && exec.name === 'conductor') return undefined
     return phase === 'waiting'
@@ -62,7 +70,7 @@ export function installModeRouting(ctx: Context): void {
   })
 
   ctx.on('agent/turn-stopping', ({ agent }) => {
-    if (isParent(agent) && (phases.get(agent) ?? 'waiting') === 'waiting') {
+    if (isParent(agent) && owner?.phase(agent) === undefined && (phases.get(agent) ?? 'waiting') === 'waiting') {
       throw new Error('Conductor mode task ended without calling conductor; no specialist workflow was started.')
     }
   })

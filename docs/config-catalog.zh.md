@@ -2410,7 +2410,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-tool-conductor`
 
-需要：`tools` · `subagents` · `skills` · `sessions` · `workflowEngine` · `sandbox` · `subprocess`
+需要：`tools` · `agents` · `subagents` · `skills` · `sessions` · `workflowEngine` · `sandbox` · `subprocess`
 
 ```ts config-catalog
 /** Deployment policy for the Conductor tool. */
@@ -2464,7 +2464,7 @@ export interface QualityCommandConfig {
 
 依赖：[`QualityPolicyStage`](../packages/conductor/conductor/src/index.ts)
 
-来源：[`packages/conductor/tool-conductor/src/index.ts:84`](../packages/conductor/tool-conductor/src/index.ts)
+来源：[`packages/conductor/tool-conductor/src/index.ts:85`](../packages/conductor/tool-conductor/src/index.ts)
 
 <a id="deepseek-aidsh-tool-fs"></a>
 

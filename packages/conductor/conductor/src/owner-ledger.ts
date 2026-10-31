@@ -43,6 +43,15 @@ const ledgerSchema = z.array(z.discriminatedUnion('kind', [
   z.object({ ...position, kind: z.literal('consumed'), questionId: identity, planId: identity }).strict(),
   z.object({ ...position, kind: z.literal('rejected'), questionId: identity }).strict(),
 ]))
+
+/**
+ * Decode one required owner-interaction event without granting any authority.
+ * @param value - untrusted event payload from storage or transport.
+ * @returns a structurally valid interaction; run reconstruction checks causality.
+ */
+export function parseOwnerInteraction(value: unknown): OwnerInteraction {
+  return ledgerSchema.element.parse(value) as OwnerInteraction
+}
 const gateByStage: Partial<Record<ConductorStage, GateId>> = {
   detective: 'A', strategist: 'B', 'devils-advocate': 'C', headsman: 'D', auditor: 'E', integrator: 'F', arbiter: 'G',
 }

@@ -44,6 +44,23 @@ class OwnerConductorAdapter extends LlmAdapter {
         yield* text('Conductor retained its exact gate and owner ledger; no implementation was performed.')
         return
       }
+      const continuation = options.messages.flatMap(message => message.content).findLast(block => block.type === 'text'
+        && block.text.startsWith('Continue only the stored Conductor run.'))
+      if (continuation?.type === 'text') {
+        const stored = JSON.parse(continuation.text.slice(continuation.text.indexOf('\n') + 1)) as {
+          runId: string
+          objective: string
+          admission: ConductorAdmission
+          authority: { owner: string }
+          allowedPaths: string[]
+          excludedPaths: string[]
+        }
+        yield* call('conductor', { runId: stored.runId, objective: stored.objective,
+          purpose: stored.admission.purpose, entry: stored.admission.entry,
+          ...stored.admission.purpose === 'analysis' ? { deliverable: stored.admission.deliverable } : {},
+          authority: stored.authority, allowedPaths: stored.allowedPaths, excludedPaths: stored.excludedPaths })
+        return
+      }
       const analysis = scenario.startsWith('analysis')
       yield* call('conductor', {
         purpose: analysis ? 'analysis' : 'implementation', entry: analysis ? 'detective' : 'strategist',

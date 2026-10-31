@@ -431,9 +431,10 @@ const TOOL_PACKAGES: ToolPackage[] = [
     pkg: '@deepseek-ai/dsh-tool-conductor',
     dir: 'tool-conductor',
     source: 'packages/conductor/tool-conductor/src/index.ts',
-    requires: ['ctx.tools', 'ctx.subagents', 'ctx.skills', 'ctx.sessions', 'ctx.workflowEngine', 'ctx.sandbox', 'ctx.subprocess', 'a calling Agent (exec.agent parents every specialist)'],
+    requires: ['ctx.tools', 'ctx.agents', 'ctx.subagents', 'ctx.skills', 'ctx.sessions', 'ctx.workflowEngine', 'ctx.sandbox', 'ctx.subprocess', 'a calling Agent (exec.agent parents every specialist)'],
     writes: ['tool/call', 'tool/result', 'conductor/checkpoint', 'workflow and child session events through the chosen provider'],
     async mount(ctx) {
+      await ctx.plugin(AgentRegistry)
       await ctx.plugin(SubagentRuntime)
       registerCatalogSubagentProvider(ctx, 'mock')
       await ctx.plugin(SkillRegistry)
