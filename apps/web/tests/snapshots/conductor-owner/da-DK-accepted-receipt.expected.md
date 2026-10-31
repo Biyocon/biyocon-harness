@@ -1,0 +1,14 @@
+- 'region "Conductor: spørgsmål til ejeren"':
+  - 'heading "Conductor: spørgsmål til ejeren" [level=3]'
+  - text: "Kørsel:"
+  - code: {{runId}}
+  - text: Gate A Detective · Forsøg 1
+  - paragraph: The report needs an owner scope clarification.
+  - status: Svar accepteret
+  - list:
+    - listitem:
+      - text: Which reporting scope should be used?
+      - paragraph: Documented scope
+    - listitem:
+      - text: Who is the intended audience?
+      - paragraph: Maintainers

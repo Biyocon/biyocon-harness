@@ -8,6 +8,8 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { admitIntake, captureIntakeMaterial, ConductorRunId, contentHash, createRun, parkOwnerQuestion,
   recordGate, SessionConductorRunStore } from '@deepseek-ai/dsh-conductor'
 import type { ConductorRun } from '@deepseek-ai/dsh-conductor'
+import UserQuestionService from '@deepseek-ai/dsh-user-questions'
+import type { AskUserQuestionRequest, UserQuestionProvider } from '@deepseek-ai/dsh-user-questions'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ConductorOwnerController } from '../src/owner-controller.ts'
@@ -35,20 +37,26 @@ class HostContinuationModel extends LlmAdapter {
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
 
-async function setup(seed?: readonly SessionEvent[]) {
+async function setup(
+  seed?: readonly SessionEvent[], productionQuestions = false, provider?: UserQuestionProvider,
+  beforeCreate?: (ctx: Context, controller: ConductorOwnerController) => void,
+) {
   const ctx = new Context()
   contexts.push(ctx)
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })
+  const questionFiber = await ctx.plugin(UserQuestionService)
+  if (provider !== undefined) ctx.userQuestions.registerProvider(provider)
+  ctx.on('session/flush', () => {})
   const model = new HostContinuationModel()
   ctx.llm.registerAdapter(['owner-controller'], model)
   let controller!: ConductorOwnerController
   const ownerFiber = await ctx.plugin({ name: 'owner-controller-fixture', inject: ['agents', 'sessions'],
-    apply: (ownerCtx) => { controller = new ConductorOwnerController(ownerCtx) } })
+    apply: (ownerCtx) => { controller = new ConductorOwnerController(ownerCtx, productionQuestions) } })
   installModeRouting(ctx, controller)
+  beforeCreate?.(ctx, controller)
   const { agent } = await ctx.agents.create({ sessionId: SessionId('controller-root'),
     agentOptions: { provider: 'owner-controller', model: 'test' }, ...seed === undefined ? {} : { seed } })
-  ctx.on('session/flush', () => {})
   const store = new SessionConductorRunStore(agent.session, async () => {
     if (!await ctx.sessions.flush(agent.session)) throw new Error('Fixture flush failed')
   })
@@ -82,12 +90,161 @@ async function setup(seed?: readonly SessionEvent[]) {
   const response = { source: 'scripted-test-provider' as const, rootSessionId: agent.id, questionId: 'controller-question',
     expectedRevision: run.ownerRevision, action: 'answer_continue' as const,
     answers: [{ itemId: 'evidence', text: 'Use the cited evidence only.' }] }
-  return { ctx, agent, controller, ownerFiber, store, run, model, response,
+  return { ctx, agent, controller, ownerFiber, questionFiber, store, run, model, response,
     onConsumed: (handler: (run: ConductorRun) => Promise<void>) => { afterConsumed = handler },
     dispatches: () => dispatches, consumed: () => consumed }
 }
 
 describe('Conductor-owned host answer turns', () => {
+  it.each(['checkpoint', 'receipt', 'cancel'] as const)('parks failed receipt recovery at the %s boundary without dispatch', async (boundary) => {
+    const original = await setup()
+    const binding = await original.controller.reconnect(original.agent, original.run.runId)
+    const actualFlush = original.ctx.sessions.flush.bind(original.ctx.sessions)
+    const failure = vi.spyOn(original.ctx.sessions, 'flush').mockImplementation(session =>
+      session.events.some(event => event.type === 'conductor/owner-response-recorded') ? Promise.resolve(false) : actualFlush(session))
+    await expect(original.controller.respond(original.agent, binding, original.response, new AbortController().signal)).rejects.toThrow()
+    await original.agent.whenIdle()
+    failure.mockRestore()
+    const logged = Promise.withResolvers<undefined>()
+    const recovered = await setup(original.agent.session.events, true, undefined, (ctx, controller) => {
+      ctx.logger.exporter({ levels: { default: 3 }, export: () => { logged.resolve(undefined) } })
+      if (boundary === 'cancel') {
+        ctx.on('agent/inbox/inserted', ({ agent, message }) => {
+          if (message.content.some(block => block.type === 'text' && block.text.startsWith('Recover the saved'))) controller.cancel(agent)
+        })
+      } else {
+        const flush = ctx.sessions.flush.bind(ctx.sessions)
+        vi.spyOn(ctx.sessions, 'flush').mockImplementation((session) => {
+          const marked = session.events.some(event => event.type === 'conductor/owner-response-acknowledged')
+          return (boundary === 'receipt' ? marked : !marked) ? Promise.resolve(false) : flush(session)
+        })
+      }
+    })
+    await logged.promise
+    await recovered.agent.whenIdle()
+    expect(recovered.dispatches()).toBe(0)
+    expect(recovered.model.calls).toBe(0)
+    expect(recovered.agent.session.events.some(event => event.type === 'conductor/owner-response-acknowledged'))
+      .toBe(boundary === 'receipt')
+  })
+
+  it('offers a saved-answer recovery card and consumes its plan only after the exact owner gesture', async () => {
+    const original = await setup()
+    const binding = await original.controller.reconnect(original.agent, original.run.runId)
+    const actual = original.ctx.sessions.flush.bind(original.ctx.sessions)
+    const flush = vi.spyOn(original.ctx.sessions, 'flush').mockImplementation(session =>
+      session.events.some(event => event.type === 'conductor/owner-response-recorded') ? Promise.resolve(false) : actual(session))
+    await expect(original.controller.respond(original.agent, binding, original.response, new AbortController().signal)).rejects.toThrow()
+    await original.agent.whenIdle()
+    flush.mockRestore()
+    const pending = Promise.withResolvers<AskUserQuestionRequest>()
+    const replied = Promise.withResolvers<{ answers: [] }>()
+    const h = await setup(original.agent.session.events, true, { ask: (request) => { pending.resolve(request); return replied.promise } })
+    const request = await pending.promise
+    expect(request.questions[0]?.intent).toMatchObject({ kind: 'conductor-owner', mode: 'continuation', questionId: 'controller-question', revision: 2 })
+    expect(h.dispatches()).toBe(0)
+    expect(h.model.calls).toBe(0)
+    const conductor = { questionId: 'controller-question', revision: 2, action: 'answer_continue' as const, answers: [] }
+    for (const answer of [{ answers: [] }, { answers: [{ id: 'forged', selected: [] }], conductor },
+      { answers: [], conductor: { ...conductor, questionId: 'foreign' } }, { answers: [], conductor: { ...conductor, revision: 1 } },
+      { answers: [], conductor: { ...conductor, action: 'reject' as const } }, { answers: [], conductor: { ...conductor, answers: [{ itemId: 'evidence', text: 'Changed answer' }] } },
+      { answers: [], conductor: { ...conductor, proposalHash: 'forged' } }]) {
+      await expect(request.accept?.(answer)).rejects.toThrow('exact unmodified owner gesture')
+    }
+    await request.accept?.({ answers: [], conductor })
+    replied.resolve({ answers: [] })
+    await h.agent.whenIdle()
+    expect(h.dispatches()).toBe(1)
+    expect((await h.store.load(h.run.runId))?.ownerLedger.map(entry => entry.kind)).toEqual(['question', 'answer', 'consumed'])
+    await expect(request.accept?.({ answers: [], conductor })).rejects.toThrow('consumed transport binding')
+    expect(h.dispatches()).toBe(1)
+  })
+
+  it.each(['answer_continue', 'reject'] as const)('recovers a saved %s receipt in a model-free turn without dispatching after restart', async (action) => {
+    const original = await setup()
+    const binding = await original.controller.reconnect(original.agent, original.run.runId)
+    const response = { ...original.response, action, answers: action === 'reject' ? [] : original.response.answers }
+    const actual = original.ctx.sessions.flush.bind(original.ctx.sessions)
+    const flush = vi.spyOn(original.ctx.sessions, 'flush').mockImplementation(session =>
+      session.events.some(event => event.type === 'conductor/owner-response-recorded' || event.type === 'conductor/owner-terminal-rejection')
+        ? Promise.resolve(false) : actual(session))
+    await expect(original.controller.respond(original.agent, binding, response, new AbortController().signal)).rejects.toThrow('reservation changed')
+    await original.agent.whenIdle()
+    flush.mockRestore()
+    expect(original.agent.session.events.some(event => event.type === 'conductor/owner-response-acknowledged')).toBe(false)
+    const recovered = await setup(original.agent.session.events, true)
+    await recovered.agent.whenIdle()
+    expect(recovered.agent.session.events.filter(event => event.type === 'conductor/owner-response-acknowledged')).toHaveLength(1)
+    expect(recovered.model.calls).toBe(0)
+    expect(recovered.dispatches()).toBe(0)
+    expect((await recovered.store.load(recovered.run.runId))?.status).toBe(action === 'reject' ? 'aborted' : 'continuation_pending')
+    const restarted = await setup(recovered.agent.session.events, true)
+    await restarted.agent.whenIdle()
+    expect(restarted.agent.session.events.filter(event => event.type === 'conductor/owner-response-acknowledged')).toHaveLength(1)
+    expect(restarted.dispatches()).toBe(0)
+  })
+
+  it('reoffers the same durable question when its owner root is reconstructed and ignores other checkpoint revisions', async () => {
+    const original = await setup()
+    const unrelated = createRun(ConductorRunId('CON-2026-0038'), {
+      admission: original.run.admission, objective: original.run.objective, authority: original.run.authority,
+      ownerSessionId: original.agent.id, acceptanceCriteria: original.run.acceptanceCriteria,
+    })
+    await original.store.save(unrelated)
+    await original.store.save(unrelated)
+    original.agent.session.append('conductor/checkpoint', { runId: ConductorRunId('CON-2026-0039'), record: null })
+    original.agent.session.append('session/title', { title: 'Pending owner question', source: { kind: 'user' }, messageSeqs: [] })
+    const request = Promise.withResolvers<AskUserQuestionRequest>()
+    const finished = Promise.withResolvers<{ answers: [] }>()
+    const recovered = await setup(original.agent.session.events, true, {
+      ask: (value) => { request.resolve(value); return finished.promise },
+    })
+    const question = await request.promise
+    expect(question.questions[0]?.intent).toMatchObject({ questionId: 'controller-question', revision: 1 })
+    await question.accept?.({ answers: [], conductor: { questionId: 'controller-question', revision: 1,
+      action: 'reject', answers: [] } })
+    finished.resolve({ answers: [] })
+    expect((await recovered.store.load(recovered.run.runId))?.ownerLedger.map(entry => entry.kind)).toEqual(['question', 'rejected'])
+    expect(recovered.dispatches()).toBe(0)
+    const child = await recovered.agent.ctx.agents.create({ sessionId: SessionId('ignored-production-child'), meta: { origin: 'subagent' } })
+    expect(child.agent).toBeDefined()
+  })
+
+  it('stays parked when a production UI service is unavailable', async () => {
+    const h = await setup(undefined, true)
+    const logged = Promise.withResolvers<undefined>()
+    const warning = h.ctx.logger.exporter({ levels: { default: 3 }, export: (message) => {
+      if (message.args.map(String).join(' ').includes('no question UI provider')) logged.resolve(undefined)
+    } })
+    await h.questionFiber.dispose()
+    h.controller.offer(h.agent, h.run.runId)
+    await logged.promise
+    expect((await h.store.load(h.run.runId))?.status).toBe('awaiting_owner')
+    expect(h.dispatches()).toBe(0)
+    await warning()
+  })
+
+  it('answers through the production typed question service and its durable acceptance callback', async () => {
+    const h = await setup(undefined, true)
+    const pending = Promise.withResolvers<AskUserQuestionRequest>()
+    const done = Promise.withResolvers<undefined>()
+    h.ctx.userQuestions.registerProvider({
+      ask: (request) => { pending.resolve(request); return done.promise.then(() => ({ answers: [] })) },
+    })
+    h.controller.offer(h.agent, h.run.runId)
+    const request = await pending.promise
+    expect(request.questions[0]?.intent).toMatchObject({ kind: 'conductor-owner', runId: h.run.runId,
+      questionId: 'controller-question', revision: 1, gate: 'A', role: 'detective', attempt: 1 })
+    await expect(request.accept?.({ answers: [], conductor: { questionId: 'controller-question', revision: 1,
+      action: 'answer_continue', answers: [] } })).rejects.toThrow('every required item')
+    await request.accept?.({ answers: [], conductor: { questionId: 'controller-question', revision: 1,
+      action: 'answer_continue', answers: [{ itemId: 'evidence', text: 'Use the cited evidence only.' }] } })
+    done.resolve(undefined)
+    await h.agent.whenIdle()
+    expect(h.dispatches()).toBe(1)
+    expect(h.agent.session.events.some(event => event.type === 'conductor/owner-response-recorded')).toBe(true)
+  })
+
   it('offers the next same-run question while the previous host still awaits the resumed turn', async () => {
     const h = await setup()
     const secondOffered = Promise.withResolvers<undefined>()

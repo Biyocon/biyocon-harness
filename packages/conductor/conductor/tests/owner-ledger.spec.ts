@@ -41,6 +41,11 @@ function invalid(run: ConductorRun, change: (run: ConductorRun) => void, message
 }
 
 describe('durable Conductor owner interactions', () => {
+  it('accepts a host UI answer through the same exact ledger validation', () => {
+    const run = parked()
+    expect(applyScriptedOwnerAnswer(run, response(run, { source: 'host-ui' })).status).toBe('continuation_pending')
+  })
+
   it('classifies exhausted structural repairs without allowing owner answers to waive authority violations', () => {
     expect(ownerEscalationForProblem({ kind: 'report', message: 'Missing required report fields.' })).toEqual({
       kind: 'recoverable', cause: 'rework-exhausted', reason: 'Missing required report fields.',
@@ -111,7 +116,7 @@ describe('durable Conductor owner interactions', () => {
     for (const change of [
       { rootSessionId: SessionId('foreign') }, { expectedRevision: 0 }, { questionId: 'other' },
     ]) expect(() => applyScriptedOwnerAnswer(run, response(run, change))).toThrow('foreign or stale')
-    expect(() => applyScriptedOwnerAnswer(run, { ...response(run), source: 'production' } as unknown as ScriptedOwnerResponse)).toThrow('scripted test provider')
+    expect(() => applyScriptedOwnerAnswer(run, { ...response(run), source: 'production' } as unknown as ScriptedOwnerResponse)).toThrow('host UI or scripted test provider')
     expect(() => applyScriptedOwnerAnswer(run, response(run, { answers: [] }))).toThrow('every required item')
     expect(() => applyScriptedOwnerAnswer(run, response(run, { answers: [{ itemId: 'schema', text: 'x', optionId: 'absent' }] }))).toThrow('invalid answer')
     expect(() => applyScriptedOwnerAnswer(run, response(run, { answers: [{ itemId: 'other', text: 'x', optionId: 'v1' }] }))).toThrow('invalid answer')

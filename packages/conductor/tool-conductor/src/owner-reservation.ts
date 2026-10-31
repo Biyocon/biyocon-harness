@@ -4,7 +4,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import { applyScriptedOwnerAnswer, pendingOwnerQuestion } from '@deepseek-ai/dsh-conductor'
+import { applyScriptedOwnerAnswer, pendingOwnerQuestion, pendingOwnerResumePlan } from '@deepseek-ai/dsh-conductor'
 import type { ConductorRun, ConductorRunId, ScriptedOwnerResponse, OwnerTransportBinding } from '@deepseek-ai/dsh-conductor'
 export type { OwnerTransportBinding } from '@deepseek-ai/dsh-conductor'
 
@@ -47,6 +47,38 @@ export class OwnerReservations {
     this.current = { runId: run.runId, questionId: question.id, rootSessionId: run.ownerSessionId,
       revision: run.ownerRevision, transportId: randomUUID() }
     return { ...this.current }
+  }
+
+
+  /**
+   * Bind an already durable answer to a fresh, explicit owner continuation gesture.
+   * @param run - continuation-pending checkpoint owned by this live root.
+   * @returns fresh host transport identity; no ledger revision is added.
+   */
+  reconnectContinuation(run: ConductorRun): OwnerTransportBinding {
+    if (this.reserved !== undefined) throw new Error('Conductor owner response is already reserved')
+    const plan = pendingOwnerResumePlan(run)
+    if (run.status !== 'continuation_pending' || plan === undefined || run.ownerSessionId === null) {
+      throw new Error('Conductor has no saved owner continuation to present')
+    }
+    this.current = { runId: run.runId, questionId: plan.questionId, rootSessionId: run.ownerSessionId,
+      revision: run.ownerRevision, transportId: randomUUID() }
+    return { ...this.current }
+  }
+
+  /**
+   * Consume one current transport for the stored plan, without recording another answer.
+   * @param run - freshly loaded checkpoint after the owning host's flush barrier.
+   * @param binding - exact current host-issued continuation transport.
+   */
+  consumeContinuation(run: ConductorRun, binding: OwnerTransportBinding): void {
+    const plan = pendingOwnerResumePlan(run)
+    if (this.current === undefined || !isDeepStrictEqual(binding, this.current)
+      || run.status !== 'continuation_pending' || plan?.questionId !== binding.questionId
+      || run.runId !== binding.runId || run.ownerSessionId !== binding.rootSessionId || run.ownerRevision !== binding.revision) {
+      throw new Error('Conductor owner continuation has a foreign, stale or consumed transport binding')
+    }
+    this.current = undefined
   }
 
   /**

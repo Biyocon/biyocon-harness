@@ -2,6 +2,7 @@
  * Required-on-read owner-interaction facts projected from the authoritative ledger.
  * @module @deepseek-ai/dsh-conductor/owner-events
  */
+import { z } from 'zod'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import { isDeepStrictEqual } from 'node:util'
 import type { ConductorRun, ConductorRunId } from './types.ts'
@@ -25,7 +26,62 @@ declare module '@deepseek-ai/dsh-session/types' {
     'conductor/owner-continuation-consumed': OwnerInteractionEvent<'consumed'>
     /** Required owner rejection; never an authorization to continue. */
     'conductor/owner-terminal-rejection': OwnerInteractionEvent<'rejected'>
+    /** The paired answer/rejection checkpoint was flushed successfully before this fact. */
+    'conductor/owner-response-acknowledged': OwnerAcknowledgement
   }
+}
+
+
+/** Receipt certifying that the exact answer checkpoint passed the host flush barrier. */
+export interface OwnerAcknowledgement {
+  runId: ConductorRunId
+  questionId: string
+  revision: number
+  status: 'accepted' | 'rejected'
+}
+
+const acknowledgementSchema = z.object({
+  runId: z.string().regex(/^CON-\d{4}-\d{4}$/), questionId: z.string().min(1).max(256).refine(value => value === value.trim()),
+  revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), status: z.enum(['accepted', 'rejected']),
+}).strict()
+
+/**
+ * Decode a required durable-receipt fact; ledger reconstruction checks its causal reference.
+ * @param value - untrusted session-event data.
+ * @returns the exact answer/rejection identity and committed status.
+ */
+export function decodeOwnerAcknowledgement(value: unknown): OwnerAcknowledgement {
+  const data = acknowledgementSchema.parse(value)
+  return { ...data, runId: data.runId as ConductorRunId }
+}
+
+function acknowledgedEntry(run: ConductorRun, value: OwnerAcknowledgement): boolean {
+  return run.ownerLedger.some(entry => (entry.kind === 'answer' || entry.kind === 'rejected')
+    && entry.questionId === value.questionId && entry.revision === value.revision
+    && value.status === (entry.kind === 'answer' ? 'accepted' : 'rejected'))
+}
+
+/**
+ * Publish a receipt only after the caller has flushed this exact answer checkpoint.
+ * The enclosing host turn flushes the receipt before acknowledging its transport.
+ * @param session - live owning session with its host turn open.
+ * @param run - already flushed answer or rejection checkpoint.
+ * @param questionId - exact question settled by that checkpoint.
+ */
+export function publishOwnerAcknowledgement(session: Session, run: ConductorRun, questionId: string): void {
+  const entry = run.ownerLedger.find(item => (item.kind === 'answer' || item.kind === 'rejected') && item.questionId === questionId)
+  if (entry === undefined || run.ownerSessionId !== session.id) {
+    throw new Error('Conductor cannot acknowledge an answer outside its owning ledger')
+  }
+  const data: OwnerAcknowledgement = { runId: run.runId, questionId, revision: entry.revision,
+    status: entry.kind === 'answer' ? 'accepted' : 'rejected' }
+  const previous = session.events.find(event => event.type === 'conductor/owner-response-acknowledged'
+    && event.data.runId === run.runId && event.data.questionId === questionId)
+  if (previous !== undefined) {
+    if (!isDeepStrictEqual(decodeOwnerAcknowledgement(previous.data), data)) throw new Error('Conductor owner receipt conflicts with its ledger')
+    return
+  }
+  session.append('conductor/owner-response-acknowledged', data)
 }
 
 const typeByKind = {
@@ -104,6 +160,12 @@ export function decodeOwnerInteractionEvent(type: string, value: unknown): Owner
 export function replayOwnerInteractions(initial: ConductorRun, events: readonly SessionEvent[]): ConductorRun {
   let run = initial
   for (const event of events) {
+    if (event.type === 'conductor/owner-response-acknowledged') {
+      const acknowledgement = decodeOwnerAcknowledgement(event.data)
+      if (acknowledgement.runId !== run.runId) continue
+      if (!acknowledgedEntry(run, acknowledgement)) throw new Error('Conductor owner receipt contradicts its answer checkpoint')
+      continue
+    }
     if (event.type !== 'conductor/owner-question-created' && event.type !== 'conductor/owner-response-recorded'
       && event.type !== 'conductor/owner-continuation-consumed' && event.type !== 'conductor/owner-terminal-rejection') continue
     const data = decodeOwnerInteractionEvent(event.type, event.data)

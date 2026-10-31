@@ -220,3 +220,24 @@ describe('UserQuestionService', () => {
     expect(p.seen[0]?.questions[1]?.intent).toEqual(intent)
   })
 })
+
+
+describe('typed Conductor intent admission', () => {
+  it('accepts only the dedicated single carrier and never a mixed generic flow', async () => {
+    const ctx = new Context()
+    await ctx.plugin(UserQuestionService)
+    const p = provider()
+    ctx.userQuestions.registerProvider(p)
+    const intent = { kind: 'conductor-owner' as const, runId: 'CON-2026-0037', questionId: 'q', revision: 1,
+      gate: 'A' as const, role: 'detective' as const, attempt: 1, reason: 'Which source?', items: [] }
+    const question = { id: 'q', question: 'Which source?', intent }
+    for (const questions of [[question, { id: 'other', question: 'Other?' }], [{ ...question, id: 'foreign' }],
+      [{ ...question, options: [] }], [{ ...question, multiSelect: false }]]) {
+      await expect(ctx.userQuestions.ask({ questions })).rejects.toMatchObject({ code: 'BAD_INTENT' })
+    }
+    expect(p.seen).toHaveLength(0)
+    await ctx.userQuestions.ask({ questions: [question] })
+    expect(p.seen[0]?.questions).toEqual([question])
+    await ctx.fiber.dispose()
+  })
+})

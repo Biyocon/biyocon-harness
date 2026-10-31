@@ -425,7 +425,7 @@ Source: [`packages/conductor/conductor/src/child-types.ts:29`](../packages/condu
 'conductor/owner-continuation-consumed': OwnerInteractionEvent<'consumed'>
 ```
 
-来源： [`packages/conductor/conductor/src/owner-events.ts:25`](../packages/conductor/conductor/src/owner-events.ts)
+来源： [`packages/conductor/conductor/src/owner-events.ts:26`](../packages/conductor/conductor/src/owner-events.ts)
 
 <a id="conductorowner-question-created--log-only"></a>
 
@@ -436,7 +436,18 @@ Source: [`packages/conductor/conductor/src/child-types.ts:29`](../packages/condu
 'conductor/owner-question-created': OwnerInteractionEvent<'question'>
 ```
 
-来源： [`packages/conductor/conductor/src/owner-events.ts:21`](../packages/conductor/conductor/src/owner-events.ts)
+来源： [`packages/conductor/conductor/src/owner-events.ts:22`](../packages/conductor/conductor/src/owner-events.ts)
+
+<a id="conductorowner-response-acknowledged--log-only"></a>
+
+#### `conductor/owner-response-acknowledged` — 仅日志
+
+```ts persistence-catalog
+/** The paired answer/rejection checkpoint was flushed successfully before this fact. */
+'conductor/owner-response-acknowledged': OwnerAcknowledgement
+```
+
+来源： [`packages/conductor/conductor/src/owner-events.ts:30`](../packages/conductor/conductor/src/owner-events.ts)
 
 <a id="conductorowner-response-recorded--log-only"></a>
 
@@ -447,7 +458,7 @@ Source: [`packages/conductor/conductor/src/child-types.ts:29`](../packages/condu
 'conductor/owner-response-recorded': OwnerInteractionEvent<'answer'>
 ```
 
-来源： [`packages/conductor/conductor/src/owner-events.ts:23`](../packages/conductor/conductor/src/owner-events.ts)
+来源： [`packages/conductor/conductor/src/owner-events.ts:24`](../packages/conductor/conductor/src/owner-events.ts)
 
 <a id="conductorowner-terminal-rejection--log-only"></a>
 
@@ -458,7 +469,7 @@ Source: [`packages/conductor/conductor/src/child-types.ts:29`](../packages/condu
 'conductor/owner-terminal-rejection': OwnerInteractionEvent<'rejected'>
 ```
 
-来源： [`packages/conductor/conductor/src/owner-events.ts:27`](../packages/conductor/conductor/src/owner-events.ts)
+来源： [`packages/conductor/conductor/src/owner-events.ts:28`](../packages/conductor/conductor/src/owner-events.ts)
 
 ### `feedback/*`
 

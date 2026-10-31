@@ -2673,7 +2673,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AskUserQuestionAnswer',
-    declaration: 'export interface AskUserQuestionAnswer {\n    answers: AskUserQuestionAnswerItem[];\n}',
+    declaration: 'export interface AskUserQuestionAnswer {\n    conductor?: ConductorOwnerAnswer;\n    answers: AskUserQuestionAnswerItem[];\n}',
   },
   {
     name: 'AskUserQuestionAnswerItem',
@@ -2681,7 +2681,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AskUserQuestionIntent',
-    declaration: 'export type AskUserQuestionIntent = {\n    kind: \'plan-review\';\n    approve: string;\n};',
+    declaration: 'export type AskUserQuestionIntent = ConductorOwnerIntent | {\n    kind: \'plan-review\';\n    approve: string;\n};',
   },
   {
     name: 'AskUserQuestionItem',
@@ -2693,7 +2693,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AskUserQuestionRequest',
-    declaration: 'export interface AskUserQuestionRequest {\n    questions: AskUserQuestionItem[];\n    agent?: Agent;\n    signal?: AbortSignal;\n}',
+    declaration: 'export interface AskUserQuestionRequest {\n    questions: AskUserQuestionItem[];\n    accept?: (answer: AskUserQuestionAnswer) => Promise<void>;\n    agent?: Agent;\n    signal?: AbortSignal;\n}',
   },
   {
     name: 'AssembleContext',
@@ -2826,6 +2826,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CompactionTrigger',
     declaration: 'export type CompactionTrigger = \'pressure\' | \'context-overflow\';',
+  },
+  {
+    name: 'ConductorOwnerAnswer',
+    declaration: 'export interface ConductorOwnerAnswer {\n    questionId: string;\n    revision: number;\n    action: \'approve\' | \'reject\' | \'answer_continue\';\n    answers: {\n        itemId: string;\n        text: string;\n        optionId?: string;\n    }[];\n    proposalHash?: string;\n}',
+  },
+  {
+    name: 'ConductorOwnerIntent',
+    declaration: 'export interface ConductorOwnerIntent {\n    kind: \'conductor-owner\';\n    mode?: \'continuation\';\n    runId: string;\n    questionId: string;\n    revision: number;\n    gate: \'A\' | \'B\' | \'C\' | \'D\' | \'E\' | \'F\' | \'G\';\n    role: \'detective\' | \'strategist\' | \'devils-advocate\' | \'headsman\' | \'auditor\' | \'integrator\' | \'arbiter\';\n    attempt: number;\n    reason: string;\n    items: {\n        id: string;\n        prompt: string;\n        options: string[];\n    }[];\n    proposal?: {\n        before: ConductorOwnerMandate;\n        after: ConductorOwnerMandate;\n        hash: string;\n    };\n}',
+  },
+  {
+    name: 'ConductorOwnerMandate',
+    declaration: 'export interface ConductorOwnerMandate {\n    allowedPaths: string[];\n    excludedPaths: string[];\n    qualityCommandIds: string[];\n}',
   },
   {
     name: 'ConfinedArgv',

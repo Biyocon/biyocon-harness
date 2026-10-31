@@ -2421,6 +2421,8 @@ export interface Config {
   maxMaterialTotalBytes?: number
   /** Require parent tasks to start with Conductor and prohibit solo fallback (default false). */
   routeTasks?: boolean
+  /** Expose durable owner questions through the typed host UI (default false). */
+  ownerQuestions?: boolean
   /** Fresh structured-output subagent provider (default `spawn`). */
   subagentProvider?: string
   /** Maximum rework decisions per gate before escalation (default 2). */

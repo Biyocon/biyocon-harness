@@ -16,6 +16,10 @@ import {
 import { taskViewSchema } from './jobs.schema.ts'
 import { workspaceIdSchema, workspaceViewSchema } from './workspace.schema.ts'
 
+const conductorMandateSchema = z.object({
+  allowedPaths: z.array(z.string()), excludedPaths: z.array(z.string()), qualityCommandIds: z.array(z.string()),
+})
+
 /** Question fields validated strictly against core dsh-user-questions. */
 export const askUserQuestionItemSchema = z.object({
   id: z.string(),
@@ -28,6 +32,13 @@ export const askUserQuestionItemSchema = z.object({
   // rejected frame rather than a silently generic render.
   intent: z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('plan-review'), approve: z.string() }),
+    z.object({ kind: z.literal('conductor-owner'), mode: z.literal('continuation').optional(), runId: z.string(), questionId: z.string(),
+      revision: z.number().int().nonnegative(), gate: z.enum(['A', 'B', 'C', 'D', 'E', 'F', 'G']),
+      role: z.enum(['detective', 'strategist', 'devils-advocate', 'headsman', 'auditor', 'integrator', 'arbiter']),
+      attempt: z.number().int().positive(), reason: z.string(),
+      items: z.array(z.object({ id: z.string(), prompt: z.string(), options: z.array(z.string()) })),
+      proposal: z.object({ before: conductorMandateSchema, after: conductorMandateSchema, hash: z.string() }).optional(),
+    }),
   ]).optional(),
 }) satisfies z.ZodType<Wire<AskUserQuestionItem>>
 

@@ -47,6 +47,8 @@ tool/result      "escalated" — this one call ran under the wider mode; the gra
 
 The `escalation-rejected` twin ends in `{"outcome": "rejected"}` instead: nothing executes, and the model's result carries the asker's verbatim fail-closed text (`the user rejected escalating this command to "workspace-write"`). A hook's `permissionDecision: ask` rides the identical wire; only the asker and its deny texts differ (§ Ask routing in dsh-tools). Without an answerer, the same request settles `unavailable`.
 
+Conductor owner clarification uses a separate [durable question and resumption controller](2026-10-30-conductor-owner-escalation-resumption.md). Its `approve` action confirms a concrete mandate amendment, not this seam's Gate C baseline authorization, an Arbiter GO or closeout. A changed mandate still requires a fresh exact execution-baseline approval through this seam.
+
 ### Design detail
 
 #### The seam: mechanism and policy split

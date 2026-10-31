@@ -12,6 +12,12 @@ import { sessionIdSchema } from './sessions.schema.ts'
 
 /** AskUserQuestionAnswer validated strictly against core dsh-user-questions. */
 export const askUserQuestionAnswerSchema = z.object({
+  conductor: z.object({
+    questionId: z.string(), revision: z.number().int().nonnegative(),
+    action: z.enum(['approve', 'reject', 'answer_continue']),
+    answers: z.array(z.object({ itemId: z.string(), text: z.string(), optionId: z.string().optional() }).strict()),
+    proposalHash: z.string().optional(),
+  }).strict().optional(),
   answers: z.array(z.object({
     id: z.string(),
     selected: z.array(z.string()),
