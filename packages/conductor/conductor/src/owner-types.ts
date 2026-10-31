@@ -94,7 +94,7 @@ export interface OwnerQuestionSource {
   report: unknown
 }
 
-/** Test-provider response only. No live host controller is exposed in P1. */
+/** Scripted host response; production answering remains unavailable until the UI ships. */
 export interface ScriptedOwnerResponse {
   source: 'scripted-test-provider'
   rootSessionId: SessionId
@@ -103,4 +103,13 @@ export interface ScriptedOwnerResponse {
   action: 'approve' | 'reject' | 'answer_continue'
   answers: OwnerAnswer[]
   proposalHash?: string
+}
+
+/** Host-captured transport identity; an identifier alone never confers a reservation. */
+export interface OwnerTransportBinding {
+  runId: ConductorRunId
+  questionId: string
+  rootSessionId: SessionId
+  revision: number
+  transportId: string
 }

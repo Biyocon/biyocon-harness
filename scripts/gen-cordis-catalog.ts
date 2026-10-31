@@ -132,6 +132,7 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   cmdlineArgs: 'not a service: launcher-provided immutable app argument accessor — packages/boot/cmdline/README.md owns the launcher contract',
   configuredAgentIdentities: 'not a service: launcher-provided boot-context value (ConfiguredAgentIdentities | undefined) — packages/core/agent-loop/README.md owns this launcher contract',
   conductorOwnerTestProvider: 'not a service: optional scripted test-composition response value; the shipped preset provides none — packages/conductor/tool-conductor/README.md owns this P1-only contract',
+  conductorOwnerHostTest: 'not a service: optional scripted host-test composition; no production answering before the UI ships — packages/conductor/tool-conductor/README.md owns the interaction contract',
   launcherSessionQueryPath: 'not a service: launcher-provided boot-context value (string | undefined) — packages/session-query/session-query-sqlite/README.md owns this launcher contract',
   dshHomePath: 'not a service: boot-provided root accessor function (typeof dshHomePath | undefined) for Loader !!js config expressions — packages/boot/app-boot/README.md owns the boot contract',
   launchEnvironment: 'not a service: launcher-provided root accessor value (LaunchEnvironmentSnapshot | undefined) — packages/util/launch-environment/README.md owns this launcher contract',

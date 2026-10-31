@@ -75,10 +75,11 @@ import type { QualityCommandConfig, QualityCommandDefinition } from './quality-c
 import { canonicalAbsolute } from './path-policy.ts'
 import { installModeRouting } from './mode-routing.ts'
 import { settleOwnerEscalation } from './owner-interaction.ts'
+import { ConductorOwnerController, OwnerContinuationInterruption } from './owner-controller.ts'
 import type { OwnerDispatchObservation } from './owner-interaction.ts'
 
 export const name = 'tool-conductor'
-export const inject = ['tools', 'subagents', 'skills', 'sessions', 'workflowEngine', 'sandbox', 'subprocess']
+export const inject = ['tools', 'agents', 'subagents', 'skills', 'sessions', 'workflowEngine', 'sandbox', 'subprocess']
 
 /** Deployment policy for the Conductor tool. */
 export interface Config {
@@ -925,7 +926,8 @@ export function apply(ctx: Context, config: Config): void {
   })
   const resolved = resolveConfig(config)
   requireFreshProvider(ctx, resolved.subagentProvider)
-  if (config.routeTasks === true) installModeRouting(ctx)
+  const ownerController = new ConductorOwnerController(ctx)
+  if (config.routeTasks === true) installModeRouting(ctx, ownerController)
 
   ctx.tools.register(defineTool({
     name: 'conductor',
@@ -1024,7 +1026,10 @@ export function apply(ctx: Context, config: Config): void {
         })
 
         let run: ConductorRun
-        if (call.runId !== undefined) {
+        const ownerContinuation = await ownerController.consume(parent, call.runId, exec.signal)
+        if (ownerContinuation !== undefined) {
+          run = ownerContinuation
+        } else if (call.runId !== undefined) {
           if (!isValidRunId(call.runId)) throw new Error(`Conductor runId "${call.runId}" is not a valid CON-YYYY-NNNN id`)
           run = await resumeRun(store, ConductorRunId(call.runId))
           if (call.purpose !== run.admission.purpose || call.entry !== run.admission.entry
@@ -1137,15 +1142,11 @@ export function apply(ctx: Context, config: Config): void {
           publishChildGates(parent.session, checkpoint)
           activeRun = checkpoint
         }
-        let outcome
-        while (true) {
-          outcome = await drive(run, dispatcher, saveCheckpoint)
-          const owner = await settleOwnerEscalation(ctx, outcome, lastObservation,
-            parent.session.header.cwd ?? process.cwd(), saveCheckpoint)
-          outcome = owner.outcome
-          if (owner.continuation === undefined) break
-          run = owner.continuation
-        }
+        const driven = await drive(run, dispatcher, saveCheckpoint)
+        const { outcome } = await settleOwnerEscalation(ctx, driven, lastObservation,
+          parent.session.header.cwd ?? process.cwd(), saveCheckpoint, true)
+
+        if (outcome.run.status === 'awaiting_owner') ownerController.offer(parent, outcome.run.runId)
 
         return {
           runId: outcome.run.runId,
@@ -1156,6 +1157,7 @@ export function apply(ctx: Context, config: Config): void {
             : { kind: 'blocked', blocker: outcome.blocker, run: runSummary(outcome.run) }) as unknown as JsonValue,
         }
       } catch (cause) {
+        if (cause instanceof OwnerContinuationInterruption) activeRun = cause.run
         const message = cause instanceof Error ? cause.message : String(cause)
         const failedStage = cause instanceof SpecialistExecutionFailure && cause.childStarted ? cause.stage : undefined
         throw new Error(activeRun === undefined

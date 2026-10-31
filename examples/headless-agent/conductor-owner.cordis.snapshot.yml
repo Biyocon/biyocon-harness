@@ -11,6 +11,9 @@
 - id: owner-model
   name: ./tests/fixtures/conductor-owner-mock.ts
 
+- id: owner-questions
+  name: '@deepseek-ai/dsh-user-questions'
+
 - id: owner-script
   name: ./tests/fixtures/conductor-owner-script.ts
   disabled: !!js process.env.DSH_CONDUCTOR_OWNER_SCENARIO === 'unavailable'

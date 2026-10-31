@@ -405,7 +405,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'conductor/checkpoint': ConductorCheckpointData
 ```
 
-来源：[`packages/conductor/conductor/src/persistence.ts:53`](../packages/conductor/conductor/src/persistence.ts)
+来源：[`packages/conductor/conductor/src/persistence.ts:55`](../packages/conductor/conductor/src/persistence.ts)
 
 <a id="conductorchild--log-only"></a>
 
@@ -417,6 +417,48 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 ```
 
 Source: [`packages/conductor/conductor/src/child-types.ts:29`](../packages/conductor/conductor/src/child-types.ts)
+
+#### `conductor/owner-continuation-consumed` — 仅日志
+
+```ts persistence-catalog
+/** Required fact that one exact reassessment plan has been consumed. */
+'conductor/owner-continuation-consumed': OwnerInteractionEvent<'consumed'>
+```
+
+来源： [`packages/conductor/conductor/src/owner-events.ts:25`](../packages/conductor/conductor/src/owner-events.ts)
+
+<a id="conductorowner-question-created--log-only"></a>
+
+#### `conductor/owner-question-created` — 仅日志
+
+```ts persistence-catalog
+/** Required durable question identity and exact specialist provenance. */
+'conductor/owner-question-created': OwnerInteractionEvent<'question'>
+```
+
+来源： [`packages/conductor/conductor/src/owner-events.ts:21`](../packages/conductor/conductor/src/owner-events.ts)
+
+<a id="conductorowner-response-recorded--log-only"></a>
+
+#### `conductor/owner-response-recorded` — 仅日志
+
+```ts persistence-catalog
+/** Required durable answer and its single-use reassessment plan. */
+'conductor/owner-response-recorded': OwnerInteractionEvent<'answer'>
+```
+
+来源： [`packages/conductor/conductor/src/owner-events.ts:23`](../packages/conductor/conductor/src/owner-events.ts)
+
+<a id="conductorowner-terminal-rejection--log-only"></a>
+
+#### `conductor/owner-terminal-rejection` — 仅日志
+
+```ts persistence-catalog
+/** Required owner rejection; never an authorization to continue. */
+'conductor/owner-terminal-rejection': OwnerInteractionEvent<'rejected'>
+```
+
+来源： [`packages/conductor/conductor/src/owner-events.ts:27`](../packages/conductor/conductor/src/owner-events.ts)
 
 ### `feedback/*`
 

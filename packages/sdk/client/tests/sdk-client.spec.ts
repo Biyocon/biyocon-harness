@@ -54,6 +54,22 @@ async function tempDir(prefix: string): Promise<string> {
 }
 
 describe('DeepSeekHarness', () => {
+  it.each(['approved', 'rejected'])('preserves required Conductor owner events over stdio for %s', async (scenario) => {
+    const file = fileURLToPath(new URL(`../../../../examples/headless-agent/tests/snapshots/conductor-owner/${scenario}/parent.expected.jsonl`, import.meta.url))
+    const expected = (await readFile(file, 'utf8')).trim().split('\n')
+      .map(line => JSON.parse(line) as { type: string }).filter(event => event.type.startsWith('conductor/owner-'))
+    expect(expected).toHaveLength(scenario === 'approved' ? 3 : 2)
+    expect(expected.every(event => !Object.hasOwn(event, 'ignorable'))).toBe(true)
+    const harness = harnessWith({ FAKE_OWNER_EVENTS_FILE: file })
+    const result = await harness.run('Transport the recorded owner facts.', { sessionId: 'owner-wire' })
+    expect(result.events.filter(event => event.type.startsWith('conductor/owner-'))).toEqual(expected)
+    expect(result.notifications.flatMap((notification) => {
+      if (notification.method !== 'session.event') return []
+      const event = notification.params.event as { type: string }
+      return event.type.startsWith('conductor/owner-') ? [event] : []
+    })).toEqual(expected)
+  })
+
   it('ignores notifications that precede the submitted message receipt', async () => {
     const notifications = [
       { method: 'session.status', params: { sessionId: 'owned', status: 'running' } },

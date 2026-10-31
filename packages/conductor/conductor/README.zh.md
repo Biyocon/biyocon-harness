@@ -18,7 +18,7 @@ Gate C 提案只包含版本、rollback reference 和请求的质量命令 id，
 
 `conductor/child` 是模型不可见的父事件，标识一个具体工作流子会话：运行时角色、按角色的尝试编号、生命周期、派发历史偏移及可选的精确子会话门禁结果。`./child-types` 可安全导入客户端。将本包作为插件与 `sessionProjections` 一起挂载，即可独立于 agent 生命周期保留 `conductorChildren` 投影；共享 base bundle 已挂载。继承的种子子会话被清除。这些必读事件不改变检查点格式 4。[子会话显示决策](../../../.agents/notes/implemented/bug-fix/2026-10-28-conductor-child-role-status.md)定义归属与重放语义。
 
-所有者交互使用独立的只追加台账，绑定根会话、原始门禁、精确子会话尝试与报告哈希。单调递增的所有者修订号绑定完整回答和一次性重新评估计划；原始准入与历史 baseline 保持不变。`maxOwnerReassessmentsPerGate` 默认 2，与自动返工独立，并随运行持久化。同一门禁第三次所有者重新评估会终止升级。自由文本不授予权限；通过宿主能力检查的具体授权变更使当前批准失效，并要求新的 Gate C 批准。分析只接受只读澄清。待答问题不自动过期。P1 仅提供脚本化测试回答：生产运行保持 `awaiting_owner`，普通恢复拒绝待答问题和待续回答。[所有者升级提案](../../../.agents/notes/proposed/feature/2026-10-30-conductor-owner-escalation-resumption.md) 在 P3 完成前保持 proposed。
+所有者交互使用独立的只追加台账，绑定根会话、原始门禁、精确子会话尝试与报告哈希。单调递增的所有者修订号绑定完整回答和一次性重新评估计划；原始准入与历史 baseline 保持不变。`maxOwnerReassessmentsPerGate` 默认 2，与自动返工独立，并随运行持久化。同一门禁第三次所有者重新评估会终止升级。自由文本不授予权限；通过宿主能力检查的具体授权变更使当前批准失效，并要求新的 Gate C 批准。分析只接受只读澄清。待答问题不自动过期。在 P3 提供 UI 前，生产运行保持 `awaiting_owner`；普通模型驱动恢复拒绝待答问题和待续回答。限定作用域的宿主控制器通过脚本化宿主回答进行测试。四种 required-on-read 事件在完整检查点之前记录问题创建、回答、继续执行消费和终止拒绝；均不可忽略。解码验证事件与台账身份及传输绑定。检查点写入中断后，恢复协调完整的所有者事件，不重复应用回答或派发。已消费的计划若没有后续门禁结算，不允许推测性恢复。记录仍为版本 4；新增会话词汇，不迁移旧运行记录。[所有者升级提案](../../../.agents/notes/proposed/feature/2026-10-30-conductor-owner-escalation-resumption.md) 在 P3 完成前保持 proposed。
 
 ## 已知限制与延期工作
 

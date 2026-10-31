@@ -12,6 +12,50 @@ import pytest
 from deepseek_harness import DeepSeekHarness, HarnessClient, HarnessConfig, Notification, SdkProtocolError
 
 
+@pytest.mark.parametrize("scenario", ["approved", "rejected"])
+def test_required_conductor_owner_events_survive_sdk_transport(tmp_path: Path, scenario: str) -> None:
+    fixture = Path(__file__).resolve().parents[3] / "examples" / "headless-agent" / "tests" / "snapshots" / "conductor-owner" / scenario / "parent.expected.jsonl"
+    expected = [event for line in fixture.read_text(encoding="utf-8").splitlines()
+                if (event := json.loads(line))["type"].startswith("conductor/owner-")]
+    assert len(expected) == (3 if scenario == "approved" else 2)
+    assert all("ignorable" not in event for event in expected)
+    script = tmp_path / "owner_wire_runtime.py"
+    script.write_text("""
+import json
+import os
+import sys
+
+for line in sys.stdin:
+    msg = json.loads(line)
+    method = msg.get("method")
+    if method == "initialize":
+        print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {"serverInfo": {"name": "owner-wire-runtime"}}}), flush=True)
+    elif method == "session/prompt":
+        session_id = msg["params"]["sessionId"]
+        def notify(method, params):
+            print(json.dumps({"jsonrpc": "2.0", "method": method, "params": params}), flush=True)
+        notify("session.event", {"sessionId": session_id, "event": {"type": "agent/inbox/spliced", "data": {"target": "next-turn", "start": 0, "inserted": [{"id": "owner-wire-message"}]}}})
+        notify("session.status", {"sessionId": session_id, "status": "running"})
+        print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {"messageId": "owner-wire-message"}}), flush=True)
+        with open(os.environ["OWNER_EVENTS_FILE"], encoding="utf-8") as saved:
+            for raw in saved:
+                event = json.loads(raw)
+                if event["type"].startswith("conductor/owner-"):
+                    notify("session.event", {"sessionId": session_id, "event": event})
+        notify("session.status", {"sessionId": session_id, "status": "idle"})
+    elif method == "shutdown":
+        print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {}}), flush=True)
+        break
+""".strip(), encoding="utf-8")
+    with DeepSeekHarness(launch_args_override=(sys.executable, str(script)),
+                         env={"OWNER_EVENTS_FILE": str(fixture)}) as harness:
+        result = harness.run("Transport the recorded owner facts.", session_id="owner-wire")
+    assert [event for event in result.events if event["type"].startswith("conductor/owner-")] == expected
+    assert [notification.payload["event"] for notification in result.notifications
+            if notification.method == "session.event"
+            and notification.payload["event"]["type"].startswith("conductor/owner-")] == expected
+
+
 def test_high_level_sdk_runs_turn_and_collects_final_response(tmp_path: Path) -> None:
     script = tmp_path / "fake_runtime.py"
     env_dump = tmp_path / "env.json"

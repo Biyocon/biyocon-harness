@@ -5,6 +5,7 @@ import { runFixtureTurn } from '@deepseek-ai/dsh-loader-smoke'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-presets'
+import type {} from '../../../../packages/conductor/tool-conductor/src/owner-controller.ts'
 
 const [configPath, task] = process.argv.slice(2)
 if (configPath === undefined || task === undefined) throw new Error('expected config and task')
@@ -20,6 +21,7 @@ try {
     setup: agentCtx => runtime.agentPresets.mount(agentCtx, 'conductor').then(() => undefined),
   })
   const result = await runFixtureTurn(runtime, { task })
+  await runtime.get('conductorOwnerHostTest')?.settled
   process.stdout.write(`${JSON.stringify(result)}\n`)
 } catch (error: unknown) {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)

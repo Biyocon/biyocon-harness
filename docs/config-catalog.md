@@ -2408,7 +2408,7 @@ Source: [`packages/shell/tool-bash-persistent/src/index.ts:400`](../packages/she
 
 ## `@deepseek-ai/dsh-tool-conductor`
 
-Requires: `tools` · `subagents` · `skills` · `sessions` · `workflowEngine` · `sandbox` · `subprocess`
+Requires: `tools` · `agents` · `subagents` · `skills` · `sessions` · `workflowEngine` · `sandbox` · `subprocess`
 
 ```ts config-catalog
 /** Deployment policy for the Conductor tool. */
@@ -2462,7 +2462,7 @@ export interface QualityCommandConfig {
 
 Depends on: [`QualityPolicyStage`](../packages/conductor/conductor/src/index.ts)
 
-Source: [`packages/conductor/tool-conductor/src/index.ts:84`](../packages/conductor/tool-conductor/src/index.ts)
+Source: [`packages/conductor/tool-conductor/src/index.ts:85`](../packages/conductor/tool-conductor/src/index.ts)
 
 <a id="deepseek-aidsh-tool-fs"></a>
 
