@@ -52,6 +52,8 @@ Each question binds its stable ID to root session, run, gate index, stage, exact
 
 Questions have no TTL or automatic expiry. Browser reload reconstructs the same question and accepted/rejected receipt from durable events. Host reconnection binds a fresh transport ID to the same pending question. Replies must match current run, question, revision, transport and exact live root. Identical already-recorded replies return the saved receipt without another dispatch; stale, conflicting, foreign and forged replies fail explicitly.
 
+If a response is already recorded but its host turn or acknowledgement flush fails, the controller remembers that exact failed response binding. An identical explicit resubmission completes and flushes the missing acknowledgement in a model-free host turn, retires only that failed interaction, and presents a fresh read-only continuation card for an unconsumed accepted plan. It neither records another answer nor charges another reassessment, and dispatch still requires a new explicit continuation gesture. Later identical duplicates return only the saved receipt; they cannot reopen or consume the plan again.
+
 The host controller preserves this ordering:
 
 1. Save the pending question and flush the Session before presenting an answerable interaction.

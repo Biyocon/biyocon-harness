@@ -51,6 +51,7 @@ interface OwnerState {
   reservations: OwnerReservations
   turn: HostTurn | undefined
   interaction: AbortController | undefined
+  failedResponse: OwnerTransportBinding | undefined
 }
 
 interface OwnedInteraction {
@@ -207,14 +208,18 @@ export class ConductorOwnerController {
     }, 'Conductor owner controller lifecycle')
   }
 
-  private async recoverAcknowledgement(agent: Agent, runId: ConductorRunId, questionId: string): Promise<void> {
+  private async recoverAcknowledgement(
+    agent: Agent, runId: ConductorRunId, questionId: string, signal = new AbortController().signal,
+  ): Promise<void> {
     const state = this.state(agent)
     this.requireUnreserved(state)
-    const signal = new AbortController().signal
+    signal.throwIfAborted()
     const turn: HostTurn = { kind: 'acknowledge', runId, questionId, claimed: false, committed: undefined,
       cancelled: false, consuming: false, message: createUserMessage({ source: { kind: 'plugin', plugin: SOURCE },
         content: [{ type: 'text', text: 'Recover the saved Conductor owner receipt without continuing the run.' }] }) }
     state.turn = turn
+    const abort = (): void => { this.cancel(agent) }
+    signal.addEventListener('abort', abort, { once: true })
     try {
       await agent.whenIdle()
       this.checkTurn(agent, turn, signal)
@@ -227,7 +232,10 @@ export class ConductorOwnerController {
       this.checkTurn(agent, turn, signal)
       state.turn = undefined
       if (turn.committed.status === 'continuation_pending') this.offer(agent, runId)
-    } finally { if (state.turn === turn) state.turn = undefined }
+    } finally {
+      signal.removeEventListener('abort', abort)
+      if (state.turn === turn) state.turn = undefined
+    }
   }
 
   private async interactProduction(agent: Agent, runId: ConductorRunId, signal: AbortSignal): Promise<void> {
@@ -263,7 +271,7 @@ export class ConductorOwnerController {
     this.live(agent)
     let state = this.states.get(agent)
     if (state === undefined) {
-      state = { reservations: new OwnerReservations(), turn: undefined, interaction: undefined }
+      state = { reservations: new OwnerReservations(), turn: undefined, interaction: undefined, failedResponse: undefined }
       this.states.set(agent, state)
     }
     return state
@@ -376,6 +384,18 @@ export class ConductorOwnerController {
       if (!await this.ctx.sessions.flush(agent.session)) throw new Error('Conductor saved receipt could not be flushed')
       signal.throwIfAborted()
       this.live(agent)
+      const needsAcknowledgement = !agent.session.events.some(event => event.type === 'conductor/owner-response-acknowledged'
+        && event.data.runId === run.runId && event.data.questionId === binding.questionId
+        && event.data.revision === prior.data.interaction.revision)
+      if (run.ownerRevision === prior.data.interaction.revision && (run.status === 'continuation_pending' || run.status === 'aborted')
+        && (needsAcknowledgement || isDeepStrictEqual(state.failedResponse, binding))) {
+        // Retire only the failed offer; its promise remains lifecycle-owned until
+        // its transport resolves. The recovery may then offer a fresh explicit
+        // continuation card without reapplying an answer or dispatching work.
+        if (state.interaction?.signal === signal) state.interaction = undefined
+        await this.recoverAcknowledgement(agent, run.runId, binding.questionId, signal)
+        state.failedResponse = undefined
+      }
       return { runId: run.runId, questionId: binding.questionId, revision: prior.data.interaction.revision,
         status: prior.type === 'conductor/owner-terminal-rejection' ? 'aborted' : 'continuation_pending' }
     }
@@ -405,6 +425,9 @@ export class ConductorOwnerController {
       state.interaction = undefined
       if (receipt.status === 'continuation_pending') await this.resumePending(agent, run.runId, signal)
       return receipt
+    } catch (error: unknown) {
+      state.failedResponse = { ...binding }
+      throw error
     } finally {
       signal.removeEventListener('abort', abort)
       if (state.turn === turn) {

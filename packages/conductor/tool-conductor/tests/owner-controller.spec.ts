@@ -96,6 +96,107 @@ async function setup(
 }
 
 describe('Conductor-owned host answer turns', () => {
+  it('cancels identical-answer receipt recovery without dispatching or creating another question', async () => {
+    const h = await setup(undefined, true)
+    const pending = Promise.withResolvers<AskUserQuestionRequest>()
+    let questions = 0
+    h.ctx.userQuestions.registerProvider({ ask: (request) => {
+      ++questions
+      pending.resolve(request)
+      return new Promise((resolve) => {
+        request.signal?.addEventListener('abort', () => { resolve({ answers: [] }) }, { once: true })
+      })
+    } })
+    h.controller.offer(h.agent, h.run.runId)
+    const request = await pending.promise
+    const answer = { answers: [], conductor: { questionId: 'controller-question', revision: 1,
+      action: 'answer_continue' as const, answers: [{ itemId: 'evidence', text: 'Use the cited evidence only.' }] } }
+    const actualFlush = h.ctx.sessions.flush.bind(h.ctx.sessions)
+    let answerFlushes = 0
+    const flush = vi.spyOn(h.ctx.sessions, 'flush').mockImplementation(session =>
+      session.events.some(event => event.type === 'conductor/owner-response-recorded') && ++answerFlushes === 2
+        ? Promise.resolve(false) : actualFlush(session))
+    await expect(request.accept?.(answer)).rejects.toThrow()
+    await h.agent.whenIdle()
+    flush.mockRestore()
+    h.ctx.on('agent/inbox/inserted', ({ agent, message }) => {
+      if (message.content.some(block => block.type === 'text' && block.text.startsWith('Recover the saved'))) h.controller.cancel(agent)
+    })
+    await expect(request.accept?.(answer)).rejects.toThrow()
+    await h.agent.whenIdle()
+    expect(h.dispatches()).toBe(0)
+    expect(questions).toBe(1)
+    expect((await h.store.load(h.run.runId))?.ownerLedger.map(entry => entry.kind)).toEqual(['question', 'answer'])
+  })
+
+  it('repairs a missing receipt for an exact saved host response without a live question provider', async () => {
+    const h = await setup()
+    const binding = await h.controller.reconnect(h.agent, h.run.runId)
+    const actualFlush = h.ctx.sessions.flush.bind(h.ctx.sessions)
+    const flush = vi.spyOn(h.ctx.sessions, 'flush').mockImplementation(session =>
+      session.events.some(event => event.type === 'conductor/owner-response-recorded') ? Promise.resolve(false) : actualFlush(session))
+    await expect(h.controller.respond(h.agent, binding, h.response, new AbortController().signal)).rejects.toThrow()
+    await h.agent.whenIdle()
+    flush.mockRestore()
+    expect(h.agent.session.events.some(event => event.type === 'conductor/owner-response-acknowledged')).toBe(false)
+    await h.controller.respond(h.agent, binding, h.response, new AbortController().signal)
+    expect(h.agent.session.events.filter(event => event.type === 'conductor/owner-response-acknowledged')).toHaveLength(1)
+    expect(h.dispatches()).toBe(0)
+    expect((await h.store.load(h.run.runId))?.ownerLedger.map(entry => entry.kind)).toEqual(['question', 'answer'])
+  })
+
+  it('recovers an identical UI retry after a failed acknowledgement flush without dispatching until a new continuation gesture', async () => {
+    const h = await setup(undefined, true)
+    const first = Promise.withResolvers<AskUserQuestionRequest>()
+    const next = Promise.withResolvers<AskUserQuestionRequest>()
+    const requests: AskUserQuestionRequest[] = []
+    const replies: ReturnType<typeof Promise.withResolvers<{ answers: [] }>>[] = []
+    h.ctx.userQuestions.registerProvider({ ask: (request) => {
+      requests.push(request)
+      const reply = Promise.withResolvers<{ answers: [] }>()
+      replies.push(reply)
+      request.signal?.addEventListener('abort', () => { reply.resolve({ answers: [] }) }, { once: true })
+      if (requests.length === 1) first.resolve(request)
+      else next.resolve(request)
+      return reply.promise
+    } })
+    h.controller.offer(h.agent, h.run.runId)
+    const original = await first.promise
+    const answer = { answers: [], conductor: { questionId: 'controller-question', revision: 1,
+      action: 'answer_continue' as const, answers: [{ itemId: 'evidence', text: 'Use the cited evidence only.' }] } }
+    const actualFlush = h.ctx.sessions.flush.bind(h.ctx.sessions)
+    let answerFlushes = 0
+    const flush = vi.spyOn(h.ctx.sessions, 'flush').mockImplementation(async (session) => {
+      if (session.events.some(event => event.type === 'conductor/owner-response-recorded')
+        && ++answerFlushes === 2) return false
+      return actualFlush(session)
+    })
+    await expect(original.accept?.(answer)).rejects.toThrow()
+    await h.agent.whenIdle()
+    flush.mockRestore()
+    expect(h.dispatches()).toBe(0)
+    expect((await h.store.load(h.run.runId))?.ownerLedger.map(entry => entry.kind)).toEqual(['question', 'answer'])
+    const turnsBeforeRetry = h.agent.session.events.filter(event => event.type === 'turn/start').length
+    await original.accept?.(answer)
+    expect(h.agent.session.events.filter(event => event.type === 'turn/start')).toHaveLength(turnsBeforeRetry + 1)
+    expect(h.agent.session.events.some(event => event.type === 'conductor/owner-response-acknowledged')).toBe(true)
+    replies[0]!.resolve({ answers: [] })
+    const continuation = await next.promise
+    expect(continuation.questions[0]?.intent).toMatchObject({ mode: 'continuation', revision: 2, questionId: 'controller-question' })
+    await original.accept?.(answer)
+    expect(requests).toHaveLength(2)
+    expect(h.dispatches()).toBe(0)
+    expect((await h.store.load(h.run.runId))?.ownerLedger.filter(entry => entry.kind === 'answer')).toHaveLength(1)
+    await continuation.accept?.({ answers: [], conductor: { questionId: 'controller-question', revision: 2,
+      action: 'answer_continue', answers: [] } })
+    replies[1]!.resolve({ answers: [] })
+    await h.agent.whenIdle()
+    expect(h.dispatches()).toBe(1)
+    expect((await h.store.load(h.run.runId))?.ownerLedger.map(entry => entry.kind)).toEqual(['question', 'answer', 'consumed'])
+    await original.accept?.(answer)
+    expect(h.dispatches()).toBe(1)
+  })
+
   it.each(['checkpoint', 'receipt', 'cancel'] as const)('parks failed receipt recovery at the %s boundary without dispatch', async (boundary) => {
     const original = await setup()
     const binding = await original.controller.reconnect(original.agent, original.run.runId)
