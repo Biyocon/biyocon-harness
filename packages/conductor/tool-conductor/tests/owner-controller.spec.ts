@@ -64,12 +64,16 @@ async function setup(seed?: readonly SessionEvent[]) {
   if (seed === undefined) await store.save(run)
   let dispatches = 0
   let consumed: ConductorRun | undefined
+  let afterConsumed: ((run: ConductorRun) => Promise<void>) | undefined
   ctx.tools.register(defineTool({ name: 'conductor', description: 'Continue exactly one stored run.',
     parameters: { runId: { type: 'string', required: true } },
     output: { schema: { type: 'null' }, render: () => [] },
     execute: async (args, exec) => {
       consumed = await controller.consume(agent, args.runId, exec.signal)
-      if (consumed !== undefined) dispatches += 1
+      if (consumed !== undefined) {
+        dispatches += 1
+        await afterConsumed?.(consumed)
+      }
       return null
     },
   }))
@@ -78,10 +82,52 @@ async function setup(seed?: readonly SessionEvent[]) {
   const response = { source: 'scripted-test-provider' as const, rootSessionId: agent.id, questionId: 'controller-question',
     expectedRevision: run.ownerRevision, action: 'answer_continue' as const,
     answers: [{ itemId: 'evidence', text: 'Use the cited evidence only.' }] }
-  return { ctx, agent, controller, ownerFiber, store, run, model, response, dispatches: () => dispatches, consumed: () => consumed }
+  return { ctx, agent, controller, ownerFiber, store, run, model, response,
+    onConsumed: (handler: (run: ConductorRun) => Promise<void>) => { afterConsumed = handler },
+    dispatches: () => dispatches, consumed: () => consumed }
 }
 
 describe('Conductor-owned host answer turns', () => {
+  it('offers the next same-run question while the previous host still awaits the resumed turn', async () => {
+    const h = await setup()
+    const secondOffered = Promise.withResolvers<undefined>()
+    const failed = Promise.withResolvers<Error>()
+    const bothFinished = Promise.withResolvers<undefined>()
+    let responses = 0
+    let finished = 0
+    h.ctx.on('tools/result', (_exec, result) => {
+      if (result.isError) failed.resolve(new Error(JSON.stringify(result)))
+    })
+    h.onConsumed(async (run) => {
+      if (h.dispatches() !== 1) return
+      const escalated = recordGate(run, { decision: 'escalate', basis: ['A second question.'], evidenceReviewed: [], stateUpdate: 'Await owner.' })
+      const again = parkOwnerQuestion(escalated, 'controller-question-2',
+        { kind: 'recoverable', cause: 'clarification', reason: 'Which further evidence?' },
+        { childId: SessionId('controller-child-2'), attempt: 2, report: {}, reportHash: contentHash('{}') },
+        [{ id: 'evidence', prompt: 'Which further evidence?', options: [] }])
+      await h.store.save(again)
+      h.controller.offer(h.agent, run.runId)
+    })
+    h.ctx.provide('conductorOwnerHostTest', { kind: 'scripted-test-provider', settled: bothFinished.promise,
+      interact: async (controller, agent, runId, signal) => {
+        const binding = await controller.reconnect(agent, runId)
+        if (++responses === 2) secondOffered.resolve(undefined)
+        await controller.respond(agent, binding,
+          { ...h.response, questionId: binding.questionId, expectedRevision: binding.revision }, signal)
+        // The same provider behavior as the installed-preset scripted host.
+        await agent.whenIdle()
+        if (++finished === 2) bothFinished.resolve(undefined)
+      } })
+    h.controller.offer(h.agent, h.run.runId)
+    const failure = await Promise.race([secondOffered.promise, failed.promise])
+    expect(failure).toBeUndefined()
+    await bothFinished.promise
+    await h.agent.whenIdle()
+    expect(h.dispatches()).toBe(2)
+    expect((await h.store.load(h.run.runId))?.ownerLedger.map(entry => entry.kind))
+      .toEqual(['question', 'answer', 'consumed', 'question', 'answer', 'consumed'])
+  })
+
   it('denies unknown runs and non-owning live agents without reserving anything', async () => {
     const h = await setup()
     h.controller.cancel(h.agent)

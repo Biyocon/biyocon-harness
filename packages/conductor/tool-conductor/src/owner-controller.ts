@@ -51,13 +51,18 @@ interface OwnerState {
   interaction: AbortController | undefined
 }
 
+interface OwnedInteraction {
+  agent: Agent
+  abort: AbortController
+}
+
 /**
  * Own response turns without changing the generic loop. This capability is held
  * by host code, never obtained from tool arguments, prompt text or source strings.
  */
 export class ConductorOwnerController {
   private readonly states = new Map<Agent, OwnerState>()
-  private readonly operations = new Set<Promise<unknown>>()
+  private readonly operations = new Map<Promise<unknown>, OwnedInteraction | undefined>()
   private stopping = false
 
   /**
@@ -82,10 +87,10 @@ export class ConductorOwnerController {
       interaction.signal.throwIfAborted()
       await provider.interact(this, agent, runId, interaction.signal)
     })()
-    this.operations.add(operation)
+    this.operations.set(operation, { agent, abort: interaction })
     const retire = (): void => {
       this.operations.delete(operation)
-      state.interaction = undefined
+      if (state.interaction === interaction) state.interaction = undefined
     }
     void operation.then(retire, (error: unknown) => {
       retire()
@@ -153,15 +158,15 @@ export class ConductorOwnerController {
     ctx.on('agent/disposed', ({ agent }) => { this.cancel(agent); this.states.delete(agent) })
     ctx.effect(() => async () => {
       this.stopping = true
+      for (const operation of this.operations.values()) operation?.abort.abort()
       for (const [agent, state] of this.states) {
-        state.interaction?.abort()
         state.reservations.cancel()
         if (state.turn !== undefined) {
           state.turn.cancelled = true
           agent.cancel({ kind: 'parent' }, { keepInbox: true })
         }
       }
-      await Promise.allSettled(this.operations)
+      await Promise.allSettled(this.operations.keys())
       this.states.clear()
     }, 'Conductor owner controller lifecycle')
   }
@@ -249,7 +254,7 @@ export class ConductorOwnerController {
    */
   respond(agent: Agent, binding: OwnerTransportBinding, response: ScriptedOwnerResponse, signal: AbortSignal): Promise<OwnerReceipt> {
     const operation = this.record(agent, binding, response, signal)
-    this.operations.add(operation)
+    this.operations.set(operation, undefined)
     const retire = (): void => { this.operations.delete(operation) }
     void operation.then(retire, retire)
     return operation
@@ -302,6 +307,9 @@ export class ConductorOwnerController {
       this.checkTurn(agent, turn, signal)
       const receipt = state.reservations.acknowledge(reservation, turn.committed)
       state.turn = undefined
+      // The answer retires this question before its continuation can ask the
+      // next one. Its provider still belongs to operations until teardown.
+      state.interaction = undefined
       if (receipt.status === 'continuation_pending') await this.resumePending(agent, run.runId, signal)
       return receipt
     } finally {
@@ -345,7 +353,7 @@ export class ConductorOwnerController {
   cancel(agent: Agent): void {
     const state = this.states.get(agent)
     if (state === undefined) return
-    state.interaction?.abort()
+    for (const operation of this.operations.values()) if (operation?.agent === agent) operation.abort.abort()
     state.reservations.cancel()
     const turn = state.turn
     if (turn !== undefined) {
@@ -365,7 +373,7 @@ export class ConductorOwnerController {
    */
   consume(agent: Agent, runId: string | undefined, signal: AbortSignal): Promise<ConductorRun | undefined> {
     const operation = this.consumeReserved(agent, runId, signal)
-    this.operations.add(operation)
+    this.operations.set(operation, undefined)
     const retire = (): void => { this.operations.delete(operation) }
     void operation.then(retire, retire)
     return operation
