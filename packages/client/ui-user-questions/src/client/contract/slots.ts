@@ -141,3 +141,24 @@ export class PendingQuestion {
  */
 export type QuestionComposerProps =
   PropsRuntime<'conversation.composer'> & { matched: QuestionWait } & PropsLocale<'question'>
+
+/** The host-validated Conductor interaction carried by a single question. */
+export type ConductorOwnerQuestion = Extract<NonNullable<QuestionItem['intent']>, { kind: 'conductor-owner' }>
+
+/**
+ * Select only a complete Conductor intent, without interpreting prompt text.
+ * @param questions - the transported request's question batch.
+ * @returns the typed interaction, or undefined for other question kinds.
+ * @throws if a known Conductor intent is mixed with generic question controls.
+ */
+export function conductorOwnerOf(questions: readonly QuestionItem[]): ConductorOwnerQuestion | undefined {
+  const question = questions.find((item): item is QuestionItem & { intent: ConductorOwnerQuestion } =>
+    item.intent?.kind === 'conductor-owner')
+  if (question === undefined) return undefined
+  const intent = question.intent
+  if (questions.length !== 1 || question.id !== intent.questionId || question.multiSelect !== undefined
+    || question.options !== undefined) {
+    throw new Error('Conductor owner intent requires one exact question without generic choices')
+  }
+  return intent
+}

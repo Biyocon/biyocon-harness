@@ -13,10 +13,10 @@ User-interaction Service Definition. It owns `ctx.userQuestions`, the service a 
 
 ### Key Types
 
-- `AskUserQuestionRequest` — `{ questions: [{ id, question, detail?, header?, options?, multiSelect?, intent? }], agent?, signal? }`; `detail` supplies supporting text that providers render with the question without turning it into an option label. When present, `agent` must be the registry's exact live runtime root.
+- `AskUserQuestionRequest` — `{ questions: [{ id, question, detail?, header?, options?, multiSelect?, intent? }], agent?, signal?, accept? }`; `detail` supplies supporting text that providers render with the question without turning it into an option label. When present, `agent` must be the registry's exact live runtime root.
 - `AskUserQuestionOption` — `{ label, description? }`.
-- `AskUserQuestionIntent` — `{ kind: 'plan-review', approve }`; the tagged presentation intent below.
-- `AskUserQuestionAnswer` — `{ answers: [{ id, selected, custom? }] }`.
+- `AskUserQuestionIntent` — tagged `plan-review` or `conductor-owner`; the former names an approval option, while the latter carries exact owner-question provenance and proposal data.
+- `AskUserQuestionAnswer` — `{ answers: [{ id, selected, custom? }], conductor? }`; the dedicated Conductor response keeps generic answers empty and carries question ID, revision, machine action, complete required answers and optional proposal hash.
 - `UserQuestionProvider` — UI implementation with `ask(request)`.
 - `UserQuestionError` — `HarnessError` subclass with codes such as `EMPTY_QUESTIONS`, `BAD_INTENT`, `NO_PROVIDER`, `DUPLICATE_PROVIDER`, `ASK_ABORTED`, `CALLER_NOT_LIVE`, and `DELEGATED_CALLER`.
 
@@ -27,6 +27,10 @@ When a request carries an agent, `ask()` authenticates its exact identity throug
 ### Presentation intent
 
 `intent` declares that a question IS a known kind of decision, so a UI that recognises the tag may present it as such — `plan-review` says `detail` is a plan under review, and `dsh-plan-mode` sets it on the `exit_plan_mode` question. An intent changes presentation only: a UI honouring it answers with the same option labels a generic UI would send, and a UI that does not know the tag renders the generic option list, so callers read the same answer fields either way. `approve` names the label that approves rather than relying on option order. `ask()` rejects with `BAD_INTENT` the two assertions no type can carry: an `approve` naming none of that question's own options, and an intent on a question with no `detail` — the thing it declares itself a review of.
+
+`conductor-owner` is a typed owner interaction rather than plan-review option-label approval. Its host-projected metadata includes run/question identity, revision, gate, role/attempt, reason, mandatory items, and an optional exact before/after mandate with proposal hash. `ConductorOwnerAnswer` uses `approve | reject | answer_continue`, complete item answers and explicit proposal confirmation; localized labels do not choose the action. Conductor's controller validates the exact live session and current durable question, so an intent alone grants no authority. `mode: continuation` presents an already accepted, unconsumed answer read-only; only `answer_continue` with empty answers and no proposal hash may consume its existing host-bound plan, without another answer or budget charge.
+
+`accept(answer)` lets a durable consumer validate and commit a response before its transport acknowledges it. The web provider awaits this callback; a failed callback rejects the receipt and retains the pending question. Conductor uses it for the model-free answer turn and flush barrier described in the [owner-interaction decision](../../../.agents/notes/implemented/feature/2026-10-30-conductor-owner-escalation-resumption.md). The controller also records a required post-flush acknowledgement inside its host turn; the UI requires that matching marker before presenting accepted/rejected history. A transport cancellation or closed dialog is never an owner approval.
 
 ## Role
 
@@ -43,4 +47,4 @@ No direct invalidation; the named consumer owns any request-prefix changes.
 ## Known Limitations and Deferred Work
 
 - **One provider per context** — there is no routing or fan-out to multiple UIs; a second registration throws `DUPLICATE_PROVIDER`, and with none registered `ask()` throws `NO_PROVIDER` rather than degrading.
-- **The vocabulary is the question-form shape only** — selectable options plus optional custom text; richer interaction shapes (file pickers, diff-preview confirmations) have no seam vocabulary yet.
+- **Only declared interaction types are supported** — generic questions, plan review and Conductor owner questions have typed forms; file pickers and unrelated richer interactions remain outside this service.

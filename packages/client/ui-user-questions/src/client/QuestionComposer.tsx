@@ -6,9 +6,10 @@ import {
   IconEditOutline16, MarkdownText,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
-  PendingQuestion, planReviewOf,
+  PendingQuestion, planReviewOf, conductorOwnerOf,
   type QuestionAnswer, type QuestionComposerProps,
 } from './contract/slots.ts'
+import { ConductorOwnerPanel } from './ConductorOwnerPanel.tsx'
 import { PlanReviewPanel } from './PlanReviewPanel.tsx'
 import css from './QuestionComposer.module.css'
 
@@ -49,11 +50,9 @@ function isComposing(event: KeyboardEvent<HTMLTextAreaElement | HTMLInputElement
  * Composer takeover boundary; the carrier key keys local drafts, so a
  * same-request replay (same key, new carrier object) preserves them.
  *
- * One takeover, two shapes: a request that declares a presentation intent this
- * package renders takes that shape (a plan review is one decision over one
- * plan, not a question set), and every other request takes the generic flow.
- * The routing lives here, at the one entry that owns the composer seat, so
- * neither shape can claim a request the other is already rendering.
+ * Typed Conductor interactions and plan reviews have distinct decision cards;
+ * ordinary questions retain the generic flow. The one composer entry owns
+ * this choice so the renderers cannot compete for the same pending request.
  *
  * @param props - the selector-matched pending question carrier plus the framework standard kit.
  * @returns The question flow, or the intent's own surface, for this request.
@@ -63,6 +62,8 @@ export function QuestionComposer(props: QuestionComposerProps) {
   // select/render dispatch — per-dispatch minting would churn memo identity).
   const question = useMemo(() => new PendingQuestion(props.matched), [props.matched])
   const review = useMemo(() => planReviewOf(question.questions), [question])
+  const owner = useMemo(() => conductorOwnerOf(question.questions), [question])
+  if (owner !== undefined) return <ConductorOwnerPanel key={question.key} pending={question} owner={owner} t={props.t} />
   return review === undefined
     ? <QuestionFlow key={question.key} pending={question} t={props.t} />
     : <PlanReviewPanel key={question.key} pending={question} review={review} t={props.t} />

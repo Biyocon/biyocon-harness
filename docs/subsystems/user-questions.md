@@ -22,17 +22,16 @@ interface AskUserQuestionOption {
 
 ## Presentation intent
 
-`AskUserQuestionIntent` optionally declares a known decision kind. It is tagged on `kind` so intents can be added; a UI that does not recognise a tag renders the generic option list. An intent changes presentation only — a UI honouring it answers with the same option labels a generic UI would send, so the caller reads the same answer fields either way. `approve` names the affirmative option instead of relying on option order. `ask()` rejects the two assertions no type can carry: an `approve` naming none of its own question's options, and an intent on a question with no `detail`.
+`AskUserQuestionIntent` distinguishes plan review from the typed Conductor owner interaction. For `plan-review`, `approve` names the affirmative option rather than relying on order; `ask()` rejects an absent matching option or missing `detail`. `conductor-owner` carries the dedicated machine-action protocol below instead of reusing plan option labels.
 
 ```ts type-equiv
 /**
- * A caller-declared presentation intent: the question IS this kind of
- * decision, so a UI that recognises the tag may present it as such instead of as a
- * generic option list. Tagged so further intents can be added; a UI that does
- * not know a tag renders the generic flow, and the answer encoding is identical
- * either way — an intent changes presentation only, never the protocol.
+ * Caller-declared presentation or typed owner interaction. A plan review keeps
+ * the generic answer encoding and changes presentation only. A Conductor owner
+ * question uses the dedicated machine-action response and durable host acceptance;
+ * translated labels never supply authority.
  */
-type AskUserQuestionIntent = {
+type AskUserQuestionIntent = ConductorOwnerIntent | {
   /** A plan submitted for review: `detail` is the plan markdown `ask()` requires, and the decision approves or declines it. */
   kind: 'plan-review'
   /**
@@ -41,6 +40,52 @@ type AskUserQuestionIntent = {
    * An `approve` naming no option of its own question is rejected at `ask()`.
    */
   approve: string
+}
+```
+
+## Conductor owner interaction
+
+`ConductorOwnerIntent` binds exact run, question, revision, gate, role/attempt, required items and reason to a dedicated UI. An optional proposal previews the complete host-validated before/after mandate and its hash; models and localized labels cannot substitute those values.
+
+`ConductorOwnerIntent.mode: continuation` identifies a read-only recovery card for an already durable answer. Its fresh transport binds the current answer revision and admits only `answer_continue` with empty answers and no proposal hash to consume the existing plan, without a new answer or budget charge.
+
+`ConductorOwnerAnswer` uses machine actions and complete required answers. It replaces neither Gate C, GO nor closeout; the consumer validates and persists it through an exact host reservation before acknowledging transport.
+
+```ts type-equiv
+/** Exact normalized authority shown by the host; text answers cannot replace these fields. */
+interface ConductorOwnerMandate {
+  allowedPaths: string[]
+  excludedPaths: string[]
+  qualityCommandIds: string[]
+}
+```
+
+```ts type-equiv
+/** Host-projected Conductor owner interaction, separate from plan approval. */
+interface ConductorOwnerIntent {
+  kind: 'conductor-owner'
+  /** An already durable answer whose reserved plan awaits an explicit owner gesture. */
+  mode?: 'continuation'
+  runId: string
+  questionId: string
+  revision: number
+  gate: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'
+  role: 'detective' | 'strategist' | 'devils-advocate' | 'headsman' | 'auditor' | 'integrator' | 'arbiter'
+  attempt: number
+  reason: string
+  items: { id: string; prompt: string; options: string[] }[]
+  proposal?: { before: ConductorOwnerMandate; after: ConductorOwnerMandate; hash: string }
+}
+```
+
+```ts type-equiv
+/** Machine action and complete required answers; localized labels never grant authority. */
+interface ConductorOwnerAnswer {
+  questionId: string
+  revision: number
+  action: 'approve' | 'reject' | 'answer_continue'
+  answers: { itemId: string; text: string; optionId?: string }[]
+  proposalHash?: string
 }
 ```
 
@@ -70,13 +115,15 @@ interface AskUserQuestionItem {
 
 ## Ask request
 
-`AskUserQuestionRequest` is the cross-package request. `questions` is an array so a UI can present related prompts in one flow while preserving a stable id per answer. When present, `agent` is the exact live caller; the interaction seam admits it only while the live registry identifies that instance as a runtime root.
+`AskUserQuestionRequest` is the cross-package request. `questions` is an array so a UI can present related prompts in one flow while preserving a stable id per answer. When present, `agent` is the exact live caller; the interaction seam admits it only while the live registry identifies that instance as a runtime root. Optional `accept(answer)` is a durable consumer callback; the provider awaits it before acknowledging the response. Rejection keeps the question pending rather than reporting acceptance before persistence.
 
 ```ts type-equiv
 /** Request for a human answer. */
 interface AskUserQuestionRequest {
   /** Questions to display. */
   questions: AskUserQuestionItem[]
+  /** Optional durable consumer acceptance, awaited by the transport before acknowledging the response. */
+  accept?: (answer: AskUserQuestionAnswer) => Promise<void>
   /** Exact live calling agent, when the request came from an agent tool call. */
   agent?: Agent
   /** Abort signal for the owning tool/step. */
@@ -86,7 +133,7 @@ interface AskUserQuestionRequest {
 
 ## Answer
 
-Providers return one answer item per question id. `selected` contains selected option labels, and `custom` carries a free-form "Other" answer when the user typed one. For a single-select question, `custom` overrides the selected choice and `selected` is empty. For a multi-select question, `custom` may supplement the labels in `selected`. A UI may also use an item with empty `selected` and no `custom` to preserve a skipped question in an otherwise completed batch.
+Generic providers return one answer item per question id; a Conductor response instead uses `conductor` and an empty generic `answers` array. `selected` contains selected option labels, and `custom` carries a free-form "Other" answer when the user typed one. For a single-select question, `custom` overrides the selected choice and `selected` is empty. For a multi-select question, `custom` may supplement the labels in `selected`. A UI may also use an item with empty `selected` and no `custom` to preserve a skipped question in an otherwise completed batch.
 
 ```ts type-equiv
 /** Answer to one question. */
@@ -103,6 +150,8 @@ interface AskUserQuestionAnswerItem {
 ```ts type-equiv
 /** The human's answer. */
 interface AskUserQuestionAnswer {
+  /** Present only for the dedicated Conductor interaction; generic answers stay empty. */
+  conductor?: ConductorOwnerAnswer
   /** Structured answers keyed by question id. */
   answers: AskUserQuestionAnswerItem[]
 }
@@ -174,5 +223,5 @@ registerProvider(provider: UserQuestionProvider): () => void
 async ask(request: AskUserQuestionRequest): Promise<AskUserQuestionAnswer>
 ```
 
-Source: [`packages/interaction/user-questions/src/index.ts:51`](../../packages/interaction/user-questions/src/index.ts)
+Source: [`packages/interaction/user-questions/src/index.ts:53`](../../packages/interaction/user-questions/src/index.ts)
 <!-- END GENERATED cordis-surface -->

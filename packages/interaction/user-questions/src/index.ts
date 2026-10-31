@@ -21,13 +21,15 @@ import type { AskUserQuestionAnswer, AskUserQuestionItem } from './types.ts'
 
 export type {
   AskUserQuestionAnswer, AskUserQuestionAnswerItem, AskUserQuestionIntent, AskUserQuestionItem,
-  AskUserQuestionOption,
+  AskUserQuestionOption, ConductorOwnerIntent, ConductorOwnerAnswer, ConductorOwnerMandate,
 } from './types.ts'
 
 /** Request for a human answer. */
 export interface AskUserQuestionRequest {
   /** Questions to display. */
   questions: AskUserQuestionItem[]
+  /** Optional durable consumer acceptance, awaited by the transport before acknowledging the response. */
+  accept?: (answer: AskUserQuestionAnswer) => Promise<void>
   /** Exact live calling agent, when the request came from an agent tool call. */
   agent?: Agent
   /** Abort signal for the owning tool/step. */
@@ -121,6 +123,13 @@ export class UserQuestionService extends Service {
     for (const question of request.questions) {
       const intent = question.intent
       if (intent === undefined) continue
+      if (intent.kind === 'conductor-owner') {
+        if (request.questions.length !== 1 || question.id !== intent.questionId
+          || question.options !== undefined || question.multiSelect !== undefined) {
+          throw new UserQuestionError('a Conductor owner interaction requires one exact typed question without generic choices', 'BAD_INTENT')
+        }
+        continue
+      }
       if (!(question.options ?? []).some(option => option.label === intent.approve)) {
         throw new UserQuestionError(
           `question ${question.id} declares intent ${intent.kind} whose approve label `

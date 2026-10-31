@@ -52,6 +52,12 @@ export function registerOwnerEscalationSnapshots(): void {
             await mkdir(join(cwd, '.git'))
             await mkdir(join(cwd, 'owner-allowed'))
             await cp(join(root, 'apps/cli/config/agent-presets/conductor'), join(cwd, 'installed-presets/conductor'), { recursive: true })
+            if (scenario.endsWith('unavailable')) {
+              const preset = join(cwd, 'installed-presets/conductor/agent.cordis.yml')
+              const source = await readFile(preset, 'utf8')
+              expect(source).toContain('ownerQuestions: true')
+              await writeFile(preset, source.replace('ownerQuestions: true', 'ownerQuestions: false'))
+            }
             await writeFile(join(cwd, 'probe.txt'), probe)
             await writeFile(join(cwd, 'AGENTS.md'), contrary)
           },
@@ -63,6 +69,16 @@ export function registerOwnerEscalationSnapshots(): void {
             expect(parent.events.filter(event => event.type === 'tool/call').map(event => event.data.name))
               .toEqual(answer ? ['conductor', 'conductor'] : ['conductor'])
             expect(parent.events.filter(event => event.type === 'approval/asked')).toEqual([])
+            const receipts = parent.events.filter(event => event.type === 'conductor/owner-response-acknowledged')
+            expect(receipts).toHaveLength(answer || scenario === 'rejected' ? 1 : 0)
+            if (receipts.length > 0) {
+              const receipt = receipts[0]!
+              expect(receipt.data).toMatchObject({ revision: 2, status: scenario === 'rejected' ? 'rejected' : 'accepted' })
+              const prior = parent.events.filter(event => event.seq < receipt.seq).at(-1)!
+              expect(prior.type).toBe('conductor/checkpoint')
+              expect(parent.events.find(event => event.seq > receipt.seq && event.type === 'turn/end')?.data)
+                .toMatchObject({ turn: 2, reason: { kind: 'completed' } })
+            }
             const records = parent.events.flatMap(event => event.type === 'conductor/checkpoint' && event.data.record !== null
               ? [parseRun(event.data.record)] : [])
             const run = records.at(-1)!
@@ -81,7 +97,10 @@ export function registerOwnerEscalationSnapshots(): void {
               if (entry.kind !== 'question') throw new Error('Owner outcome requires its original durable question')
               const rendered = parent.events.flatMap(event => event.type === 'tool/result' ? event.data.message.content : [])
                 .flatMap(block => block.content).flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
-              expect(rendered).toContain(`Conductor is awaiting owner input: ${entry.question.reason}\nAnswering owner questions is not available in this build yet; the run stays parked and grants nothing.`)
+              const availability = scenario.endsWith('unavailable')
+                ? 'Answering owner questions is not available in this build yet; the run stays parked and grants nothing.'
+                : 'Answer the owner question to continue this same run. An answer is not execution approval.'
+              expect(rendered).toContain(`Conductor is awaiting owner input: ${entry.question.reason}\n${availability}`)
               if (scenario === 'rejected') expect(parent.events.some(event => event.type === 'conductor/owner-terminal-rejection'
                 && event.data.interaction.questionId === entry.question.id)).toBe(true)
               expect(rendered).not.toContain('P1')

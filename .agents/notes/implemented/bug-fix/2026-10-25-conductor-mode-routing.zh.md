@@ -12,7 +12,7 @@ Conductor 预设将委派描述为可选行为。父级可以直接读取工作�
 
 [应用预设](../../../../apps/cli/config/agent-presets/conductor/agent.cordis.yml)要求每项新任务的首次工具调用为 `conductor`，并启用[该工具](../../../../packages/conductor/tool-conductor/README.md)的 `routeTasks` 策略。父级转交目标与约束，不自行编造写入授权。其系统 persona 明确区分专家的工作区指引与模式路由。
 
-Conductor 专用策略使用现有的 agent（智能体）、提示词组装和工具执行钩子。分派前只提供 `conductor`，执行器守卫拒绝其他工具。分派运行期间，以及返回任何结果之后（包括 Arbiter GO），父级的所有工具仍被隐藏并拒绝执行；父级可以报告结果，但不能执行替代流程或自动重新分派。未分派就结束任务会明确报错。新的用户轮次或用户 steering（中途引导）消息重置路由，仅允许 `conductor`，插件上下文则不会。成功决策并不授权父级执行。专家会话不受父级路由限制，继续使用原有的阶段执行器约束。注册随挂载的工具一同释放。
+Conductor 专用策略使用现有的 agent（智能体）、提示词组装和工具执行钩子。分派前只提供 `conductor`，执行器守卫拒绝其他工具。分派运行期间，以及返回任何结果之后（包括 Arbiter GO），父级的所有工具仍被隐藏并拒绝执行；父级可以报告结果，但不能执行替代流程或自动重新分派。未分派就结束任务会明确报错。没有待处理所有者交互时，新的用户轮次或用户 steering（中途引导）消息重置路由，仅允许 `conductor`，插件上下文则不会。`awaiting-owner` 期间新用户消息保留在可见队列，父工具继续被拒绝；只有[所有者问题控制器](../feature/2026-10-30-conductor-owner-escalation-resumption.md)的私有 `reserved-continuation` 才允许精确的已存储运行继续。成功决策并不授权父级执行。专家会话不受父级路由限制，继续使用原有的阶段执行器约束。注册随挂载的工具一同释放。
 
 工具描述明确列出 supervisor、七位全新专家、门禁决策，以及按缺陷分类的返工路由。这涵盖 [issue #27](https://github.com/Biyocon/biyocon-harness/issues/27) 的第 4 点；运行时路径、报告验证、门禁预算及更完整的受阻结果渲染均不在本决策范围内。[Issue #26](https://github.com/Biyocon/biyocon-harness/issues/26)负责任务路由。#25 的源代码启动生成机制与 #28 的界面元数据也保持不变。
 

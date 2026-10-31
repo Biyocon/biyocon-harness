@@ -8,7 +8,7 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
-import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
+import { ConversationEventRegistry, SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { QuestionComposer } from '../src/client/QuestionComposer.tsx'
 import { apply, inject } from '../src/client/index.ts'
@@ -19,27 +19,29 @@ async function bench() {
   const slots = ctx.get('slots') as SlotRegistry
   // The composer slot exists only while its declaring entry is live.
   slots.register(
-    { name: 'root', children: { 'conversation.composer': { kind: 'chain', scope: 'session' } } } as never,
+    { name: 'root', children: { 'conversation.composer': { kind: 'chain', scope: 'session' }, 'conversation.chat.node': { kind: 'keyed', scope: 'session' } } } as never,
     () => null,
   )
   ctx.provide('locale', new LocaleRuntime(ctx))
+  new ConversationEventRegistry(ctx)
   return { ctx, slots }
 }
 
 describe('apply', () => {
   it('declares the services it binds', () => {
-    expect(inject).toEqual(['slots', 'locale'])
+    expect(inject).toEqual(['slots', 'locale', 'conversationEvents'])
   })
 
   it('waits until a live entry declares the composer slot', async () => {
     const ctx = new Context()
     await ctx.plugin(SlotRegistry).await()
     ctx.provide('locale', new LocaleRuntime(ctx))
+    new ConversationEventRegistry(ctx)
     const fiber = ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     expect(ctx.slots.entries('conversation.composer')).toHaveLength(0)
     ctx.slots.register(
-      { name: 'root', children: { 'conversation.composer': { kind: 'chain', scope: 'session' } } } as never,
+      { name: 'root', children: { 'conversation.composer': { kind: 'chain', scope: 'session' }, 'conversation.chat.node': { kind: 'keyed', scope: 'session' } } } as never,
       () => null,
     )
     await Promise.resolve()
@@ -70,5 +72,7 @@ describe('apply', () => {
     expect(slots.entries('conversation.composer')).toHaveLength(1)
     await fiber.dispose()
     expect(slots.entries('conversation.composer')).toHaveLength(0)
+    expect(slots.entries('conversation.chat.node')).toHaveLength(0)
+    expect(ctx.conversationEvents.entries()).toHaveLength(0)
   })
 })

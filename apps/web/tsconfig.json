@@ -29,6 +29,7 @@
     "tests/message-feedback-protocol.snapshot.ts",
     "tests/live-interactions.e2e.ts",
     "tests/question-composer.e2e.ts",
+    "tests/conductor-owner.e2e.ts",
     "tests/approval-composer.e2e.ts",
     "tests/plan-review.e2e.ts",
     "tests/steering.e2e.ts",

@@ -118,3 +118,101 @@ describe('question response validation', () => {
     abort.abort()
   })
 })
+
+
+describe('durable Conductor answer transport', () => {
+  it('preserves stable option IDs and the exact proposal hash through wire decoding', async () => {
+    const { ctx, api } = await harness()
+    const abort = new AbortController()
+    const mux = openMux(api, abort)
+    const conductor = { questionId: 'owner-proposal', revision: 1, action: 'approve' as const,
+      answers: [{ itemId: 'format', text: 'markdown', optionId: 'markdown' }], proposalHash: 'a'.repeat(64) }
+    const asked = ctx.userQuestions.ask({ agent: agent(ctx),
+      questions: [{ id: 'owner-proposal', question: 'Choose format.', intent: { kind: 'conductor-owner', runId: 'CON-2026-0037',
+        questionId: 'owner-proposal', revision: 1, gate: 'B', role: 'strategist', attempt: 1, reason: 'Choose format.',
+        items: [{ id: 'format', prompt: 'Choose format.', options: ['markdown'] }] } }],
+      accept: (value) => { expect(value.conductor).toEqual(conductor); return Promise.resolve() },
+    })
+    const envelope = await mux.waitForQuestion()
+    expect(await api.respond({ type: 'client-response', rpcId: envelope.rpcId, result: { ok: true,
+      value: { sessionId: envelope.payload.sessionId, answer: { answers: [], conductor } } } })).toEqual({ accepted: true })
+    await expect(asked).resolves.toEqual({ answers: [], conductor })
+    abort.abort()
+  })
+
+  it('preserves typed machine actions and waits for durable acceptance before acknowledging', async () => {
+    const { ctx, api } = await harness()
+    const abort = new AbortController()
+    const mux = openMux(api, abort)
+    const commit = Promise.withResolvers<undefined>()
+    const entered = Promise.withResolvers<undefined>()
+    const asked = ctx.userQuestions.ask({ agent: agent(ctx), questions: [{ id: 'owner-q', question: 'Which source?',
+      intent: { kind: 'conductor-owner', runId: 'CON-2026-0037', questionId: 'owner-q', revision: 1,
+        gate: 'B', role: 'strategist', attempt: 2, reason: 'Which source?', items: [{ id: 'source', prompt: 'Which source?', options: [] }] } }],
+    accept: async () => { entered.resolve(undefined); await commit.promise },
+    })
+    const envelope = await mux.waitForQuestion()
+    const response = { type: 'client-response' as const, rpcId: envelope.rpcId, result: { ok: true as const,
+      value: { sessionId: envelope.payload.sessionId, answer: { answers: [], conductor: {
+        questionId: 'owner-q', revision: 1, action: 'answer_continue' as const, answers: [{ itemId: 'source', text: 'Use docs.' }],
+      } } } } }
+    const accepted = api.respond(response)
+    await entered.promise
+    expect(mux.envelopes.some(item => item.payload.type === 'question/resolved')).toBe(false)
+    const duplicate = api.respond(response)
+    expect(await api.respond({ ...response, result: { ok: true, value: { ...response.result.value,
+      answer: { ...response.result.value.answer, conductor: { ...response.result.value.answer.conductor, action: 'reject' } } } } }))
+      .toEqual({ accepted: false, reason: 'bad-response' })
+    commit.resolve(undefined)
+    expect(await accepted).toEqual({ accepted: true })
+    expect(await duplicate).toEqual({ accepted: true })
+    await expect(asked).resolves.toEqual(response.result.value.answer)
+    abort.abort()
+  })
+
+  it('retains the pending card on malformed, stale or consumer-rejected answers', async () => {
+    const { ctx, api } = await harness()
+    const abort = new AbortController()
+    const mux = openMux(api, abort)
+    let allow = false
+    const asked = ctx.userQuestions.ask({ agent: agent(ctx), questions: [{ id: 'owner-q', question: 'Which source?',
+      intent: { kind: 'conductor-owner', runId: 'CON-2026-0037', questionId: 'owner-q', revision: 1,
+        gate: 'A', role: 'detective', attempt: 1, reason: 'Which source?', items: [] } }],
+    accept: () => allow ? Promise.resolve() : Promise.reject(new Error('Missing required answers')),
+    })
+    const envelope = await mux.waitForQuestion()
+    const conductor = { questionId: 'owner-q', revision: 1, action: 'reject', answers: [] }
+    const respond = (answerValue: unknown) => api.respond({ type: 'client-response', rpcId: envelope.rpcId,
+      result: { ok: true, value: { sessionId: envelope.payload.sessionId, answer: answerValue } } })
+    for (const answerValue of [{ answers: [] }, { answers: [], conductor: { ...conductor, revision: 0 } },
+      { answers: [], conductor: { ...conductor, questionId: 'forged' } }, { answers: [], conductor: { ...conductor, action: 'Godkend' } },
+      { answers: [{ id: 'owner-q', selected: [] }], conductor }, { answers: [], conductor }]) {
+      expect(await respond(answerValue)).toEqual({ accepted: false, reason: 'bad-response' })
+    }
+    expect(mux.envelopes.some(item => item.payload.type === 'question/resolved')).toBe(false)
+    allow = true
+    expect(await respond({ answers: [], conductor })).toEqual({ accepted: true })
+    await asked
+    abort.abort()
+  })
+
+  it('does not resurrect a cancelled wait when durable consumer acceptance finishes later', async () => {
+    const { ctx, api } = await harness()
+    const abort = new AbortController()
+    const ownerAbort = new AbortController()
+    const mux = openMux(api, abort)
+    const commit = Promise.withResolvers<undefined>()
+    const entered = Promise.withResolvers<undefined>()
+    const asked = ctx.userQuestions.ask({ agent: agent(ctx), signal: ownerAbort.signal,
+      questions: [{ id: 'q', question: 'Q?' }], accept: async () => { entered.resolve(undefined); await commit.promise } })
+    const rejection = expect(asked).rejects.toThrow('aborted')
+    const envelope = await mux.waitForQuestion()
+    const response = api.respond(answer(envelope, []))
+    await entered.promise
+    ownerAbort.abort()
+    commit.resolve(undefined)
+    expect(await response).toEqual({ accepted: false, reason: 'not-pending' })
+    await rejection
+    abort.abort()
+  })
+})

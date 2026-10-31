@@ -14,8 +14,8 @@ interface Dispatch {
   owner_ledger: OwnerInteraction[]
 }
 
-function* call(name: string, value: unknown): Generator<StreamChunk> {
-  const id = CallId(`owner-${name}`)
+function* call(name: string, value: unknown, invocation = 0): Generator<StreamChunk> {
+  const id = CallId(`owner-${name}${invocation === 0 ? '' : `-${invocation + 1}`}`)
   const args = JSON.stringify(value)
   yield { type: 'block-start', index: 0, blockType: 'tool-call' }
   yield { type: 'tool-call-delta', index: 0, id, name, argumentsDelta: args }
@@ -30,8 +30,13 @@ function* text(value: string): Generator<StreamChunk> {
   yield { type: 'finish', reason: { kind: 'stop' } }
 }
 
-class OwnerConductorAdapter extends LlmAdapter {
+export class OwnerConductorAdapter extends LlmAdapter {
   private producerAttempts = 0
+  private parentCalls = 0
+
+  private conductor(value: unknown): Generator<StreamChunk> {
+    return call('conductor', value, this.parentCalls++)
+  }
 
   async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     const scenario = process.env['DSH_CONDUCTOR_OWNER_SCENARIO']
@@ -55,14 +60,14 @@ class OwnerConductorAdapter extends LlmAdapter {
           allowedPaths: string[]
           excludedPaths: string[]
         }
-        yield* call('conductor', { runId: stored.runId, objective: stored.objective,
+        yield* this.conductor( { runId: stored.runId, objective: stored.objective,
           purpose: stored.admission.purpose, entry: stored.admission.entry,
           ...stored.admission.purpose === 'analysis' ? { deliverable: stored.admission.deliverable } : {},
           authority: stored.authority, allowedPaths: stored.allowedPaths, excludedPaths: stored.excludedPaths })
         return
       }
       const analysis = scenario.startsWith('analysis')
-      yield* call('conductor', {
+      yield* this.conductor( {
         purpose: analysis ? 'analysis' : 'implementation', entry: analysis ? 'detective' : 'strategist',
         ...analysis ? { deliverable: 'answer' } : { sourceBaseline: 'HEAD', allowedPaths: ['owner-allowed'] },
         rationale: 'Exercise explicit owner clarification through the installed preset.',
@@ -102,7 +107,8 @@ class OwnerConductorAdapter extends LlmAdapter {
         run_id: input.run_id, purpose: 'analysis', stage: input.stage, deliverable: 'answer',
         status: first ? 'blocked' : 'ready', summary: first ? 'The report needs an owner scope clarification.' : `${input.stage} assessed the owner answer.`,
         material_ids: ids, blockers: first ? ['The intended reporting scope is unknown.'] : [], assumptions: [], limitations: ['Read-only static review.'],
-        ...first ? { clarifications: [{ id: 'scope', prompt: 'Which reporting scope should be used?', options: [] }] } : {},
+        ...first ? { clarifications: [{ id: 'scope', prompt: 'Which reporting scope should be used?', options: [] },
+          ...scenario === 'analysis-web' ? [{ id: 'audience', prompt: 'Who is the intended audience?', options: ['Maintainers', 'Owners'] }] : []] } : {},
         ...input.stage === 'auditor' ? { candidate_hash: input.current_report!.hash } : {},
         ...input.stage === 'detective' && !first ? { candidate: {
           version: 'answer-1', deliverable: 'answer', content: 'The owner selected Documented scope. No implementation is authorized.',

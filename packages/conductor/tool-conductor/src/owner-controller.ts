@@ -4,10 +4,12 @@
  */
 import { FiberState } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
+import type { AskUserQuestionAnswer } from '@deepseek-ai/dsh-user-questions'
+import { ownerQuestionIntent, ownerQuestionResponse } from './owner-presentation.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
-import { applyScriptedOwnerAnswer, consumeOwnerContinuation, decodeOwnerInteractionEvent, effectiveOwnerMandate, parseRun, pendingOwnerResumePlan, SessionConductorRunStore } from '@deepseek-ai/dsh-conductor'
+import { applyScriptedOwnerAnswer, publishOwnerAcknowledgement, consumeOwnerContinuation, decodeOwnerInteractionEvent, effectiveOwnerMandate, parseRun, pendingOwnerResumePlan, SessionConductorRunStore } from '@deepseek-ai/dsh-conductor'
 import { isDeepStrictEqual } from 'node:util'
 import type { ConductorRun, ConductorRunId, ScriptedOwnerResponse } from '@deepseek-ai/dsh-conductor'
 import { OwnerReservations } from './owner-reservation.ts'
@@ -22,7 +24,7 @@ export class OwnerContinuationInterruption extends Error {
   }
 }
 
-/** Explicit test-composition entry; no shipped preset mounts a production answerer. */
+/** Explicit scripted host for keyless composition tests; production uses the typed question service. */
 export interface ConductorOwnerHostTest {
   kind: 'scripted-test-provider'
   settled: Promise<void>
@@ -43,7 +45,7 @@ interface HostTurnState {
   cancelled: boolean
   consuming: boolean
 }
-type HostTurn = HostTurnState & ({ kind: 'answer'; reservation: OwnerReservation } | { kind: 'continue' })
+type HostTurn = HostTurnState & ({ kind: 'answer'; reservation: OwnerReservation } | { kind: 'continue' } | { kind: 'acknowledge'; questionId: string })
 
 interface OwnerState {
   reservations: OwnerReservations
@@ -66,15 +68,15 @@ export class ConductorOwnerController {
   private stopping = false
 
   /**
-   * Offer a flushed parked question only to an explicitly mounted scripted host.
+   * Offer a flushed parked question to the configured production UI or an explicit scripted host.
    * @param agent - original tool's owning root.
    * @param runId - exact parked run; the tool itself never waits for its own idle.
    */
   offer(agent: Agent, runId: ConductorRunId): void {
     const provider = this.ctx.get('conductorOwnerHostTest')
-    if (provider === undefined) return
+    if (provider === undefined && !this.productionQuestions) return
     // oxlint-disable-next-line typescript/no-unnecessary-condition -- preserve test-only opt-in for untyped plugin registrations.
-    if (provider.kind !== 'scripted-test-provider') throw new Error('Conductor production owner answering is not enabled in this build')
+    if (provider !== undefined && provider.kind !== 'scripted-test-provider') throw new Error('Conductor production owner answering is not enabled in this build')
     const state = this.state(agent)
     if (state.interaction !== undefined) throw new Error('Conductor already has an owner interaction')
     const interaction = new AbortController()
@@ -85,7 +87,8 @@ export class ConductorOwnerController {
       if (!await this.ctx.sessions.flush(agent.session)) throw new Error('Conductor question could not be flushed before interaction')
       this.live(agent)
       interaction.signal.throwIfAborted()
-      await provider.interact(this, agent, runId, interaction.signal)
+      if (provider === undefined) await this.interactProduction(agent, runId, interaction.signal)
+      else await provider.interact(this, agent, runId, interaction.signal)
     })()
     this.operations.set(operation, { agent, abort: interaction })
     const retire = (): void => {
@@ -98,7 +101,32 @@ export class ConductorOwnerController {
     })
   }
 
-  constructor(private readonly ctx: Context) {
+  constructor(private readonly ctx: Context, private readonly productionQuestions = false) {
+    ctx.on('agent/created', ({ agent }) => {
+      if (!this.productionQuestions || !this.ctx.agents.roots().includes(agent)) return
+      const latest = new Set<string>()
+      for (const event of agent.session.events.toReversed()) {
+        if (event.type !== 'conductor/checkpoint' || latest.has(event.data.runId)) continue
+        latest.add(event.data.runId)
+        if (event.data.record === null) continue
+        const run = parseRun(event.data.record)
+        if (run.status === 'awaiting_owner') { this.offer(agent, run.runId); break }
+        const last = run.ownerLedger.at(-1)
+        if ((run.status === 'continuation_pending' || run.status === 'aborted')
+          && (last?.kind === 'answer' || last?.kind === 'rejected')) {
+          if (agent.session.events.some(row => row.type === 'conductor/owner-response-acknowledged'
+            && row.data.runId === run.runId && row.data.questionId === last.questionId)) {
+            if (run.status === 'continuation_pending') this.offer(agent, run.runId)
+            break
+          }
+          const operation = this.recoverAcknowledgement(agent, run.runId, last.questionId)
+          this.operations.set(operation, undefined)
+          const retire = (): void => { this.operations.delete(operation) }
+          void operation.then(retire, (error: unknown) => { retire(); this.ctx.logger.warn(String(error)) })
+          break
+        }
+      }
+    })
     ctx.on('agent/inbox/claimed', ({ agent, message }) => {
       const state = this.states.get(agent)
       if (state?.turn?.message.id === message.id && !state.turn.claimed) state.turn.claimed = true
@@ -122,7 +150,15 @@ export class ConductorOwnerController {
           const answered = state.reservations.validate(turn.reservation, run)
           await this.store(agent).save(answered, turn.reservation.binding)
           this.checkTurn(agent, turn, signal)
+          publishOwnerAcknowledgement(agent.session, answered, turn.reservation.binding.questionId)
           turn.committed = answered
+          return { kind: 'enter', messages: [] }
+        }
+        if (turn.kind === 'acknowledge') {
+          if (!await this.ctx.sessions.flush(agent.session)) throw new Error('Conductor recovered answer checkpoint could not be flushed')
+          this.checkTurn(agent, turn, signal)
+          publishOwnerAcknowledgement(agent.session, run, turn.questionId)
+          turn.committed = run
           return { kind: 'enter', messages: [] }
         }
         const plan = pendingOwnerResumePlan(run)
@@ -169,6 +205,45 @@ export class ConductorOwnerController {
       await Promise.allSettled(this.operations.keys())
       this.states.clear()
     }, 'Conductor owner controller lifecycle')
+  }
+
+  private async recoverAcknowledgement(agent: Agent, runId: ConductorRunId, questionId: string): Promise<void> {
+    const state = this.state(agent)
+    this.requireUnreserved(state)
+    const signal = new AbortController().signal
+    const turn: HostTurn = { kind: 'acknowledge', runId, questionId, claimed: false, committed: undefined,
+      cancelled: false, consuming: false, message: createUserMessage({ source: { kind: 'plugin', plugin: SOURCE },
+        content: [{ type: 'text', text: 'Recover the saved Conductor owner receipt without continuing the run.' }] }) }
+    state.turn = turn
+    try {
+      await agent.whenIdle()
+      this.checkTurn(agent, turn, signal)
+      agent.send(turn.message, 'next-step', true)
+      await agent.whenIdle()
+      this.checkTurn(agent, turn, signal)
+      if (turn.committed === undefined || !await this.ctx.sessions.flush(agent.session)) {
+        throw new Error('Conductor recovered receipt remains unconfirmed; no continuation was dispatched')
+      }
+      this.checkTurn(agent, turn, signal)
+      state.turn = undefined
+      if (turn.committed.status === 'continuation_pending') this.offer(agent, runId)
+    } finally { if (state.turn === turn) state.turn = undefined }
+  }
+
+  private async interactProduction(agent: Agent, runId: ConductorRunId, signal: AbortSignal): Promise<void> {
+    const questions = this.ctx.get('userQuestions')
+    if (questions === undefined) throw new Error('Conductor is awaiting owner input; no question UI provider is available')
+    const binding = await this.reconnect(agent, runId)
+    signal.throwIfAborted()
+    const intent = ownerQuestionIntent(await this.load(agent, runId))
+    this.live(agent)
+    await questions.ask({ agent, signal,
+      questions: [{ id: intent.questionId, question: intent.reason, intent }],
+      accept: async (answer) => {
+        if (intent.mode === 'continuation') await this.continueSavedAnswer(agent, binding, answer, signal)
+        else await this.respond(agent, binding, ownerQuestionResponse(binding, answer), signal)
+      },
+    })
   }
 
   private live(agent: Agent): void {
@@ -233,7 +308,7 @@ export class ConductorOwnerController {
    * Bind a fresh transport to the same durable question after quiescence and flush.
    * @param agent - live owning root, not a client-supplied session surrogate.
    * @param runId - stored run selected by trusted host interaction code.
-   * @returns fresh transport identity; no production answer provider is enabled.
+   * @returns fresh transport identity, independently checked before every response.
    */
   async reconnect(agent: Agent, runId: ConductorRunId): Promise<OwnerTransportBinding> {
     const state = this.state(agent)
@@ -241,7 +316,25 @@ export class ConductorOwnerController {
     this.live(agent)
     if (!await this.ctx.sessions.flush(agent.session)) throw new Error('Conductor question is not durably available')
     this.live(agent)
-    return state.reservations.reconnect(await this.load(agent, runId))
+    const run = await this.load(agent, runId)
+    return run.status === 'continuation_pending' ? state.reservations.reconnectContinuation(run) : state.reservations.reconnect(run)
+  }
+
+  private async continueSavedAnswer(
+    agent: Agent, binding: OwnerTransportBinding, answer: AskUserQuestionAnswer, signal: AbortSignal,
+  ): Promise<void> {
+    signal.throwIfAborted()
+    const value = answer.conductor
+    if (answer.answers.length !== 0 || value === undefined || value.questionId !== binding.questionId
+      || value.revision !== binding.revision || value.action !== 'answer_continue' || value.answers.length !== 0
+      || value.proposalHash !== undefined) throw new Error('Conductor saved-answer continuation requires its exact unmodified owner gesture')
+    const state = this.state(agent)
+    const run = await this.load(agent, binding.runId)
+    signal.throwIfAborted()
+    this.live(agent)
+    state.reservations.consumeContinuation(run, binding)
+    state.interaction = undefined
+    await this.resumePending(agent, run.runId, signal)
   }
 
   /**

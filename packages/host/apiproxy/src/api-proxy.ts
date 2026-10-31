@@ -675,6 +675,8 @@ interface PendingQuestion {
   rpcId: RpcId
   sessionId: SessionId
   questions: AskUserQuestionItem[]
+  accept?: (answer: AskUserQuestionAnswer) => Promise<void>
+  accepting?: { answer: AskUserQuestionAnswer; receipt: Promise<RpcReceipt> }
   resolve: (answer: AskUserQuestionAnswer) => void
   reject: (error: UserQuestionError) => void
   signal?: AbortSignal
@@ -684,6 +686,13 @@ interface PendingQuestion {
 /** Validate one answer batch against the exact question request it resolves. */
 function matchesQuestions(payload: QuestionResponsePayload, pending: PendingQuestion): boolean {
   if (payload.sessionId !== pending.sessionId) return false
+  const intent = pending.questions.length === 1 ? pending.questions[0]?.intent : undefined
+  if (intent?.kind === 'conductor-owner') {
+    return payload.answer.answers.length === 0 && payload.answer.conductor !== undefined
+      && payload.answer.conductor.questionId === intent.questionId
+      && payload.answer.conductor.revision === intent.revision
+  }
+  if (payload.answer.conductor !== undefined) return false
   const answers = payload.answer.answers
   if (answers.length !== pending.questions.length) return false
   return answers.every((answer, index) => {
@@ -1346,6 +1355,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         const rpcId = RpcId(randomUUID())
         const pending: PendingQuestion = {
           rpcId, sessionId, questions: request.questions, resolve, reject,
+          ...(request.accept === undefined ? {} : { accept: request.accept }),
           ...(request.signal === undefined ? {} : { signal: request.signal }),
         }
         const onAbort = (): void => {
@@ -3663,6 +3673,13 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       const payload: QuestionResponsePayload = {
         sessionId: parsed.data.sessionId,
         answer: {
+          ...(parsed.data.answer.conductor === undefined ? {} : { conductor: {
+            questionId: parsed.data.answer.conductor.questionId, revision: parsed.data.answer.conductor.revision,
+            action: parsed.data.answer.conductor.action,
+            answers: parsed.data.answer.conductor.answers.map(item => ({ itemId: item.itemId, text: item.text,
+              ...(item.optionId === undefined ? {} : { optionId: item.optionId }) })),
+            ...(parsed.data.answer.conductor.proposalHash === undefined ? {} : { proposalHash: parsed.data.answer.conductor.proposalHash }),
+          } }),
           answers: parsed.data.answer.answers.map(answer => ({
             id: answer.id,
             selected: answer.selected,
@@ -3672,6 +3689,26 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       }
       if (!matchesQuestions(payload, pending)) {
         return Promise.resolve({ accepted: false, reason: 'bad-response' })
+      }
+      if (pending.accepting !== undefined) {
+        return JSON.stringify(pending.accepting.answer) === JSON.stringify(payload.answer)
+          ? pending.accepting.receipt : Promise.resolve({ accepted: false, reason: 'bad-response' })
+      }
+      if (pending.accept !== undefined) {
+        const accept = pending.accept
+        const receipt = (async (): Promise<RpcReceipt> => {
+          try { await accept(payload.answer) } catch {
+            // The consumer owns durable validation; a rejected answer leaves the question pending.
+            return { accepted: false, reason: 'bad-response' }
+          }
+          if (pendingQuestions.get(pending.rpcId) !== pending) return { accepted: false, reason: 'not-pending' }
+          claimQuestion(pending, 'answered')
+          pending.resolve(payload.answer)
+          return { accepted: true }
+        })()
+        pending.accepting = { answer: payload.answer, receipt }
+        void receipt.then(() => { delete pending.accepting })
+        return receipt
       }
       claimQuestion(pending, 'answered')
       pending.resolve(payload.answer)

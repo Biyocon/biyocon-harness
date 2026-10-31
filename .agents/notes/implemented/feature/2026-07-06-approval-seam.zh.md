@@ -47,6 +47,8 @@ tool/result      "escalated" — this one call ran under the wider mode; the gra
 
 `escalation-rejected` 孪生场景以 `{"outcome": "rejected"}` 结束：不执行任何操作，模型的结果携带发起方的逐字失败关闭文本（`the user rejected escalating this command to "workspace-write"`）。钩子的 `permissionDecision: ask` 走完全相同的协议；只有发起方和拒绝文本不同（§ dsh-tools 中的 Ask 路由）。没有应答者时，同一请求直接结算为 `unavailable`。
 
+Conductor 所有者澄清使用独立的[持久问题与恢复控制器](2026-10-30-conductor-owner-escalation-resumption.md)。其 `approve` 操作确认具体授权变更，不是本 seam 的 Gate C 基线批准、Arbiter GO 或 closeout。授权变化仍须通过本 seam 获得全新精确执行基线批准。
+
 ### 设计细节
 
 #### seam：机制与策略分离
