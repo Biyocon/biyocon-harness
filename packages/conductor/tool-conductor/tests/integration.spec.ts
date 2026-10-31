@@ -617,7 +617,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       status: string
       history: { gate: string; decision: string; basis: string[] }[]
     }
-    expect(record.status, JSON.stringify(record)).toBe('escalated')
+    expect(record.status, JSON.stringify(record)).toBe('awaiting_owner')
     expect(record.history.find(gate => gate.gate === 'C'), JSON.stringify(record)).toMatchObject({ kind: 'evaluated',
       gate: 'C',
       decision: 'rework',

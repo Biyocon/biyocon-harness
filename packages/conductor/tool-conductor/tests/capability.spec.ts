@@ -99,6 +99,62 @@ describe('dsh-tool-conductor capability policies', () => {
     }
   })
 
+  it.each(['headsman', 'integrator'] as const)('protects Git metadata from %s even with an owner-authorized workspace root', (stage) => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-conductor-git-metadata-'))
+    try {
+      mkdirSync(join(root, '.git', 'hooks'), { recursive: true })
+      mkdirSync(join(root, 'nested', '.git'), { recursive: true })
+      const baseline: ExecutionBaseline = {
+        scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
+        allowedPaths: ['.'], excludedPaths: [], rollbackReference: 'HEAD', qualityCommands: [],
+      }
+      const guard = toolGuardForStage(stage, baseline, authorize(baseline))
+      const execution = (name: 'write' | 'edit' | 'read', file_path: string) => ({
+        name, arguments: { file_path }, agent: { session: { header: { cwd: root } } },
+      }) as unknown as ToolExecution
+      for (const name of ['write', 'edit'] as const) {
+        for (const path of ['.git', '.git/config', '.git/hooks/pre-commit', 'nested/.git/config',
+          '.GIT/config', 'nested/.GiT/hooks/pre-push', '.git/../docs/architecture.md', join(root, '.git', 'config')]) {
+          expect(guard(execution(name, path)), `${name}: ${path}`).toMatch(/Git metadata/)
+        }
+      }
+      expect(guard(execution('write', 'docs/architecture.md'))).toBeUndefined()
+      expect(guard(execution('edit', 'docs/.github/config.yml'))).toBeUndefined()
+      expect(guard(execution('write', 'docs/.gitkeep'))).toBeUndefined()
+      expect(guard(execution('read', '.git/config'))).toBeUndefined()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('protects both supplied Git paths and canonical Git targets behind aliases', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-conductor-git-alias-'))
+    try {
+      const metadata = join(root, '.git')
+      const ordinary = join(root, 'docs')
+      mkdirSync(join(metadata, 'hooks'), { recursive: true })
+      mkdirSync(ordinary)
+      mkdirSync(join(root, 'linked'))
+      const directoryLink = process.platform === 'win32' ? 'junction' : 'dir'
+      symlinkSync(metadata, join(root, 'metadata-alias'), directoryLink)
+      symlinkSync(ordinary, join(root, 'linked', '.git'), directoryLink)
+      const baseline: ExecutionBaseline = {
+        scopeVersion: 'scope-1', planVersion: 'plan-1', acceptanceVersion: 'accept-1',
+        allowedPaths: ['.'], excludedPaths: [], rollbackReference: 'HEAD', qualityCommands: [],
+      }
+      const guard = toolGuardForStage('headsman', baseline, authorize(baseline))
+      const execution = (file_path: string) => ({
+        name: 'edit', arguments: { file_path }, agent: { session: { header: { cwd: root } } },
+      }) as unknown as ToolExecution
+      expect(guard(execution('metadata-alias/config'))).toMatch(/Git metadata/)
+      expect(guard(execution('metadata-alias/hooks/pre-commit'))).toMatch(/Git metadata/)
+      expect(guard(execution('linked/.git/architecture.md'))).toMatch(/Git metadata/)
+      expect(guard(execution('docs/architecture.md'))).toBeUndefined()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('gives the Integrator read and write tools but no shell', () => {
     expect(toolRestrictionForStage('integrator', WRITE_AUTHORIZATION)).toEqual({ allow: [...READ_TOOLS, ...WRITE_TOOLS] })
   })

@@ -13,6 +13,7 @@
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { OwnerInteraction, OwnerMandate, OwnerMandateProposal, OwnerQuestionItem } from './owner-types.ts'
 
 /**
  * Identifies one Conductor run. The runtime mints `CON-YYYY-NNNN`; every
@@ -122,6 +123,8 @@ export interface AnalysisEnvelope {
   defect?: 'scope' | 'plan' | 'report'
   candidate?: ReportCandidate
   candidate_hash?: string
+  /** Read-only owner clarification; it cannot request implementation authority. */
+  clarifications?: OwnerQuestionItem[]
 }
 
 /** Independent report verdict, never a release decision or an authorization. */
@@ -206,6 +209,8 @@ export interface ConductorBudget {
   maxReworkPerGate: number
   /** Maximum Ralph iterations Headsman may run inside one approved baseline. */
   maxRalphRounds: number
+  /** Maximum accepted owner-directed reassessments at each gate, independently of rework. */
+  maxOwnerReassessmentsPerGate: number
 }
 
 /**
@@ -285,6 +290,8 @@ export interface QualityExecutionRecord {
  */
 export type ConductorRunStatus =
   | 'running'
+  | 'awaiting_owner'
+  | 'continuation_pending'
   | 'awaiting_authorization'
   | 'rework'
   | 'escalated'
@@ -300,7 +307,15 @@ export type ConductorRunStatus =
  */
 export interface ConductorRun {
   /** Pre-release durable record format; unsupported versions are rejected without migration. */
-  recordFormatVersion: 3
+  recordFormatVersion: 4
+  /** Actual owning root session; null only when no host session was captured. */
+  ownerSessionId: SessionId | null
+  /** Immutable capabilities captured by the admitting host, never supplied by a specialist. */
+  ownerCapabilities: OwnerMandate | null
+  /** Monotonic owner-ledger revision, independent of gate-history offsets. */
+  ownerRevision: number
+  /** Append-only questions, accepted answers, single-use consumption and rejection. */
+  ownerLedger: OwnerInteraction[]
   /** Immutable, captured owner inputs and validated entry selection. */
   admission: ConductorAdmission
   /** Pending prerequisite repairs, in causal stack order. */
@@ -471,6 +486,8 @@ export interface ChangeRequest {
   reason: string
   /** The impact accepting the change would have. */
   impact: string
+  /** Concrete amendment, still subject to host capability validation and owner consent. */
+  proposal?: OwnerMandateProposal
 }
 
 /**

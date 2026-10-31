@@ -1,8 +1,10 @@
-# Conductor child presentation
+# Conductor runtime and child presentation
 
 English | [中文](conductor.zh.md)
 
-This reference covers model-hidden child presentation owned by [dsh-conductor](../../packages/conductor/conductor/README.md). Run and gate policy remain in the package README; generic child discovery is defined by [Subagent](subagent.md).
+This reference covers the durable owner ledger and model-hidden child presentation owned by [dsh-conductor](../../packages/conductor/conductor/README.md). Run and gate policy remain in the package README; generic child discovery is defined by [Subagent](subagent.md).
+
+Record v4 separates `GateRecord[]` from the [owner interaction types](../../packages/conductor/conductor/src/owner-types.ts). `OwnerQuestion` binds root session, run, gate index, child attempt, captured report/hash, mandate revision and complete required items. `OwnerInteraction` records question, atomically reserved answer/plan, single consumption or rejection at monotonic owner revisions. Both run validators enforce this causal history. `awaiting_owner` and `continuation_pending` reconstruct on restart but ordinary resume refuses them in P1; only a scripted test provider consumes a plan. Version 3 is rejected without migration. The [proposed owner interaction](../../.agents/notes/proposed/feature/2026-10-30-conductor-owner-escalation-resumption.md) retains production control and UI for later phases.
 
 [`ConductorChild`](../../packages/conductor/conductor/src/child-types.ts) names a concrete `childId`, its `runId`, runtime `role`, one-based per-role `attempt`, dispatch `historyOffset`, and `status: running | completed | failed`. `ConductorChildRole` is the seven specialist stages plus `ralph`. Optional `gate` contains `id`, `decision`, `reworks` and `limit`; it belongs to the child's own evaluated report, not the latest result for its role. Ralph has no specialist gate verdict.
 

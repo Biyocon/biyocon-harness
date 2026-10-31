@@ -28,15 +28,21 @@ import type {
 } from './types.ts'
 import { executionBaselineHash, executionEffectProfile } from './quality.ts'
 import { admittedRoute, GATED_STAGES, requireAnalysisCriteria, transitionRoute } from './intake.ts'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { OwnerMandate } from './owner-types.ts'
 
 /** Current pre-release durable Conductor record format. */
-export const CONDUCTOR_RECORD_FORMAT_VERSION = 3
+export const CONDUCTOR_RECORD_FORMAT_VERSION = 4
 
 /**
  * The initial, dispatch-ready run state. The run starts at its admitted A/B/C entry with
  * explicit prior skips and no execution baseline (implementation authorizes one at C).
  */
 export interface CreateRunInput {
+  /** Actual host-owned root session; omitted only by consumers without a session. */
+  ownerSessionId?: SessionId
+  /** Immutable workspace and command capabilities captured by the admitting host. */
+  ownerCapabilities?: OwnerMandate
   /** Host-captured, validated purpose, entry and material provenance. */
   admission: ConductorAdmission
   /** The desired outcome. */
@@ -58,7 +64,7 @@ export interface CreateRunInput {
   /** Measurable deliverable requirements; at least one is required for analysis. */
   acceptanceCriteria?: string[]
   /** Rework and Ralph round limits; defaults to `{ maxReworkPerGate: 2, maxRalphRounds: 0 }`. */
-  budget?: ConductorBudget
+  budget?: Omit<ConductorBudget, 'maxOwnerReassessmentsPerGate'> & { maxOwnerReassessmentsPerGate?: number }
 }
 
 /**
@@ -68,10 +74,18 @@ export interface CreateRunInput {
  * @returns the initial run.
  */
 export function createRun(runId: ConductorRunId, input: CreateRunInput): ConductorRun {
+  if (input.budget?.maxOwnerReassessmentsPerGate !== undefined
+    && (!Number.isSafeInteger(input.budget.maxOwnerReassessmentsPerGate) || input.budget.maxOwnerReassessmentsPerGate < 1)) {
+    throw new Error('Conductor maxOwnerReassessmentsPerGate must be a positive safe integer')
+  }
   const acceptanceCriteria = [...(input.acceptanceCriteria ?? [])]
   requireAnalysisCriteria(input.admission, acceptanceCriteria)
   const run: ConductorRun = {
     recordFormatVersion: CONDUCTOR_RECORD_FORMAT_VERSION,
+    ownerSessionId: input.ownerSessionId ?? null,
+    ownerCapabilities: input.ownerCapabilities === undefined ? null : structuredClone(input.ownerCapabilities),
+    ownerRevision: 0,
+    ownerLedger: [],
     admission: structuredClone(input.admission),
     repairReturns: [],
     analysisReports: [],
@@ -88,8 +102,8 @@ export function createRun(runId: ConductorRunId, input: CreateRunInput): Conduct
     acceptanceCriteria,
     budget:
       input.budget === undefined
-        ? { maxReworkPerGate: 2, maxRalphRounds: 0 }
-        : { ...input.budget },
+        ? { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 }
+        : { ...input.budget, maxOwnerReassessmentsPerGate: input.budget.maxOwnerReassessmentsPerGate ?? 2 },
     baselineHistory: [],
     baseline: null,
     executionAuthorization: null,
@@ -219,6 +233,9 @@ export interface GateVerdict {
  * @returns the updated run with the record appended to `history`.
  */
 export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRun {
+  if (run.status === 'awaiting_owner' || run.status === 'continuation_pending') {
+    throw new Error(`Conductor run ${run.runId} is ${run.status}; consume its exact owner continuation before further gate decisions`)
+  }
   if (run.status === 'closed' || run.status === 'aborted' || run.status === 'reported') {
     throw new Error(`Conductor run ${run.runId} is ${run.status}; no further gate decisions`)
   }

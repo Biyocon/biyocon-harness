@@ -18,7 +18,8 @@ import type { ConductorRun, EvaluatedGateRecord as GateRecord, QualityCommandBin
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
-    recordFormatVersion: 3,
+    recordFormatVersion: 4,
+    ownerSessionId: null, ownerCapabilities: null, ownerRevision: 0, ownerLedger: [],
     admission: implementationAdmission(), repairReturns: [], analysisReports: [], reportCandidates: [],
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
@@ -30,7 +31,7 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: [],
-    budget: { maxReworkPerGate: 3, maxRalphRounds: 0 },
+    budget: { maxReworkPerGate: 3, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 },
     baselineHistory: [],
     baseline: null,
     executionAuthorization: null,
@@ -210,14 +211,14 @@ function specialistReport() {
 describe('dsh-conductor persistence', () => {
   it('rejects version 1 and removed budget fields instead of migrating them', () => {
     expect(() => parseRun(JSON.stringify({ ...makeRun(), recordFormatVersion: 1 })))
-      .toThrow(/format 1 is unsupported; expected 3/)
+      .toThrow(/format 1 is unsupported; expected 4/)
     expect(() => parseRun(JSON.stringify({
-      ...makeRun(), budget: { maxReworkPerGate: 2, maxReworkCycles: 3, maxRalphRounds: 0 },
+      ...makeRun(), budget: { maxReworkPerGate: 2, maxReworkCycles: 3, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 },
     }))).toThrow(/budget contains unsupported fields/)
   })
 
   it('round-trips same-role report repairs and rejects a forged third rework at a gate', () => {
-    let run = makeRun({ budget: { maxReworkPerGate: 2, maxRalphRounds: 0 } })
+    let run = makeRun({ budget: { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 } })
     const verdict = {
       decision: 'rework' as const, defectClass: 'report' as const, nextStage: 'detective' as const,
       basis: ['malformed report'], evidenceReviewed: [], stateUpdate: 'repair Detective report',
@@ -735,7 +736,7 @@ describe('dsh-conductor persistence', () => {
       [{ ...makeRun(), authority: { owner: '' } }, /authority.owner/],
       [{ ...makeRun(), authority: { owner: 'user', permittedActions: ['read', 'read'] } }, /attribution-only/],
       [{ ...makeRun(), constraints: [' '] }, /constraints/],
-      [{ ...makeRun(), budget: { maxReworkPerGate: 0, maxRalphRounds: 0 } }, /maxReworkPerGate/],
+      [{ ...makeRun(), budget: { maxReworkPerGate: 0, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 } }, /maxReworkPerGate/],
       [{ ...makeRun(), budget: { maxReworkPerGate: 1, maxRalphRounds: -1 } }, /maxRalphRounds/],
       [{ ...makeRun(), baseline: [] }, /baseline must be an object/],
       [{ ...makeRun(), baseline: {

@@ -27,6 +27,8 @@ import {
   admittedRoute,
   currentAuditHash,
   conductorChildrenProjection,
+  effectiveOwnerMandate,
+  ownerCommandAllowed,
 } from '@deepseek-ai/dsh-conductor'
 import type {
   ConductorAuthority,
@@ -72,6 +74,8 @@ import { resolveQualityCatalog } from './quality-catalog.ts'
 import type { QualityCommandConfig, QualityCommandDefinition } from './quality-catalog.ts'
 import { canonicalAbsolute } from './path-policy.ts'
 import { installModeRouting } from './mode-routing.ts'
+import { settleOwnerEscalation } from './owner-interaction.ts'
+import type { OwnerDispatchObservation } from './owner-interaction.ts'
 
 export const name = 'tool-conductor'
 export const inject = ['tools', 'subagents', 'skills', 'sessions', 'workflowEngine', 'sandbox', 'subprocess']
@@ -90,6 +94,8 @@ export interface Config {
   subagentProvider?: string
   /** Maximum rework decisions per gate before escalation (default 2). */
   maxReworkPerGate?: number
+  /** Maximum owner-directed reassessments per gate, independent of rework (default 2). */
+  maxOwnerReassessmentsPerGate?: number
   /** Default Ralph round budget; 0 disables the Headsman sub-phase (default 0). */
   maxRalphRounds?: number
   /** Maximum serialized characters in one Ralph handoff (default 16384). */
@@ -106,6 +112,7 @@ export const Config: z<Config> = z.object({
   routeTasks: z.boolean().default(false),
   subagentProvider: z.string().default('spawn'),
   maxReworkPerGate: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(2),
+  maxOwnerReassessmentsPerGate: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(2),
   maxRalphRounds: z.number().step(1).min(0).max(Number.MAX_SAFE_INTEGER).default(0),
   maxRalphHandoffChars: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(16_384),
   qualityCommands: z.array(z.object({
@@ -125,6 +132,7 @@ export const Config: z<Config> = z.object({
 interface ResolvedConfig extends MaterialLimits {
   readonly subagentProvider: string
   readonly maxReworkPerGate: number
+  readonly maxOwnerReassessmentsPerGate: number
   readonly maxRalphRounds: number
   readonly maxRalphHandoffChars: number
   readonly qualityCommands: ReadonlyMap<string, QualityCommandDefinition>
@@ -223,6 +231,13 @@ const ENVELOPE_SCHEMA = {
           target: { type: 'string', enum: ['scope', 'plan', 'baseline', 'authority'] },
           reason: { type: 'string' },
           impact: { type: 'string' },
+          proposal: { type: 'object', additionalProperties: false,
+            description: 'Exact proposed workspace-relative paths and available command ids; only an explicit scripted host confirmation can amend the mandate in P1.',
+            properties: {
+              allowedPaths: { type: 'array', items: { type: 'string' } },
+              excludedPaths: { type: 'array', items: { type: 'string' } },
+              qualityCommandIds: { type: 'array', items: { type: 'string' } },
+            }, required: ['allowedPaths', 'excludedPaths', 'qualityCommandIds'] },
         },
         required: ['target', 'reason', 'impact'],
       },
@@ -282,6 +297,7 @@ function resolveConfig(config: Config): ResolvedConfig {
   }
   const subagentProvider = config.subagentProvider ?? 'spawn'
   const maxReworkPerGate = config.maxReworkPerGate ?? 2
+  const maxOwnerReassessmentsPerGate = config.maxOwnerReassessmentsPerGate ?? 2
   const maxRalphRounds = config.maxRalphRounds ?? 0
   const maxRalphHandoffChars = config.maxRalphHandoffChars ?? 16_384
   const qualityCommands = resolveQualityCatalog(config.qualityCommands ?? [])
@@ -299,13 +315,17 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(maxReworkPerGate) || maxReworkPerGate < 1) {
     throw new TypeError('maxReworkPerGate must be a positive safe integer')
   }
+  if (!Number.isSafeInteger(maxOwnerReassessmentsPerGate) || maxOwnerReassessmentsPerGate < 1) {
+    throw new TypeError('maxOwnerReassessmentsPerGate must be a positive safe integer')
+  }
   if (!Number.isSafeInteger(maxRalphRounds) || maxRalphRounds < 0) {
     throw new TypeError('maxRalphRounds must be a non-negative safe integer')
   }
   if (!Number.isSafeInteger(maxRalphHandoffChars) || maxRalphHandoffChars < 1) {
     throw new TypeError('maxRalphHandoffChars must be a positive safe integer')
   }
-  return { subagentProvider, maxReworkPerGate, maxRalphRounds, maxRalphHandoffChars, qualityCommands, ...limits }
+  return { subagentProvider, maxReworkPerGate, maxOwnerReassessmentsPerGate,
+    maxRalphRounds, maxRalphHandoffChars, qualityCommands, ...limits }
 }
 
 /** Require a genuinely fresh structured-output provider for specialists. */
@@ -387,6 +407,9 @@ function composeSpecialistPrompt(
       run_id: run.runId,
       stage,
       admission: run.admission,
+      owner_ledger: run.ownerLedger,
+      owner_revision: run.ownerRevision,
+      effective_owner_mandate: effectiveOwnerMandate(run),
       admitted_route: admittedRoute(run.admission),
       analysis_reports: run.analysisReports,
       current_report: run.reportCandidates.at(-1) ?? null,
@@ -396,8 +419,8 @@ function composeSpecialistPrompt(
       previous_specialist_reports: run.specialistReports,
       source_baseline: run.sourceBaseline,
       execution_baseline: run.baseline,
-      allowed_paths: run.allowedPaths,
-      excluded_paths: run.excludedPaths,
+      allowed_paths: effectiveOwnerMandate(run).allowedPaths,
+      excluded_paths: effectiveOwnerMandate(run).excludedPaths,
       allowed_actions: stageActions,
       prohibited_actions: [
         ...(stageActions.includes('write') ? [] : ['write']),
@@ -441,7 +464,8 @@ function composeArbiterPrompt(run: ConductorRun): string {
       'You are The Arbiter reviewing a read-only analysis. Return accept, revise or blocked for the exact report and independent audit. Never grant GO, request approval or authorize execution.',
       'Analysis record:\n' + JSON.stringify({ run_id: run.runId, admission: run.admission,
         report: run.reportCandidates.at(-1), audit_hash: currentAuditHash(run), analysis_reports: run.analysisReports,
-        history: run.history, acceptance_criteria: run.acceptanceCriteria }, null, 2),
+        history: run.history, acceptance_criteria: run.acceptanceCriteria,
+        owner_ledger: run.ownerLedger, owner_revision: run.ownerRevision }, null, 2),
     ].join('\n\n')
   }
   return [
@@ -451,6 +475,8 @@ function composeArbiterPrompt(run: ConductorRun): string {
       source_baseline: run.sourceBaseline,
       execution_baseline: run.baseline,
       specialist_reports: run.specialistReports,
+      owner_ledger: run.ownerLedger,
+      owner_revision: run.ownerRevision,
       history: run.history,
     }, null, 2),
     'Acceptance criteria:\n' + JSON.stringify(run.acceptanceCriteria, null, 2),
@@ -608,6 +634,9 @@ function resolveSpecialistEnvelope(
     return unresolvedEnvelope(value, 'Gate C qualityCommandIds must not contain duplicates')
   }
   const normalizedIds = ids as string[]
+  if (normalizedIds.some(id => !ownerCommandAllowed(run, id))) {
+    return unresolvedEnvelope(value, 'Gate C command selection exceeds the effective owner mandate', 'authority')
+  }
   const qualityCommands: QualityCommandBinding[] = []
   for (const id of normalizedIds) {
     const definition = catalog.get(id)
@@ -627,8 +656,8 @@ function resolveSpecialistEnvelope(
         scopeVersion: proposal['scopeVersion'] as string,
         planVersion: proposal['planVersion'] as string,
         acceptanceVersion: proposal['acceptanceVersion'] as string,
-        allowedPaths: [...run.allowedPaths],
-        excludedPaths: [...run.excludedPaths],
+        allowedPaths: effectiveOwnerMandate(run).allowedPaths,
+        excludedPaths: effectiveOwnerMandate(run).excludedPaths,
         rollbackReference: proposal['rollbackReference'] as string,
         qualityCommands,
       },
@@ -1036,9 +1065,13 @@ export function apply(ctx: Context, config: Config): void {
             excludedPaths,
             ...call.sourceBaseline !== undefined ? { sourceBaseline: call.sourceBaseline } : {},
             authority,
+            ownerSessionId: parent.session.id,
+            ownerCapabilities: { allowedPaths: ['.'], excludedPaths,
+              qualityCommandIds: [...resolved.qualityCommands.keys()] },
             constraints: resolveStringList(call.constraints, 'constraints'),
             acceptanceCriteria: resolveStringList(call.acceptanceCriteria, 'acceptanceCriteria'),
-            budget: { maxReworkPerGate: resolved.maxReworkPerGate, maxRalphRounds: resolved.maxRalphRounds },
+            budget: { maxReworkPerGate: resolved.maxReworkPerGate,
+              maxOwnerReassessmentsPerGate: resolved.maxOwnerReassessmentsPerGate, maxRalphRounds: resolved.maxRalphRounds },
           })
           await store.save(run)
         }
@@ -1058,6 +1091,15 @@ export function apply(ctx: Context, config: Config): void {
         }
         assertCatalogBindings(run, resolved.qualityCommands)
 
+        let lastObservation: OwnerDispatchObservation | undefined
+        const observeReport = (current: ConductorRun, report: unknown): void => {
+          const child = parent.session.events.findLast(event => event.type === 'conductor/child'
+            && event.data.runId === current.runId && event.data.role === current.currentStage
+            && event.data.historyOffset === current.history.length)
+          lastObservation = child?.type === 'conductor/child' ? { historyOffset: current.history.length,
+            childId: child.data.childId, attempt: child.data.attempt,
+            report: JSON.parse(JSON.stringify(report ?? null)) as unknown } : undefined
+        }
         const dispatcher = {
           async authorizeExecution(
             current: ConductorRun,
@@ -1076,21 +1118,34 @@ export function apply(ctx: Context, config: Config): void {
             )
           },
           async dispatchSpecialist(stage: ConductorStage, current: ConductorRun) {
-            return await runSpecialist(
+            const result = await runSpecialist(
               ctx, resolved.subagentProvider, parent, exec.signal, stage, current, resolved.maxRalphHandoffChars,
               resolved.qualityCommands,
             )
+            observeReport(current, 'envelope' in result ? result.envelope : result)
+            return result
           },
           async dispatchArbiter(current: ConductorRun) {
-            return await runArbiter(ctx, resolved.subagentProvider, parent, exec.signal, current)
+            const result = await runArbiter(ctx, resolved.subagentProvider, parent, exec.signal, current)
+            observeReport(current, result)
+            return result
           },
         }
 
-        const outcome = await drive(run, dispatcher, async (checkpoint) => {
+        const saveCheckpoint = async (checkpoint: ConductorRun): Promise<void> => {
           await store.save(checkpoint)
           publishChildGates(parent.session, checkpoint)
           activeRun = checkpoint
-        })
+        }
+        let outcome
+        while (true) {
+          outcome = await drive(run, dispatcher, saveCheckpoint)
+          const owner = await settleOwnerEscalation(ctx, outcome, lastObservation,
+            parent.session.header.cwd ?? process.cwd(), saveCheckpoint)
+          outcome = owner.outcome
+          if (owner.continuation === undefined) break
+          run = owner.continuation
+        }
 
         return {
           runId: outcome.run.runId,

@@ -29,6 +29,8 @@ import type {
   ReportDecision,
 } from './types.ts'
 import { driveAnalysis } from './analysis.ts'
+import type { OwnerEscalation } from './owner-types.ts'
+import { effectiveOwnerMandate, ownerCommandAllowed, ownerEscalationForProblem } from './owner-ledger.ts'
 import { gateOfStage, recordGate } from './state.ts'
 import { routeGate } from './routing.ts'
 import {
@@ -111,7 +113,7 @@ export type ConductorCheckpoint = (run: ConductorRun) => Promise<void>
 /** A terminal driver outcome: the Arbiter's decision, or a blocker. */
 export type ConductorOutcome =
   | { readonly kind: 'decision'; readonly decision: DecisionRecord; readonly run: ConductorRun }
-  | { readonly kind: 'blocked'; readonly blocker: string; readonly run: ConductorRun }
+  | { readonly kind: 'blocked'; readonly blocker: string; readonly run: ConductorRun; readonly ownerEscalation?: OwnerEscalation | undefined }
   | { readonly kind: 'report'; readonly report: CapturedReport; readonly decision: ReportDecision; readonly run: ConductorRun }
 
 /**
@@ -134,6 +136,9 @@ export async function drive(
   checkpoint: ConductorCheckpoint = () => Promise.resolve(),
 ): Promise<ConductorOutcome> {
   let current = run
+  if (current.status === 'awaiting_owner' || current.status === 'continuation_pending') {
+    throw new Error('Conductor P1 has no production owner resumption; the run remains parked')
+  }
   if (!current.history.some(record => record.kind === 'evaluated') && current.admission.entry !== 'detective') {
     const lacksBaseline = current.admission.purpose === 'implementation' && current.sourceBaseline === null
     const lacksScope = lacksBaseline || current.admission.scopeSources.length === 0
@@ -198,7 +203,7 @@ export async function drive(
       })
       await checkpoint(current)
       if (current.status === 'rework') continue
-      return { kind: 'blocked', blocker: problem.message, run: current }
+      return { kind: 'blocked', blocker: problem.message, run: current, ownerEscalation: ownerEscalationForProblem(problem) }
     }
     const evidenceProblem = dispatchEvidenceProblem(envelope, dispatch.qualityExecutions, current.qualityExecutions)
     if (evidenceProblem !== undefined) {
@@ -212,6 +217,17 @@ export async function drive(
       return { kind: 'blocked', blocker: evidenceProblem, run: current }
     }
     const specialistReports = [...current.specialistReports, structuredClone(envelope)]
+    if (envelope.change_requests.some(request => request.target === 'authority')) {
+      const reason = envelope.change_requests.map(request => request.reason).join('; ')
+      current = recordGate({ ...current, specialistReports, qualityExecutions }, {
+        decision: 'escalate', basis: [reason], evidenceReviewed: envelope.evidence.map(item => item.reference),
+        stateUpdate: 'owner mandate amendment requested; execution remains unauthorized',
+      })
+      await checkpoint(current)
+      return { kind: 'blocked', blocker: reason, run: current,
+        ownerEscalation: { kind: 'recoverable',
+          cause: envelope.change_requests.some(request => request.proposal !== undefined) ? 'authority-amendment' : 'clarification', reason } }
+    }
     const passProblem = gatePassProblem(envelope, { ...current, qualityExecutions }, dispatch.requiredQualityCommands)
     if (passProblem !== undefined) {
       current = recordGate({ ...current, specialistReports, qualityExecutions }, {
@@ -244,7 +260,8 @@ export async function drive(
         })
         await checkpoint(current)
         if (current.status === 'rework') continue
-        return { kind: 'blocked', blocker: baselineProblem, run: current }
+        return { kind: 'blocked', blocker: baselineProblem, run: current,
+          ownerEscalation: { kind: 'recoverable', cause: 'rework-exhausted', reason: baselineProblem } }
       }
       baseline = snapshotBaseline(envelope.execution_baseline as ExecutionBaseline)
       const profile = executionEffectProfile(baseline)
@@ -313,6 +330,8 @@ export async function drive(
       kind: 'blocked',
       blocker: `run ${current.status} at gate ${gate}`,
       run: current,
+      ...envelope.status === 'rework' || (envelope.status === 'blocked' && envelope.change_requests.length > 0)
+        ? { ownerEscalation: { kind: 'recoverable', cause: envelope.status === 'rework' ? 'rework-exhausted' : 'clarification', reason: envelope.summary } as const } : {},
     }
   }
 }
@@ -328,9 +347,9 @@ async function settleArbiter(
     const rawDecision = await dispatcher.dispatchArbiter(current)
     const malformed = decisionProblem(rawDecision, current)
     if (malformed !== undefined) {
+      const identityMismatch = isObject(rawDecision) && nonEmptyText(rawDecision['run_id']) && rawDecision['run_id'] !== current.runId
       const run = recordGate(current, {
-        decision: isObject(rawDecision) && nonEmptyText(rawDecision['run_id'])
-          && rawDecision['run_id'] !== current.runId ? 'escalate' : 'rework',
+        decision: identityMismatch ? 'escalate' : 'rework',
         defectClass: 'report',
         nextStage: 'arbiter',
         basis: [malformed],
@@ -342,7 +361,8 @@ async function settleArbiter(
         current = run
         continue
       }
-      return { kind: 'blocked', blocker: malformed, run }
+      return { kind: 'blocked', blocker: malformed, run,
+        ...identityMismatch ? {} : { ownerEscalation: { kind: 'recoverable', cause: 'rework-exhausted', reason: malformed } as const } }
     }
     const decision = rawDecision as DecisionRecord
     if (decision.decision === 'go') {
@@ -390,12 +410,10 @@ function envelopeAuthorityProblem(envelope: unknown, stage: ConductorStage, run:
     && nonEmptyText(transition.target) && transition.target !== 'conductor') {
     return { kind: 'authority', message: 'envelope recommended_transition must target "conductor"' }
   }
-  if (Array.isArray(value['change_requests'])) {
-    for (const request of value['change_requests'] as unknown[]) {
-      if (isObject(request) && request['target'] === 'authority') {
-        return { kind: 'authority', message: `authority change requested: ${String(request['reason'])}` }
-      }
-    }
+  const proposed = value['execution_baseline']
+  if (stage === 'devils-advocate' && isObject(proposed) && Array.isArray(proposed['qualityCommands'])
+    && proposed['qualityCommands'].some(binding => isObject(binding) && nonEmptyText(binding['id']) && !ownerCommandAllowed(run, binding['id']))) {
+    return { kind: 'authority', message: 'Gate C command selection exceeds the effective owner mandate' }
   }
   return undefined
 }
@@ -466,6 +484,12 @@ function envelopeProblem(envelope: unknown, stage: ConductorStage, run: Conducto
       || !nonEmptyText(item['reason']) || !nonEmptyText(item['impact'])) {
       return 'envelope change_requests must contain a target, reason, and impact'
     }
+    const proposal = item['proposal']
+    if (proposal !== undefined && (item['target'] !== 'authority' || !isObject(proposal)
+      || Object.keys(proposal).some(key => !['allowedPaths', 'excludedPaths', 'qualityCommandIds'].includes(key))
+      || !isStringArray(proposal['allowedPaths']) || !isStringArray(proposal['excludedPaths']) || !isStringArray(proposal['qualityCommandIds']))) {
+      return 'only authority change_requests may include a complete concrete mandate proposal'
+    }
   }
   const transition = value['recommended_transition']
   if (typeof transition !== 'object' || transition === null
@@ -491,10 +515,10 @@ function executionBaselineProblem(value: unknown, run: ConductorRun): string | u
   if (!isStringArray(baseline['allowedPaths']) || !isStringArray(baseline['excludedPaths'])) {
     return 'execution_baseline allowedPaths and excludedPaths must contain normalized strings'
   }
-  if (!sameStrings(baseline['allowedPaths'], run.allowedPaths)) {
+  if (!sameStrings(baseline['allowedPaths'], effectiveOwnerMandate(run).allowedPaths)) {
     return 'execution_baseline.allowedPaths must exactly match the owner-authorized run paths'
   }
-  if (!sameStrings(baseline['excludedPaths'], run.excludedPaths)) {
+  if (!sameStrings(baseline['excludedPaths'], effectiveOwnerMandate(run).excludedPaths)) {
     return 'execution_baseline.excludedPaths must exactly match the owner-declared exclusions'
   }
   if (!Array.isArray(baseline['qualityCommands'])) {

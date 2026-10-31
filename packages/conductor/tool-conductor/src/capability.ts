@@ -74,7 +74,8 @@ export const analysisToolGuard: ToolGuard = exec => [...READ_TOOLS, 'structured_
 /**
  * Build the argument-aware write guard for one specialist child. Reads are
  * unaffected. Headsman writes only inside the immutable execution baseline;
- * Integrator is further limited to `docs` or `.agents/notes` descendants.
+ * Integrator is further limited to `docs` or `.agents/notes` descendants. Git metadata
+ * remains read-only even when the baseline authorizes the whole workspace.
  * @param stage - dispatched specialist stage.
  * @param baseline - Gate-C execution baseline, required by write-capable stages.
  * @param authorization - host-owned authorization for the active baseline.
@@ -120,6 +121,9 @@ function writePolicyDenial(
   } catch (error) {
     return `Conductor ${stage} write denied: path could not be canonicalized (${String(error)})`
   }
+  if (isGitMetadataPath(candidate) || isGitMetadataPath(target)) {
+    return `Conductor ${stage} write denied: Git metadata is never writable`
+  }
   const excluded = excludedRoots.some(path => containsPath(path, target))
   if (excluded) return `Conductor ${stage} write denied: path is excluded by the execution baseline`
   const allowed = allowedRoots.some(path => containsPath(path, target))
@@ -128,6 +132,10 @@ function writePolicyDenial(
     return 'Conductor integrator write denied: path is outside docs/notes'
   }
   return undefined
+}
+
+function isGitMetadataPath(path: string): boolean {
+  return path.split(/[\\/]/).some(segment => segment.toLowerCase() === '.git')
 }
 
 function isDocumentationPath(cwd: string, target: string): boolean {

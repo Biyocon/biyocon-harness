@@ -1,6 +1,7 @@
 /** Causal gate-history validation shared by both admitted workflow purposes. */
 import type { ConductorRun, ConductorStage, GateId, RepairReturn } from './types.ts'
 import { admittedRoute, GATED_STAGES, transitionRoute } from './intake.ts'
+import { ownerContinuationAt } from './owner-ledger.ts'
 
 /**
  * Reject forged skips, invalid causal returns, reset budgets and impossible stages.
@@ -15,7 +16,19 @@ export function validateIntakeHistory(run: ConductorRun): void {
   let evaluated = false
   let terminal = false
   const counts = new Map<GateId, number>()
-  for (const gate of run.history) {
+  for (let historyIndex = 0; historyIndex <= run.history.length; historyIndex++) {
+    const continuation = ownerContinuationAt(run, historyIndex)
+    if (continuation !== undefined) {
+      if (!terminal || run.history[historyIndex - 1]?.decision !== 'escalate') {
+        throw new Error('Conductor owner continuation must follow its documented escalation')
+      }
+      currentStage = continuation.plan.stage
+      destination = currentStage
+      if (continuation.question.proposal !== undefined) repairReturns = []
+      terminal = false
+    }
+    const gate = run.history[historyIndex]
+    if (gate === undefined) break
     // Discriminants and optional origin still come from durable JSON here.
     const metadata = gate as { kind: unknown; decision: unknown; origin?: unknown }
     if (terminal) throw new Error('Conductor history cannot continue after a terminal gate')

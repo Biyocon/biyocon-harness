@@ -14,11 +14,13 @@ On master b0d5825b6fa17e9ffb395e2996e16a4a00f34ca2, [resume validation](../../..
 
 ## Proposal
 
-Park a recoverable escalation as a durable owner question, then resume the same run through a Conductor-owned host controller. Reuse the existing question transport and root-agent identity checks with a typed Conductor interaction; keep Gate C's approval service separate. No implementation is included in this proposal.
+Park a recoverable escalation as a durable owner question, then resume the same run through a Conductor-owned host controller. Reuse the existing question transport and root-agent identity checks with a typed Conductor interaction; keep Gate C's approval service separate. P1 delivers the record and validator foundation below; the production interaction remains proposed for P2/P3.
 
 The seven specialist roles and their responsibilities remain unchanged. The owner supplies decisions and clarification, not a new specialist report or a gate pass. Implementation and analysis retain their existing routes; this feature does not add intake entries, analysis criticism, providers, domain agents, or document formats.
 
 ### Implementation phases
+
+P1 is delivered as the record-v4 domain foundation: an append-only owner ledger, exact child/report provenance, validated amendments and per-gate reassessment limits, with strict analysis and implementation reconstruction. Conductor child write validation rejects Git metadata even under a broad workspace mandate, including canonical aliases. It remains test-provider-only: existing required-on-read `conductor/checkpoint` events carry the complete ledger, and no new session event type, live answer controller, resumption turn, routing hook or UI is enabled. Dedicated interaction events and SDK event additions belong to P2. Installed-preset keyless scenarios exercise scripted acceptance, rejection and unavailable-provider parking. The note deliberately remains proposed until P3 delivers the complete interaction. Existing version-3 runs are rejected and cannot resume after upgrading.
 
 Implement #37 in three successive PRs, in this order. Stop after each PR for review by the owner and Claude; approval of the design or an earlier phase does not authorize the next phase or a merge.
 
@@ -28,7 +30,7 @@ Implement #37 in three successive PRs, in this order. Stop after each PR for rev
 | P2 | Conductor-owned host controller, durable answer/resumption turn, and routing guard. | Exercise same-run continuation, crash/cancellation boundaries, stale replies, and parent tool denial; stop for review before P3. |
 | P3 | Typed owner-question UI card with EN/DA, accessible controls, browser e2e, and a GIF. | Verify the real interaction through the app; record the GIF from a PR server on port 3090 and publish it on a separate assets branch; stop for review. |
 
-Each phase must be independently safe. Do not enable an unfinished production interaction path: scripted test providers cover the earlier phases, and an unavailable production provider must leave the run parked without granting authority.
+Each phase must be independently safe. Do not enable an unfinished production interaction path: scripted test providers cover the earlier phases, and an unavailable production provider must leave the run parked without granting authority. Parked and owner-rejected outcomes retain the original escalation reason. The user-facing unavailable-answer message explains that limitation without naming an implementation phase.
 
 ### Escalation classification and stage transitions
 
@@ -71,7 +73,7 @@ Allow at most two owner-directed reassessments per gate with the preset. Once bo
 
 ### Persistence and recovery
 
-[The record format](../../../../packages/conductor/conductor/src/state.ts) is currently version 3. #37 takes CONDUCTOR_RECORD_FORMAT_VERSION = 4 in P1, rejecting version 3 and other unsupported records with a clear version error and no compatibility layer. #47 and #30 phase 2 build on this version-4 foundation; neither independently claims version 4. Any later format change must allocate the next version from the then-current base. This design PR does not itself change any runtime format.
+[The record format](../../../../packages/conductor/conductor/src/state.ts) uses CONDUCTOR_RECORD_FORMAT_VERSION = 4 in P1, rejecting version 3 and other unsupported records with a clear version error and no compatibility layer. #47 and #30 phase 2 build on this version-4 foundation; neither independently claims version 4. Any later format change must allocate the next version from the then-current base.
 
 Keep GateRecord[] exclusively for gate decisions. Add an append-only owner-interaction ledger and a monotonically checked record revision. Each question binds its stable ID to the root session, run ID, originating gate index, stage, exact child attempt, candidate/report hash, mandate revision, required item IDs, reason, and any concrete proposal. Each accepted response records its action, answers, amendment, prior revision, and single-use resume plan. Validate the causal order between the ledger and gate history on load. Never trust client-supplied stage, paths, role, or resume arguments.
 
@@ -120,7 +122,7 @@ Extend the real installed-preset examples in [conductor-installed.snapshot.ts](.
 - Add real browser coverage for EN/DA controls, multiple required answers, refresh, waiting and rejection. Record the eventual GUI PR's GIF from its server on 3090 on a separate assets branch; do not use the owner's app on 10822.
 - Update existing model-visible Conductor snapshots and TS/Python SDK expected outputs only where the new events or schemas affect them; run focused tests, typecheck, lint, doc-sync, and the repository pre-push checks during implementation.
 
-The [intake](../../implemented/feature/2026-10-25-conductor-intake-and-report-completion.md), [gate robustness](../../implemented/bug-fix/2026-10-25-conductor-gate-robustness.md), [routing](../../implemented/bug-fix/2026-10-25-conductor-mode-routing.md), [approval seam](../../implemented/feature/2026-07-06-approval-seam.md), and [child status](../../implemented/bug-fix/2026-10-28-conductor-child-role-status.md) notes retain their current rationale and contracts. No implemented note is fully superseded by this unimplemented proposal, so none is archived. Implementation will update and cross-link the partially changed contracts and owning README pairs.
+The [intake](../../implemented/feature/2026-10-25-conductor-intake-and-report-completion.md), [gate robustness](../../implemented/bug-fix/2026-10-25-conductor-gate-robustness.md), [routing](../../implemented/bug-fix/2026-10-25-conductor-mode-routing.md), [approval seam](../../implemented/feature/2026-07-06-approval-seam.md), and [child status](../../implemented/bug-fix/2026-10-28-conductor-child-role-status.md) notes retain their current rationale and contracts. No implemented note is fully superseded by this partially implemented proposal, so none is archived. Implementation will update and cross-link the partially changed contracts and owning README pairs.
 
 ## Alternatives considered
 

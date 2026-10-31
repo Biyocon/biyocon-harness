@@ -34,6 +34,7 @@ import { CONDUCTOR_RECORD_FORMAT_VERSION } from './state.ts'
 import { parseAdmission, requireAnalysisCriteria } from './intake.ts'
 import { validateIntakeHistory } from './intake-history.ts'
 import { parseAnalysisState } from './analysis-persistence.ts'
+import { assertOwnerLedger, effectiveOwnerMandate, ownerCommandAllowed, ownerLifecycleStatus } from './owner-ledger.ts'
 
 /** One whole-run checkpoint in the parent Session log. A null record is a tombstone. */
 export interface ConductorCheckpointData {
@@ -53,7 +54,7 @@ declare module '@deepseek-ai/dsh-session/types' {
   }
 }
 
-const RUN_STATUSES = ['running', 'awaiting_authorization', 'rework', 'escalated', 'closed', 'aborted'] as const satisfies readonly ConductorRunStatus[]
+const RUN_STATUSES = ['running', 'awaiting_authorization', 'rework', 'escalated', 'closed', 'aborted', 'awaiting_owner', 'continuation_pending'] as const satisfies readonly ConductorRunStatus[]
 const STAGES = ['intake', 'detective', 'strategist', 'devils-advocate', 'headsman', 'ralph', 'auditor', 'integrator', 'arbiter', 'closeout'] as const satisfies readonly ConductorStage[]
 const GATE_IDS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'] as const satisfies readonly GateId[]
 const GATE_DECISIONS = ['pass', 'rework', 'escalate', 'abort'] as const satisfies readonly GateDecision[]
@@ -384,6 +385,9 @@ export class SessionConductorRunStore implements ConductorRunStore {
   ) {}
 
   async save(run: ConductorRun): Promise<void> {
+    if (run.ownerSessionId !== null && run.ownerSessionId !== this.session.id) {
+      throw new Error('Conductor checkpoint belongs to another owning root session')
+    }
     this.session.append('conductor/checkpoint', { runId: run.runId, record: serializeRun(run) })
     await this.flush()
   }
@@ -392,7 +396,12 @@ export class SessionConductorRunStore implements ConductorRunStore {
     for (let index = this.session.events.length - 1; index >= 0; index -= 1) {
       const event = this.session.events[index]
       if (event?.type !== 'conductor/checkpoint' || event.data.runId !== runId) continue
-      return Promise.resolve(event.data.record === null ? undefined : parseRun(event.data.record))
+      if (event.data.record === null) return Promise.resolve(undefined)
+      const run = parseRun(event.data.record)
+      if (run.runId !== runId || run.ownerSessionId !== null && run.ownerSessionId !== this.session.id) {
+        throw new Error('Conductor checkpoint does not match its owning root session and run id')
+      }
+      return Promise.resolve(run)
     }
     return Promise.resolve(undefined)
   }
@@ -439,7 +448,8 @@ export function parseRun(json: string): ConductorRun {
   const runKeys = ['recordFormatVersion', 'admission', 'repairReturns', 'analysisReports', 'reportCandidates', 'reportDecision',
     'runId', 'objective', 'scope', 'inputArtifacts', 'allowedPaths', 'excludedPaths', 'sourceBaseline', 'authority',
     'constraints', 'acceptanceCriteria', 'budget', 'baselineHistory', 'baseline', 'executionAuthorization', 'currentStage',
-    'history', 'specialistReports', 'qualityExecutions', 'status', 'decision', 'closeout']
+    'history', 'specialistReports', 'qualityExecutions', 'status', 'decision', 'closeout',
+    'ownerSessionId', 'ownerCapabilities', 'ownerRevision', 'ownerLedger']
   if (Object.keys(record).some(key => !runKeys.includes(key))) throw new Error('Conductor run record contains unsupported phase-one fields')
   const admission = parseAdmission(record.admission)
 
@@ -463,7 +473,7 @@ export function parseRun(json: string): ConductorRun {
   requireNormalizedStringArray(record.acceptanceCriteria, 'acceptanceCriteria', true)
   requireAnalysisCriteria(admission, record.acceptanceCriteria)
   const budget = asObject(record.budget, 'budget')
-  if (Object.keys(budget).some(key => key !== 'maxReworkPerGate' && key !== 'maxRalphRounds')) {
+  if (Object.keys(budget).some(key => key !== 'maxReworkPerGate' && key !== 'maxRalphRounds' && key !== 'maxOwnerReassessmentsPerGate')) {
     throw new Error('Conductor run record budget contains unsupported fields; a fresh run is required')
   }
   if (!Number.isSafeInteger(budget.maxReworkPerGate) || Number(budget.maxReworkPerGate) < 1) {
@@ -472,6 +482,11 @@ export function parseRun(json: string): ConductorRun {
   if (!Number.isSafeInteger(budget.maxRalphRounds) || Number(budget.maxRalphRounds) < 0) {
     throw new Error('Conductor run record budget.maxRalphRounds must be a non-negative safe integer')
   }
+  if (!Number.isSafeInteger(budget.maxOwnerReassessmentsPerGate) || Number(budget.maxOwnerReassessmentsPerGate) < 1) {
+    throw new Error('Conductor run record budget.maxOwnerReassessmentsPerGate must be a positive safe integer')
+  }
+  if (!Array.isArray(record.history)) throw new Error('Conductor run record history must be an array')
+  assertOwnerLedger(record as unknown as ConductorRun)
   if (admission.purpose === 'analysis') return parseAnalysisState(record)
   if (!Array.isArray(record.repairReturns) || record.repairReturns.length !== 0
     || !Array.isArray(record.analysisReports) || record.analysisReports.length !== 0
@@ -487,10 +502,15 @@ export function parseRun(json: string): ConductorRun {
     baselineHashes.push(hash)
   }
   validateBaseline(record.baseline)
+  const mandate = effectiveOwnerMandate(record as unknown as ConductorRun)
   if (record.baseline !== null) {
     const baseline = record.baseline as Record<string, unknown>
-    if (JSON.stringify(baseline.allowedPaths) !== JSON.stringify(record.allowedPaths)
-      || JSON.stringify(baseline.excludedPaths) !== JSON.stringify(record.excludedPaths)) {
+    if ((record.baseline as ExecutionBaseline).qualityCommands
+      .some(binding => !ownerCommandAllowed(record as unknown as ConductorRun, binding.id))) {
+      throw new Error('Conductor run record active baseline command exceeds the effective owner mandate')
+    }
+    if (JSON.stringify(baseline.allowedPaths) !== JSON.stringify(mandate.allowedPaths)
+      || JSON.stringify(baseline.excludedPaths) !== JSON.stringify(mandate.excludedPaths)) {
       throw new Error('Conductor run record baseline paths must match the owner-authorized run paths')
     }
     const activeHash = executionBaselineHash(record.baseline as ConductorRun['baseline'] & {})
@@ -526,9 +546,6 @@ export function parseRun(json: string): ConductorRun {
   }
   if (!isOneOf(record.currentStage, STAGES)) {
     throw new Error(`Conductor run record has invalid currentStage: ${String(record.currentStage)}`)
-  }
-  if (!Array.isArray(record.history)) {
-    throw new Error('Conductor run record history must be an array')
   }
   const reworksPerGate = new Map<GateId, number>()
   for (const entry of record.history) {
@@ -591,8 +608,14 @@ export function parseRun(json: string): ConductorRun {
   if (JSON.stringify(gateCBaselineHashes) !== JSON.stringify(baselineHashes)) {
     throw new Error('Conductor run record baselineHistory must exactly follow Gate C pass history')
   }
+  const amendmentPositions = new Set((record.ownerLedger as ConductorRun['ownerLedger'])
+    .filter(entry => entry.kind === 'answer' && entry.proposalHash !== undefined)
+    .map(entry => entry.historyLength))
   let documentedBaselineHash: string | undefined
-  for (const entry of record.history) {
+  for (const [index, entry] of record.history.entries()) {
+    if (amendmentPositions.has(index)) {
+      documentedBaselineHash = undefined
+    }
     const gate = entry as Record<string, unknown>
     if (gate.gate === 'C' && gate.decision === 'pass') {
       documentedBaselineHash = gate.executionBaselineHash as string
@@ -606,6 +629,9 @@ export function parseRun(json: string): ConductorRun {
         documentedBaselineHash = undefined
       }
     }
+  }
+  if (amendmentPositions.has(record.history.length)) {
+    documentedBaselineHash = undefined
   }
   const activeBaselineHash = record.baseline === null
     ? undefined
@@ -729,7 +755,8 @@ export function parseRun(json: string): ConductorRun {
         : lastGate.decision === 'escalate'
           ? 'escalated'
           : 'aborted'
-    if (record.status !== expectedStatus && !(record.status === 'closed' && expectedStatus === 'awaiting_authorization')) {
+    const ownerStatus = ownerLifecycleStatus(record as unknown as ConductorRun)
+    if (record.status !== (ownerStatus ?? expectedStatus) && !(record.status === 'closed' && expectedStatus === 'awaiting_authorization')) {
       throw new Error(`Conductor run record status ${record.status} does not match last gate decision`)
     }
   }
@@ -753,6 +780,10 @@ export function validateResumable(run: ConductorRun): void {
   if (run.status === 'escalated') {
     throw new Error(`Conductor run ${run.runId} is escalated; an owner resolution is required before resume`)
   }
+  if (run.status === 'awaiting_owner' || run.status === 'continuation_pending') {
+    throw new Error(`Conductor run ${run.runId} is ${run.status}; no production owner resumption is enabled in P1`)
+  }
+  assertOwnerLedger(run)
   validateIntakeHistory(run)
 }
 
