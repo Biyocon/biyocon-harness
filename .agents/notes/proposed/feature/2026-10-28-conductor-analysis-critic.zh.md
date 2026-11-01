@@ -22,7 +22,7 @@ Status: proposed
 
 验证拒绝外部 run、未知材料 ID、过期候选版本/hash、重用的子会话或尝试、不匹配的派发模式、重复或矛盾的批评、同一 hash 下变化的发现内容、顺序错误的 Gate C，以及缺少匹配候选/批评/审计 hash 的 Arbiter 决定。格式错误的批评在批评者阶段视为报告验证失败，绝不合成为 `holds`。在派发下一阶段之前持久化候选 → 批评 → 审计 → Arbiter 的精确关联；回放验证相同因果顺序，并拒绝部分 checkpoint 或矛盾记录。批评 checkpoint 前崩溃不能把未记录的结果当作通过；重启只恢复持久化阶段，派发状态不明时停下等待所有者审查。
 
-这改变持久化运行的含义：建议 `CONDUCTOR_RECORD_FORMAT_VERSION = 5`。v5 的分析记录包含按顺序保存的批评、带类型的 Gate C 生产/批评事件以及按 hash 绑定的报告决定。v4 没有批评来源，按现有不支持格式的错误拒绝，不提供迁移或兼容层。仅实现用途的 v5 记录保留当前权限规则。[#30 第二阶段](https://github.com/Biyocon/biyocon-harness/issues/30) 必须使用下一个单调递增版本（若直接跟在 v5 后则为 v6），不能赋予 v5 新含义。
+这改变持久化运行的含义：建议 `CONDUCTOR_RECORD_FORMAT_VERSION = 5`。每个运行都必须有 `analysisChallenges: CapturedChallenge[]`（实现运行为空）；每条记录保存已验证结果、运行时计算的 hash、候选 hash、批评子会话 ID 和尝试次数。分析 Gate C 历史必须有 `mode: producer|critic` 和精确候选 hash；批评记录还必须有批评 hash 与子会话/尝试。分析 `ReportDecision` 除候选及审计 hash 外还必须有 `challenge_hash`。这些 v5 字段使生产/批评事件、回放顺序和 Arbiter 接受条件明确。v4 没有批评来源，按现有不支持格式的错误拒绝，不提供迁移或兼容层。仅实现用途的 v5 记录保留当前权限规则。[#30 第二阶段](https://github.com/Biyocon/biyocon-harness/issues/30) 必须使用下一个单调递增版本（若直接跟在 v5 后则为 v6），不能赋予 v5 新含义。
 
 ### 返工、所有者与权限
 
