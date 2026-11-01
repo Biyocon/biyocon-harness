@@ -19,10 +19,10 @@ function Exit-Launcher([string]$Message, [int]$Code) {
 }
 
 # A Biyocon Harness server is a node.exe process running the dsh CLI entry
-# (apps/cli/src/bin.ts from source, lib/bin.js when built) with the web command.
+# (legacy apps/cli/src/bin.ts, source-launch.ts, or built lib/bin.js) with web.
 function Get-HarnessServer {
     Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
-        Where-Object { $_.CommandLine -match 'bin\.(ts|js)"?\s+(?:"web"|web)(\s|$)' }
+        Where-Object { $_.CommandLine -match '(?:bin\.(?:ts|js)|source-launch\.ts)"?\s+(?:"web"|web)(\s|$)' }
 }
 
 function Get-ListenPort([int]$ProcessId) {

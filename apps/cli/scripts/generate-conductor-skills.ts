@@ -2,16 +2,16 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, u
 import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-function layoutConflict(path: string): Error {
-  return new Error(`Conductor resource layout conflict at ${path}; use a fresh installation directory for file/directory changes`)
+function layoutConflict(path: string, destination: string): Error {
+  return new Error(`Conductor resource layout conflict at ${path}. The generated skills directory ${destination} is ignored by git and can be removed safely; it will be rebuilt on the next launch.`)
 }
 
-async function readOptional(file: string): Promise<Buffer | undefined> {
+async function readOptional(file: string, destination: string): Promise<Buffer | undefined> {
   try {
     return await readFile(file)
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
-    if (code === 'EISDIR' || code === 'ENOTDIR') throw layoutConflict(file)
+    if (code === 'EISDIR' || code === 'ENOTDIR') throw layoutConflict(file, destination)
     if (code !== 'ENOENT') throw error
     return undefined
   }
@@ -63,12 +63,12 @@ export async function syncConductorSkills(source: string, destination: string): 
   const existing = await filesIn(destination)
   for (const path of files.keys()) {
     if (existing.some(old => path.startsWith(old + sep) || old.startsWith(path + sep))) {
-      throw layoutConflict(join(destination, path))
+      throw layoutConflict(join(destination, path), destination)
     }
   }
   const changed: Array<[string, Buffer]> = []
   for (const [path, bytes] of files) {
-    const previous = await readOptional(join(destination, path))
+    const previous = await readOptional(join(destination, path), destination)
     if (previous === undefined || !bytes.equals(previous)) changed.push([path, bytes])
   }
   const obsolete = existing.filter(path => !files.has(path))
@@ -97,7 +97,7 @@ export async function syncConductorSkills(source: string, destination: string): 
       }
       for (const [path, bytes] of changed) {
         const target = join(destination, path)
-        const previous = await readOptional(target)
+        const previous = await readOptional(target, destination)
         if (previous !== undefined && bytes.equals(previous)) continue
         await mkdir(dirname(target), { recursive: true })
         if (process.platform === 'win32' && previous !== undefined) {
@@ -110,7 +110,7 @@ export async function syncConductorSkills(source: string, destination: string): 
             // A concurrent creator can win after the absent-target read. Accept
             // only its complete identical bytes, never retry or remove its file.
             if (previous !== undefined || !['EEXIST', 'EPERM', 'EACCES'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error
-            const winner = await readOptional(target)
+            const winner = await readOptional(target, destination)
             if (winner === undefined || !bytes.equals(winner)) throw error
           }
         }

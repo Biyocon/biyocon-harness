@@ -194,7 +194,7 @@ describe('Conductor resource publication', () => {
     await fs.writeFile(join(f.source, 'conductor/README.md'), 'shared new')
     const mutations = ['mkdir', 'mkdtemp', 'writeFile', 'rename', 'unlink', 'rm'] as const
     const spies = mutations.map(name => vi.spyOn(fs, name))
-    await expect(f.sync()).rejects.toThrow(/resource layout conflict.*fresh installation directory/)
+    await expect(f.sync()).rejects.toThrow(`The generated skills directory ${f.destination} is ignored by git and can be removed safely; it will be rebuilt on the next launch.`)
     for (const spy of spies) expect(spy).not.toHaveBeenCalled()
     expect(await fs.readFile(join(f.destination, 'README.md'), 'utf8')).toBe('shared old')
   })
