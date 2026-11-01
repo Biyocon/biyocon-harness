@@ -30,6 +30,8 @@ Detective accepts an uncertain current request. Later entries require captured s
 | analysis | B | answer/recommendations | Strategist → Auditor → Arbiter. |
 | analysis | C | answer/recommendations | Devil's Advocate → Auditor → Arbiter. |
 
+The proposed analysis-critic design ([EN](../../proposed/feature/2026-10-28-conductor-analysis-critic.md), [ZH](../../proposed/feature/2026-10-28-conductor-analysis-critic.zh.md)) would change these analysis routes by adding a Devil's Advocate critic.
+
 Recommendations beginning at Detective retain A's scope assessment and make Strategist the report producer. Other analysis combinations use the admitted A/B/C producer. Analysis C reviews a report and never an execution baseline. Implementation C retains the exact host approval of the active baseline and effects before Headsman, Ralph or Integrator; supplied work cannot replace that approval.
 
 Bypassed gates have `kind: skipped`, decision `skipped`, supplied-work or profile-not-applicable reason, purpose/deliverable, complete route, rationale, captured material references and causal successor. They never count as evaluated passes or approvals. Only bypasses actually reached are recorded; rework may later evaluate a previously skipped gate without rewriting it.

@@ -30,6 +30,8 @@ Detective 接受不确定的当前请求。较晚入口要求捕获的范围来�
 | analysis | B | answer/recommendations | Strategist → Auditor → Arbiter。 |
 | analysis | C | answer/recommendations | Devil's Advocate → Auditor → Arbiter。 |
 
+拟议的分析批评设计（[EN](../../proposed/feature/2026-10-28-conductor-analysis-critic.md)、[ZH](../../proposed/feature/2026-10-28-conductor-analysis-critic.zh.md)）将通过增加 Devil's Advocate 批评者改变这些分析路线。
+
 从 Detective 开始的建议保留 A 的范围评估，并由 Strategist 生成报告。其他分析组合使用准入的 A/B/C 生产者。分析 C 审查报告，绝不审查执行 baseline。实现 C 仍须获得宿主对当前 baseline 和效果的精确批准，之后 Headsman、Ralph 或 Integrator 才能运行；已提供工作不能替代批准。
 
 绕过的 gate 具有 `kind: skipped`、决策 `skipped`、supplied-work 或 profile-not-applicable 原因、purpose/deliverable、完整路线、理由、捕获材料引用及因果后继。它们不算已评估的通过或批准。只记录实际到达的绕过；后续返工可以评估此前跳过的 gate，而不改写历史。
