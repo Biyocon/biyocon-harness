@@ -28,6 +28,7 @@ The shared protocol contributes a stable prefix to every role. Editing it change
 
 ## Known Limitations and Deferred Work
 
-- Canonical instruction edits require rebuilding and restarting the app; the running preset does not watch or reload installation assets.
+- Completed canonical instruction edits take effect on the next source launch; the running preset does not watch or reload installation assets.
+- File/directory type changes at an installed path are rejected before publication; use a fresh source checkout for such resource-layout changes. Active paths are never removed early to accommodate a type change.
 - Mount validation establishes availability, not that a model will obey the instructions; stage executors own capability enforcement.
 - The shipped preset enables `ownerQuestions` on the Conductor tool. The web app supplies its typed owner-question card; deployments without a user-question provider leave recoverable questions parked without granting authority.

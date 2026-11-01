@@ -1,12 +1,18 @@
 import { mkdir, mkdtemp, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+function layoutConflict(path: string): Error {
+  return new Error(`Conductor resource layout conflict at ${path}; use a fresh installation directory for file/directory changes`)
+}
 
 async function readOptional(file: string): Promise<Buffer | undefined> {
   try {
     return await readFile(file)
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'EISDIR' || code === 'ENOTDIR') throw layoutConflict(file)
+    if (code !== 'ENOENT') throw error
     return undefined
   }
 }
@@ -55,6 +61,11 @@ async function canonicalFiles(source: string): Promise<Map<string, Buffer>> {
 export async function syncConductorSkills(source: string, destination: string): Promise<void> {
   const files = await canonicalFiles(source)
   const existing = await filesIn(destination)
+  for (const path of files.keys()) {
+    if (existing.some(old => path.startsWith(old + sep) || old.startsWith(path + sep))) {
+      throw layoutConflict(join(destination, path))
+    }
+  }
   const changed: Array<[string, Buffer]> = []
   for (const [path, bytes] of files) {
     const previous = await readOptional(join(destination, path))
@@ -92,7 +103,15 @@ export async function syncConductorSkills(source: string, destination: string): 
           const { replaceFileWin32 } = await import('@deepseek-ai/dsh-fs-local/src/win32.ts')
           await replaceFileWin32(target, join(staging, path))
         } else {
-          await rename(join(staging, path), target)
+          try {
+            await rename(join(staging, path), target)
+          } catch (error) {
+            // A concurrent creator can win after the absent-target read. Accept
+            // only its complete identical bytes, never retry or remove its file.
+            if (previous !== undefined || !['EEXIST', 'EPERM', 'EACCES'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error
+            const winner = await readOptional(target)
+            if (winner === undefined || !bytes.equals(winner)) throw error
+          }
         }
       }
     } finally {

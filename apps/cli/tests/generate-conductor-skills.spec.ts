@@ -111,6 +111,74 @@ describe('Conductor resource publication', () => {
     expect(await fs.readdir(join(f.root, 'preset'))).toEqual(['skills'])
   })
 
+  it('accepts a concurrent new-file publication while its winner has an open reader', async () => {
+    const f = await fixture()
+    await f.sync()
+    await fs.writeFile(join(f.source, 'conductor/templates/added.md'), 'new shared file')
+    const target = join(f.destination, 'templates/added.md')
+    const bothStaged = Promise.withResolvers<undefined>()
+    const firstPublished = Promise.withResolvers<undefined>()
+    const originalRename = fs.rename
+    let arrivals = 0
+    let reader: Awaited<ReturnType<typeof fs.open>> | undefined
+    const rename = vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {
+      const position = ++arrivals
+      if (position === 2) bothStaged.resolve(undefined)
+      await bothStaged.promise
+      if (position === 1) {
+        await originalRename(from, to)
+        reader = await fs.open(target, 'r')
+        firstPublished.resolve(undefined)
+      } else {
+        await firstPublished.promise
+        await originalRename(from, to)
+      }
+    })
+    try {
+      await Promise.all([f.sync(), f.sync()])
+      expect(rename).toHaveBeenCalledTimes(2)
+      expect(await fs.readFile(target, 'utf8')).toBe('new shared file')
+      expect(await reader!.readFile('utf8')).toBe('new shared file')
+    } finally {
+      await reader?.close()
+    }
+  })
+
+  it('does not accept a different concurrent creation as successful publication', async () => {
+    const f = await fixture()
+    await f.sync()
+    await fs.writeFile(join(f.source, 'conductor/templates/added.md'), 'expected bytes')
+    const target = join(f.destination, 'templates/added.md')
+    const rename = vi.spyOn(fs, 'rename').mockImplementationOnce(async () => {
+      await fs.writeFile(target, 'other bytes')
+      throw Object.assign(new Error('competing file'), { code: 'EPERM' })
+    })
+    await expect(f.sync()).rejects.toThrow('competing file')
+    expect(rename).toHaveBeenCalledTimes(1)
+    expect(await fs.readFile(target, 'utf8')).toBe('other bytes')
+  })
+
+  it.each(['file-to-directory', 'directory-to-file'] as const)('rejects %s conflicts before mutating active files', async (kind) => {
+    const f = await fixture()
+    const sourcePath = join(f.source, 'conductor/templates/item')
+    if (kind === 'directory-to-file') {
+      await fs.mkdir(sourcePath)
+      await fs.writeFile(join(sourcePath, 'old.md'), 'old resource')
+    } else await fs.writeFile(sourcePath, 'old resource')
+    await f.sync()
+    await fs.rm(sourcePath, { recursive: true })
+    if (kind === 'file-to-directory') {
+      await fs.mkdir(sourcePath)
+      await fs.writeFile(join(sourcePath, 'new.md'), 'new resource')
+    } else await fs.writeFile(sourcePath, 'new resource')
+    await fs.writeFile(join(f.source, 'conductor/README.md'), 'shared new')
+    const mutations = ['mkdir', 'mkdtemp', 'writeFile', 'rename', 'unlink', 'rm'] as const
+    const spies = mutations.map(name => vi.spyOn(fs, name))
+    await expect(f.sync()).rejects.toThrow(/resource layout conflict.*fresh installation directory/)
+    for (const spy of spies) expect(spy).not.toHaveBeenCalled()
+    expect(await fs.readFile(join(f.destination, 'README.md'), 'utf8')).toBe('shared old')
+  })
+
   it('leaves active files and obsolete files intact when staging fails', async () => {
     const f = await fixture()
     await f.sync()
