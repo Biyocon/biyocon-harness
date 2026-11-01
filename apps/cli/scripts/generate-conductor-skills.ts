@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -83,6 +83,7 @@ export async function syncConductorSkills(source: string, destination: string): 
         await mkdir(dirname(join(staging, path)), { recursive: true })
         await writeFile(join(staging, path), bytes, { flag: 'wx' })
       }
+      if (process.platform !== 'win32') await chmod(staging, (await stat(parent)).mode & 0o777)
       if (changed.length === files.size) {
         try {
           await rename(staging, destination)
@@ -119,8 +120,13 @@ export async function syncConductorSkills(source: string, destination: string): 
       await rm(staging, { recursive: true, force: true })
     }
   }
+  // Resolve actual stored spellings before cleanup: a case-only source rename
+  // can still address an installed file through both spellings on Windows/macOS.
+  const retained = obsolete.length === 0 ? new Set<string>()
+    : new Set(await Promise.all([...files.keys()].map(path => realpath(join(destination, path)))))
   for (const path of obsolete) {
     try {
+      if (retained.has(await realpath(join(destination, path)))) continue
       await unlink(join(destination, path))
     } catch (error) {
       // Concurrent publishers of these same sources may already have removed it.

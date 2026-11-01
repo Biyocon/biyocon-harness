@@ -60,6 +60,26 @@ describe('Conductor resource publication', () => {
     expect(await fs.readdir(f.destination)).not.toContain('obsolete.md')
   })
 
+  it.each([false, true])('preserves a case-only renamed resource with changed bytes: %s', async (changeBytes) => {
+    const f = await fixture()
+    await f.sync()
+    const next = join(f.source, 'conductor/roles/Detective.md')
+    await fs.rename(join(f.source, 'conductor/roles/detective.md'), next)
+    if (changeBytes) await fs.writeFile(next, 'role new')
+    await f.sync()
+    expect(await fs.readFile(join(f.destination, 'roles/Detective.md'), 'utf8')).toBe(changeBytes ? 'role new' : 'role old')
+    const mutations = ['mkdir', 'mkdtemp', 'writeFile', 'rename', 'unlink', 'rm', 'chmod'] as const
+    const spies = mutations.map(name => vi.spyOn(fs, name))
+    await f.sync()
+    for (const spy of spies) expect(spy).not.toHaveBeenCalled()
+  })
+
+  it.skipIf(process.platform === 'win32')('preserves parent directory access permissions for initial POSIX publication', async () => {
+    const f = await fixture()
+    await f.sync()
+    expect((await fs.stat(f.destination)).mode & 0o777).toBe((await fs.stat(join(f.root, 'preset'))).mode & 0o777)
+  })
+
   it('lets an open reader finish old bytes while new readers see complete replacements', async () => {
     const f = await fixture()
     await f.sync()

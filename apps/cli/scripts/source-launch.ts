@@ -2,11 +2,13 @@
 /** Source-only preparation; the published CLI never imports repository tooling. */
 import { generateConductorSkills } from './generate-conductor-skills.ts'
 
+let preparationFailed = false
 try {
   await generateConductorSkills()
 } catch (error) {
   process.stderr.write(`dsh: could not prepare Conductor skills: ${error instanceof Error ? error.message : String(error)}\n`)
-  process.exit(1)
+  preparationFailed = true
+  process.exitCode = 1
 }
 
-await import('../src/bin.ts')
+if (!preparationFailed) await import('../src/bin.ts')
