@@ -6,7 +6,7 @@
 
 ## 安装与配置
 
-CLI（命令行界面）构建将[正典角色目录](../../../.agents/conductor/roles/profiles.yml)、其[共享协议](../../../.agents/conductor/README.md)和链接的模板，以及[仓库 skills](../../../.agents/skills/README.md)中的 `conductor-*` 包复制到应用预设生成的 `skills/` 目录。这些副本是分发产物，不是额外的人工维护源文件。在源代码检出中挂载 Conductor 预设前运行 `pnpm run build`；发布的 CLI 包含这些生成文件。
+CLI（命令行界面）构建将[正典角色目录](../../../.agents/conductor/roles/profiles.yml)、其[共享协议](../../../.agents/conductor/README.md)和链接的模板，以及[仓库 skills](../../../.agents/skills/README.md)中的 `conductor-*` 包复制到应用预设生成的 `skills/` 目录。这些副本是分发产物，不是额外的人工维护源文件。每次 `pnpm dsh` 源码启动都会在 profile 启动前准备这些资源，因此下一次启动可使用已完成的正典编辑，无需单独构建。字节不变时不写入。变更文件暂存于活动目录旁，再逐文件原子替换，包括 Windows 上普通 Node 读取者仍打开文件的情形；最后删除过期文件。生成错误会停止启动，必需内容校验仍会拒绝预设挂载。现有预备定义不热重载。发布的 CLI 包含生成文件，不需要源码检出。[发布决策](../../../.agents/notes/implemented/bug-fix/2026-11-01-conductor-source-launch-assets.md)说明并发与失败语义。
 
 | 配置 | 必填值 |
 |---|---|
