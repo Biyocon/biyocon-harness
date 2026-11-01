@@ -6,7 +6,7 @@ Installs and validates Conductor's role and protocol skills for the [shipped app
 
 ## Installation and configuration
 
-The CLI build copies [the canonical role directory](../../../.agents/conductor/roles/profiles.yml), its [shared protocol](../../../.agents/conductor/README.md) and linked templates, and the `conductor-*` bundles from [the repository skills](../../../.agents/skills/README.md) into the app preset's generated `skills/` directory. These copies are distribution artifacts, not additional authored sources. Run `pnpm run build` before mounting the source checkout's Conductor preset; the published CLI includes the generated files.
+The CLI build copies [the canonical role directory](../../../.agents/conductor/roles/profiles.yml), its [shared protocol](../../../.agents/conductor/README.md) and linked templates, and the `conductor-*` bundles from [the repository skills](../../../.agents/skills/README.md) into the app preset's generated `skills/` directory. These copies are distribution artifacts, not additional authored sources. Every `pnpm dsh` source launch prepares these resources before profile boot, so the next launch uses completed canonical edits without a separate build. Unchanged bytes cause no writes. Changed files are staged beside the active directory and atomically replaced per file, including ordinary open Node readers on Windows; obsolete files are removed last. Generation errors stop launch, and required-content validation still rejects preset mounting. Existing prepared definitions are not hot-reloaded. The published CLI includes the generated files and never requires a source checkout. [The publication decision](../../../.agents/notes/implemented/bug-fix/2026-11-01-conductor-source-launch-assets.md) describes concurrency and failure semantics.
 
 | Config | Required value |
 |---|---|
@@ -28,6 +28,7 @@ The shared protocol contributes a stable prefix to every role. Editing it change
 
 ## Known Limitations and Deferred Work
 
-- Canonical instruction edits require rebuilding and restarting the app; the running preset does not watch or reload installation assets.
+- Completed canonical instruction edits take effect on the next source launch; the running preset does not watch or reload installation assets.
+- File/directory type changes at an installed path are rejected before publication; use a fresh source checkout for such resource-layout changes. Active paths are never removed early to accommodate a type change.
 - Mount validation establishes availability, not that a model will obey the instructions; stage executors own capability enforcement.
 - The shipped preset enables `ownerQuestions` on the Conductor tool. The web app supplies its typed owner-question card; deployments without a user-question provider leave recoverable questions parked without granting authority.
