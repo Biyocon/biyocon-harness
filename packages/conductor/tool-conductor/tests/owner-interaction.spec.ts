@@ -41,6 +41,14 @@ function response(run: ConductorRun, question: OwnerQuestion, reject = false): S
 }
 
 describe('P1 owner parking and the explicit scripted provider', () => {
+  it('describes the enabled question card without claiming owner answering is unavailable', async () => {
+    const run = initial()
+    const result = await settleOwnerEscalation(new Context(), blocked(run), observed(run), process.cwd(), vi.fn(), true, true)
+    expect(result.outcome.kind).toBe('blocked')
+    if (result.outcome.kind !== 'blocked') throw new Error('Missing blocker')
+    expect(result.outcome.blocker).toContain('Answer the owner question to continue this same run')
+    expect(result.outcome.blocker).not.toContain('not available')
+  })
   it('leaves unrelated, terminal and unattributed outcomes unchanged', async () => {
     const ctx = new Context()
     const run = initial()

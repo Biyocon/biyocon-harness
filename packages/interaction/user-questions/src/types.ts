@@ -14,13 +14,12 @@ export interface AskUserQuestionOption {
 }
 
 /**
- * A caller-declared presentation intent: the question IS this kind of
- * decision, so a UI that recognises the tag may present it as such instead of as a
- * generic option list. Tagged so further intents can be added; a UI that does
- * not know a tag renders the generic flow, and the answer encoding is identical
- * either way — an intent changes presentation only, never the protocol.
+ * Caller-declared presentation or typed owner interaction. A plan review keeps
+ * the generic answer encoding and changes presentation only. A Conductor owner
+ * question uses the dedicated machine-action response and durable host acceptance;
+ * translated labels never supply authority.
  */
-export type AskUserQuestionIntent = {
+export type AskUserQuestionIntent = ConductorOwnerIntent | {
   /** A plan submitted for review: `detail` is the plan markdown `ask()` requires, and the decision approves or declines it. */
   kind: 'plan-review'
   /**
@@ -29,6 +28,39 @@ export type AskUserQuestionIntent = {
    * An `approve` naming no option of its own question is rejected at `ask()`.
    */
   approve: string
+}
+
+
+/** Exact normalized authority shown by the host; text answers cannot replace these fields. */
+export interface ConductorOwnerMandate {
+  allowedPaths: string[]
+  excludedPaths: string[]
+  qualityCommandIds: string[]
+}
+
+/** Host-projected Conductor owner interaction, separate from plan approval. */
+export interface ConductorOwnerIntent {
+  kind: 'conductor-owner'
+  /** An already durable answer whose reserved plan awaits an explicit owner gesture. */
+  mode?: 'continuation'
+  runId: string
+  questionId: string
+  revision: number
+  gate: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'
+  role: 'detective' | 'strategist' | 'devils-advocate' | 'headsman' | 'auditor' | 'integrator' | 'arbiter'
+  attempt: number
+  reason: string
+  items: { id: string; prompt: string; options: string[] }[]
+  proposal?: { before: ConductorOwnerMandate; after: ConductorOwnerMandate; hash: string }
+}
+
+/** Machine action and complete required answers; localized labels never grant authority. */
+export interface ConductorOwnerAnswer {
+  questionId: string
+  revision: number
+  action: 'approve' | 'reject' | 'answer_continue'
+  answers: { itemId: string; text: string; optionId?: string }[]
+  proposalHash?: string
 }
 
 /** One question in a user-questions request. */
@@ -61,6 +93,8 @@ export interface AskUserQuestionAnswerItem {
 
 /** The human's answer. */
 export interface AskUserQuestionAnswer {
+  /** Present only for the dedicated Conductor interaction; generic answers stay empty. */
+  conductor?: ConductorOwnerAnswer
   /** Structured answers keyed by question id. */
   answers: AskUserQuestionAnswerItem[]
 }

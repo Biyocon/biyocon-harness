@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { admitIntake, captureIntakeMaterial, ConductorRunId, contentHash, createRun,
-  parkOwnerQuestion, recordGate } from '@deepseek-ai/dsh-conductor'
+  applyScriptedOwnerAnswer, parkOwnerQuestion, recordGate } from '@deepseek-ai/dsh-conductor'
 import type { ScriptedOwnerResponse } from '@deepseek-ai/dsh-conductor'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { OwnerReservations } from '../src/owner-reservation.ts'
@@ -90,5 +90,33 @@ describe('exact process-owned owner reservations', () => {
       expect(() => host.validate(reservation, { ...run, ...changed })).toThrow('stale')
     }
     expect(host.acknowledge(reservation, reservation.proposed).status).toBe('aborted')
+  })
+})
+
+
+describe('saved-answer continuation reservations', () => {
+  it('binds one saved plan to a fresh transport and never charges another answer', () => {
+    const pending = parked()
+    const run = applyScriptedOwnerAnswer(pending, answer(pending))
+    const host = new OwnerReservations()
+    expect(() => host.reconnectContinuation(pending)).toThrow('no saved owner continuation')
+    expect(() => host.reconnectContinuation({ ...run, ownerLedger: [] })).toThrow('no saved owner continuation')
+    expect(() => host.reconnectContinuation({ ...run, ownerSessionId: null })).toThrow('no saved owner continuation')
+    const binding = host.reconnectContinuation(run)
+    for (const patch of [{ runId: ConductorRunId('CON-2026-0038') }, { rootSessionId: SessionId('foreign') },
+      { questionId: 'foreign' }, { revision: 0 }, { transportId: 'forged' }]) {
+      expect(() =>{  host.consumeContinuation(run, { ...binding, ...patch }) }).toThrow('foreign, stale or consumed')
+    }
+    for (const altered of [{ ...run, runId: ConductorRunId('CON-2026-0038') }, { ...run, ownerSessionId: SessionId('foreign') },
+      { ...run, ownerRevision: run.ownerRevision + 1 }, pending, { ...run, ownerLedger: [] }]) {
+      expect(() =>{  host.consumeContinuation(altered, binding) }).toThrow('foreign, stale or consumed')
+    }
+    host.consumeContinuation(run, binding)
+    expect(run.ownerLedger).toHaveLength(2)
+    expect(() =>{  host.consumeContinuation(run, binding) }).toThrow('consumed')
+    const another = new OwnerReservations()
+    const request = another.reconnect(pending)
+    another.reserve(pending, request, answer(pending))
+    expect(() => another.reconnectContinuation(run)).toThrow('already reserved')
   })
 })

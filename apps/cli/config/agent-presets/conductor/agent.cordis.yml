@@ -69,6 +69,7 @@
       config:
         subagentProvider: spawn
         routeTasks: true
+        ownerQuestions: true
         maxReworkPerGate: 2
         maxOwnerReassessmentsPerGate: 2
         maxRalphRounds: 3

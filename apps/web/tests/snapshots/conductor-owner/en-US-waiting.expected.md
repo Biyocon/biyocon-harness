@@ -1,0 +1,18 @@
+- 'region "Conductor: owner question"':
+  - 'heading "Conductor: owner question" [level=2]'
+  - status: Waiting for owner
+  - text: "Run:"
+  - code: {{runId}}
+  - text: Gate A Detective · Attempt 1
+  - paragraph: The report needs an owner scope clarification.
+  - paragraph: An answer is not Gate C approval, GO, or closeout authorization.
+  - text: Which reporting scope should be used? (Required)
+  - textbox "Which reporting scope should be used? (Required)"
+  - text: Who is the intended audience? (Required)
+  - combobox "Who is the intended audience? (Required)":
+    - option "Choose an option" [disabled] [selected]
+    - option "Maintainers"
+    - option "Owners"
+  - alert
+  - button "Reject"
+  - button "Answer and continue" [disabled]

@@ -22,17 +22,16 @@ interface AskUserQuestionOption {
 
 ## 呈现意图
 
-`AskUserQuestionIntent` 可选地声明一种已知的决策类型。它按 `kind` 打标签，因此可以增加新的意图；不认识某个标签的 UI 渲染通用选项列表。意图只改变呈现方式——遵循它的 UI 回答的仍是通用 UI 会发送的那些选项标签，因此调用方两种情况下读到的回答字段相同。`approve` 指名肯定选项，而不依赖选项顺序。`ask()` 会拒绝两种无法由类型系统表达的情况：`approve` 未指向该问题自身的任何选项，以及为没有 `detail` 的问题指定意图。
+`AskUserQuestionIntent` 区分计划审阅与类型化 Conductor 所有者交互。对于 `plan-review`，`approve` 指名肯定选项而不依赖顺序；匹配选项不存在或缺少 `detail` 时，`ask()` 拒绝。`conductor-owner` 携带下述专用机器动作协议，不复用计划选项标签。
 
 ```ts type-equiv
 /**
- * A caller-declared presentation intent: the question IS this kind of
- * decision, so a UI that recognises the tag may present it as such instead of as a
- * generic option list. Tagged so further intents can be added; a UI that does
- * not know a tag renders the generic flow, and the answer encoding is identical
- * either way — an intent changes presentation only, never the protocol.
+ * Caller-declared presentation or typed owner interaction. A plan review keeps
+ * the generic answer encoding and changes presentation only. A Conductor owner
+ * question uses the dedicated machine-action response and durable host acceptance;
+ * translated labels never supply authority.
  */
-type AskUserQuestionIntent = {
+type AskUserQuestionIntent = ConductorOwnerIntent | {
   /** A plan submitted for review: `detail` is the plan markdown `ask()` requires, and the decision approves or declines it. */
   kind: 'plan-review'
   /**
@@ -41,6 +40,52 @@ type AskUserQuestionIntent = {
    * An `approve` naming no option of its own question is rejected at `ask()`.
    */
   approve: string
+}
+```
+
+## Conductor 所有者交互
+
+`ConductorOwnerIntent` 将精确运行、问题、修订号、门禁、角色/尝试、必答项与原因绑定至专用 UI。可选提案展示宿主验证的完整授权变更前后值及哈希；模型或翻译标签不能替换这些值。
+
+`ConductorOwnerIntent.mode: continuation` 表示已有持久回答的只读恢复卡片。其新传输绑定当前答案修订号，仅允许空答案且无提案哈希的 `answer_continue` 消费现有计划，不新增回答或预算扣减。
+
+`ConductorOwnerAnswer` 使用机器操作和完整必答答案。它不能代替 Gate C、GO 或 closeout；消费方在确认传输回执前通过精确宿主预留验证并持久化答案。
+
+```ts type-equiv
+/** Exact normalized authority shown by the host; text answers cannot replace these fields. */
+interface ConductorOwnerMandate {
+  allowedPaths: string[]
+  excludedPaths: string[]
+  qualityCommandIds: string[]
+}
+```
+
+```ts type-equiv
+/** Host-projected Conductor owner interaction, separate from plan approval. */
+interface ConductorOwnerIntent {
+  kind: 'conductor-owner'
+  /** An already durable answer whose reserved plan awaits an explicit owner gesture. */
+  mode?: 'continuation'
+  runId: string
+  questionId: string
+  revision: number
+  gate: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'
+  role: 'detective' | 'strategist' | 'devils-advocate' | 'headsman' | 'auditor' | 'integrator' | 'arbiter'
+  attempt: number
+  reason: string
+  items: { id: string; prompt: string; options: string[] }[]
+  proposal?: { before: ConductorOwnerMandate; after: ConductorOwnerMandate; hash: string }
+}
+```
+
+```ts type-equiv
+/** Machine action and complete required answers; localized labels never grant authority. */
+interface ConductorOwnerAnswer {
+  questionId: string
+  revision: number
+  action: 'approve' | 'reject' | 'answer_continue'
+  answers: { itemId: string; text: string; optionId?: string }[]
+  proposalHash?: string
 }
 ```
 
@@ -70,13 +115,15 @@ interface AskUserQuestionItem {
 
 ## 提问请求
 
-`AskUserQuestionRequest` 是跨包请求。`questions` 是数组，这样 UI 可以在一个流程中呈现相关提示，同时保持每个回答有稳定的 id。如提供 `agent`，它必须与存活调用方是同一实例；只有当当前注册表将该实例识别为运行时根时，交互 seam 才会接纳该 agent。
+`AskUserQuestionRequest` 是跨包请求。`questions` 是数组，这样 UI 可以在一个流程中呈现相关提示，同时保持每个回答有稳定的 id。如提供 `agent`，它必须与存活调用方是同一实例；只有当当前注册表将该实例识别为运行时根时，交互 seam 才会接纳该 agent。可选 `accept(answer)` 是持久化消费方回调；提供方在确认回答前等待它。拒绝时问题保持待答，不会在持久化前报告接受。
 
 ```ts type-equiv
 /** Request for a human answer. */
 interface AskUserQuestionRequest {
   /** Questions to display. */
   questions: AskUserQuestionItem[]
+  /** Optional durable consumer acceptance, awaited by the transport before acknowledging the response. */
+  accept?: (answer: AskUserQuestionAnswer) => Promise<void>
   /** Exact live calling agent, when the request came from an agent tool call. */
   agent?: Agent
   /** Abort signal for the owning tool/step. */
@@ -86,7 +133,7 @@ interface AskUserQuestionRequest {
 
 ## 回答
 
-提供方为每个问题 id 返回一个回答项。`selected` 包含选中的选项标签，`custom` 在用户输入自由文本时携带「其他」回答。对于单选题，`custom` 会覆盖选中的选项，且 `selected` 为空。对于多选题，`custom` 可以补充 `selected` 中的标签。UI 也可以使用 `selected` 为空且不含 `custom` 的回答项，在其余问题均已完成的批次中保留被跳过的问题。
+通用提供方为每个问题 id 返回一个回答项；Conductor 回答则使用 `conductor`，并将通用 `answers` 数组置空。`selected` 包含选中的选项标签，`custom` 在用户输入自由文本时携带「其他」回答。对于单选题，`custom` 会覆盖选中的选项，且 `selected` 为空。对于多选题，`custom` 可以补充 `selected` 中的标签。UI 也可以使用 `selected` 为空且不含 `custom` 的回答项，在其余问题均已完成的批次中保留被跳过的问题。
 
 ```ts type-equiv
 /** Answer to one question. */
@@ -103,6 +150,8 @@ interface AskUserQuestionAnswerItem {
 ```ts type-equiv
 /** The human's answer. */
 interface AskUserQuestionAnswer {
+  /** Present only for the dedicated Conductor interaction; generic answers stay empty. */
+  conductor?: ConductorOwnerAnswer
   /** Structured answers keyed by question id. */
   answers: AskUserQuestionAnswerItem[]
 }
@@ -174,5 +223,5 @@ registerProvider(provider: UserQuestionProvider): () => void
 async ask(request: AskUserQuestionRequest): Promise<AskUserQuestionAnswer>
 ```
 
-Source: [`packages/interaction/user-questions/src/index.ts:51`](../../packages/interaction/user-questions/src/index.ts)
+Source: [`packages/interaction/user-questions/src/index.ts:53`](../../packages/interaction/user-questions/src/index.ts)
 <!-- END GENERATED cordis-surface -->

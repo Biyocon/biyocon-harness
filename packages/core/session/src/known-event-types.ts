@@ -34,6 +34,7 @@ export const KNOWN_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
   'conductor/child',
   'conductor/owner-continuation-consumed',
   'conductor/owner-question-created',
+  'conductor/owner-response-acknowledged',
   'conductor/owner-response-recorded',
   'conductor/owner-terminal-rejection',
   'feedback/record',

@@ -1,0 +1,18 @@
+- 'region "Conductor: spørgsmål til ejeren"':
+  - 'heading "Conductor: spørgsmål til ejeren" [level=2]'
+  - status: Venter på ejeren
+  - text: "Kørsel:"
+  - code: {{runId}}
+  - text: Gate A Detective · Forsøg 1
+  - paragraph: The report needs an owner scope clarification.
+  - paragraph: Svaret er ikke en Gate C-godkendelse, GO eller tilladelse til levering.
+  - text: Which reporting scope should be used? (Påkrævet)
+  - textbox "Which reporting scope should be used? (Påkrævet)"
+  - text: Who is the intended audience? (Påkrævet)
+  - combobox "Who is the intended audience? (Påkrævet)":
+    - option "Vælg en mulighed" [disabled] [selected]
+    - option "Maintainers"
+    - option "Owners"
+  - alert
+  - button "Afvis"
+  - button "Svar og fortsæt" [disabled]

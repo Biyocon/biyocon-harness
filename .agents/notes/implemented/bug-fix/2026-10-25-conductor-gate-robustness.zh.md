@@ -16,13 +16,13 @@ Status: implemented
 
 格式错误 envelope、已完成 child 缺失结构化输出、无效 baseline 提案和格式错误 Arbiter 决策使用 `report` 返工，返回同一报告角色。驱动器先记录拒绝及检查点，再启动全新 child。无效报告不进入已验证专家报告列表；原始模型输出仍保留在 child 日志。结构验证在下游使用之前检查嵌套证据、发现、变更请求及交接元数据。
 
-身份、被评估来源、路由、质量证据或权限违规立即升级，不获得报告重试。宿主授权遭拒、取消或不可用时绝不分派 Headsman。失败 workflow 或 child 作为 `SpecialistExecutionFailure` 传播；驱动器在重新抛出前保存其已完成宿主质量记录的检查点，不添加合成 envelope 或门禁决策。角色是否启动取决于实际 child 生命周期事件；已接受或排队的 agent 调用不足以证明启动。即使资源释放失败，临时 workflow 观察者也会移除。现有完整沙箱和精确命令策略不变。
+身份、被评估来源、路由、质量证据或权限违规立即升级，不获得报告重试。明确的可恢复澄清、经宿主验证的授权提案及耗尽的可恢复报告修复使用[持久所有者问题控制器](../feature/2026-10-30-conductor-owner-escalation-resumption.md)；回答不能绕过完整性检查或 Gate C 批准，独立逐门禁所有者重新评估预算绝不重置自动返工。宿主授权遭拒、取消或不可用时绝不分派 Headsman。失败 workflow 或 child 作为 `SpecialistExecutionFailure` 传播；驱动器在重新抛出前保存其已完成宿主质量记录的检查点，不添加合成 envelope 或门禁决策。角色是否启动取决于实际 child 生命周期事件；已接受或排队的 agent 调用不足以证明启动。即使资源释放失败，临时 workflow 观察者也会移除。现有完整沙箱和精确命令策略不变。
 
 ### 按门禁预算与持久化
 
 `maxReworkPerGate` 取代整次运行预算。它是经验证的正安全整数；工具默认值和随附预设均为 2。`reworkCycles(run, gate)` 只计算 `GateRecord.gate` 匹配且决策为 rework 的历史记录。同一门禁允许两次返工，下一次请求转为 escalate，并在记录理由中注明已耗尽限制。其他门禁保持独立。Ralph Round 保持其单独的现有限制。
 
-记录格式 3 保留逐 gate 预算和 `report` 缺陷路由，并加入[准入与报告完成](../feature/2026-10-25-conductor-intake-and-report-completion.md)。解析器明确拒绝版本 2 及更旧记录、已移除预算字段、超额逐 gate 返工和返回其他角色的报告修复，没有兼容层。Intake、分析终态、UI 元数据和 source-launch 生成不属于本预算决策；后两项仍未在此实现。
+记录格式 4 保留逐 gate 预算和 `report` 缺陷路由，并加入[准入与报告完成](../feature/2026-10-25-conductor-intake-and-report-completion.md)。解析器明确拒绝版本 3 及更旧记录、已移除预算字段、超额逐 gate 返工和返回其他角色的报告修复，没有兼容层。Intake、分析终态、UI 元数据和 source-launch 生成不属于本预算决策；后两项仍未在此实现。
 
 ### 结果证据
 

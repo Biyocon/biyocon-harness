@@ -165,7 +165,7 @@ describe('installed Conductor through the headless example', () => {
           expect(entry.question.reportHash).toBe(contentHash(JSON.stringify(entry.question.report)))
           const rendered = parent.events.flatMap(event => event.type === 'tool/result' ? event.data.message.content : [])
             .flatMap(block => block.content).flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
-          expect(rendered).toContain(`Conductor is awaiting owner input: ${entry.question.reason}\nAnswering owner questions is not available in this build yet; the run stays parked and grants nothing.`)
+          expect(rendered).toContain(`Conductor is awaiting owner input: ${entry.question.reason}\nAnswer the owner question to continue this same run. An answer is not execution approval.`)
           expect(rendered).not.toContain('P1')
           expect(rendered).not.toContain('production answer provider')
         }

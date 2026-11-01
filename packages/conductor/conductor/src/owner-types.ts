@@ -94,9 +94,9 @@ export interface OwnerQuestionSource {
   report: unknown
 }
 
-/** Scripted host response; production answering remains unavailable until the UI ships. */
+/** Complete host response; only the controller turns a live UI answer into this private value. */
 export interface ScriptedOwnerResponse {
-  source: 'scripted-test-provider'
+  source: 'scripted-test-provider' | 'host-ui'
   rootSessionId: SessionId
   questionId: string
   expectedRevision: number

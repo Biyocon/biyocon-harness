@@ -26,7 +26,7 @@ const gate = z.enum(['A', 'B', 'C', 'D', 'E', 'F', 'G'])
 const distinct = z.array(text).refine(values => new Set(values).size === values.length)
 const mandateSchema = z.object({ allowedPaths: distinct, excludedPaths: distinct, qualityCommandIds: distinct }).strict()
 const itemSchema = z.object({ id: identity, prompt: text, options: distinct }).strict()
-const scriptedSourceSchema = z.looseObject({ source: z.literal('scripted-test-provider') })
+const scriptedSourceSchema = z.looseObject({ source: z.enum(['scripted-test-provider', 'host-ui']) })
 const questionSchema = z.object({
   id: identity, runId: identity, rootSessionId: identity, gateIndex: count, historyLength: count,
   stage, childId: identity, attempt: count.positive(), reportHash: hash, report: z.json(), mandateRevision: count,
@@ -324,14 +324,14 @@ function append(run: ConductorRun, entry: NewInteraction, status: ConductorRun['
 }
 
 /**
- * Atomically retain a scripted host response, its mandate amendment and budget-reserved plan.
- * @param run - parked run; live controller support is deliberately absent in P1.
- * @param response - explicit test-provider response bound to current owner revision.
+ * Atomically retain a host response, its mandate amendment and budget-reserved plan.
+ * @param run - parked run owned by the live controller.
+ * @param response - explicit host response bound to current owner revision.
  * @returns rejected terminal run, or continuation-pending run. Identical replies are idempotent.
  */
 export function applyScriptedOwnerAnswer(run: ConductorRun, response: ScriptedOwnerResponse): ConductorRun {
   assertOwnerLedger(run)
-  if (!scriptedSourceSchema.safeParse(response).success) fail('P1 accepts responses only from the scripted test provider')
+  if (!scriptedSourceSchema.safeParse(response).success) fail('owner response requires a host UI or scripted test provider source')
   const questionEntry = run.ownerLedger.find(entry => entry.kind === 'question' && entry.question.id === response.questionId)
   if (questionEntry?.kind !== 'question' || response.rootSessionId !== run.ownerSessionId || response.expectedRevision !== questionEntry.revision) fail('foreign or stale owner response')
   const prior = run.ownerLedger.find(entry => (entry.kind === 'answer' || entry.kind === 'rejected') && entry.questionId === response.questionId)

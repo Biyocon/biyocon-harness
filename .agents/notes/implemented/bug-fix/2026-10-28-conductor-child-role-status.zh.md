@@ -14,7 +14,7 @@ Conductor 在父 Session 中记录模型不可见的 `conductor/child` 完整快
 
 已保存的门禁检查点将决策关联至派发偏移所指向的已评估门禁。准入验证和跳过记录不成为子会话结果。返工计数使用相应门禁的独立预算。新子会话没有决策；每次尝试都单独保留。Ralph worker 只接收生命周期状态，Gate D 属于 Headsman 随后的报告。子会话失败或处置工作流时仍未结束，记录失败而不伪造门禁结果。执行完成不等于门禁通过。
 
-共享 base 组合独立于活动 agent preset 挂载纯 `conductorChildren` 投影，使历史列表在 agent 释放和应用重启后仍可读取。独立 Conductor 组合可由工具注册同一投影。`session/end-seed` 清除继承的子会话。新增 Session 事件为必读事件，旧构建拒绝包含未知必读事件的日志。Conductor 检查点格式 3 和 SDK 协议不变。
+共享 base 组合独立于活动 agent preset 挂载纯 `conductorChildren` 投影，使历史列表在 agent 释放和应用重启后仍可读取。独立 Conductor 组合可由工具注册同一投影。`session/end-seed` 清除继承的子会话。新增 Session 事件为必读事件，旧构建拒绝包含未知必读事件的日志。子会话快照使用当前 Conductor 检查点格式 4，不改变 SDK 协议。[所有者问题交互](../feature/2026-10-30-conductor-owner-escalation-resumption.md)与子会话行分离，并将重新评估尝试保留在精确子会话上；回答绝不替换早先门禁结果。
 
 现有子代理列表按精确父子地址选择显示数据。英/丹文本显示角色、尝试编号、生命周期及可选门禁结果；UUID 保留在次要文本和无障碍名称中。普通子代理保留原有标签、标题及导航。显示数据不增加模型输入、权限或运行时路由能力。头像和团队视图另行处理。
 

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-25-conductor-gate-robustness.md
-2026-10-25-conductor-gate-robustness.md: e9d5f1e56e98fa636ddb5b0dabf44a9c15fd50cb
-2026-10-25-conductor-gate-robustness.zh.md: dd517be53be7dc35faeae49a07389686aa710b8d
+2026-10-25-conductor-gate-robustness.md: 50e5e7b4542d8fa5343ac2a892cd7efc729989dc
+2026-10-25-conductor-gate-robustness.zh.md: 1a90768cee8fb6f28bf6c347941f8eb9e4440922

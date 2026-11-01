@@ -1,0 +1,17 @@
+- 'region "Conductor: owner question"':
+  - 'heading "Conductor: owner question" [level=3]'
+  - text: "Run:"
+  - code: {{runId}}
+  - text: Gate B Strategist · Attempt 1
+  - paragraph: Which canonical provider ID should the plan use?; Which localhost bypass policy should the plan use?; May the report use owner-allowed/report.md?
+  - status: Answer accepted
+  - list:
+    - listitem:
+      - text: Which canonical provider ID should the plan use?
+      - paragraph: provider-canonical
+    - listitem:
+      - text: Which localhost bypass policy should the plan use?
+      - paragraph: No localhost bypass
+    - listitem:
+      - text: May the report use owner-allowed/report.md?
+      - paragraph: Use the exact previewed reporting path.

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-28-conductor-child-role-status.md
-2026-10-28-conductor-child-role-status.md: aad801ff9c76b9bae10e63108a50785ba0a3529a
-2026-10-28-conductor-child-role-status.zh.md: f83e8e653d4ee269ffcc8ba6d3b73c1fbabe09dd
+2026-10-28-conductor-child-role-status.md: 332ddad65cddef8cb2375b112809bfc3c814f20b
+2026-10-28-conductor-child-role-status.zh.md: 6c2dd71e76b3df01b488e2b02235cb842a0ad9d9

@@ -60,11 +60,12 @@ function questionMaterial(
  * @param cwd - admitted workspace for canonical proposal validation.
  * @param save - authoritative flushed checkpoint writer.
  * @param parkOnly - production tool parking; answers belong to the scoped host controller.
+ * @param answeringAvailable - configured typed production question UI.
  * @returns parked/terminal outcome, or a single consumed test continuation.
  */
 export async function settleOwnerEscalation(
   ctx: Context, outcome: ConductorOutcome, observation: OwnerDispatchObservation | undefined,
-  cwd: string, save: (run: ConductorRun) => Promise<void>, parkOnly = false,
+  cwd: string, save: (run: ConductorRun) => Promise<void>, parkOnly = false, answeringAvailable = false,
 ): Promise<{ outcome: ConductorOutcome; continuation?: ConductorRun }> {
   if (outcome.kind !== 'blocked' || outcome.ownerEscalation?.kind !== 'recoverable'
     || observation === undefined || observation.historyOffset !== outcome.run.history.length - 1) return { outcome }
@@ -89,7 +90,8 @@ export async function settleOwnerEscalation(
   await save(run)
   if (parkOnly) return { outcome: { kind: 'blocked',
     blocker: `Conductor is awaiting owner input: ${outcome.ownerEscalation.reason}\n`
-      + 'Answering owner questions is not available in this build yet; the run stays parked and grants nothing.', run } }
+      + (answeringAvailable ? 'Answer the owner question to continue this same run. An answer is not execution approval.'
+        : 'Answering owner questions is not available in this build yet; the run stays parked and grants nothing.'), run } }
   const question = pendingOwnerQuestion(run)
   if (question === undefined) throw new Error('Conductor owner question disappeared before the scripted response')
   const provider: { kind: unknown; answer: ConductorOwnerTestProvider['answer'] } | undefined = ctx.get('conductorOwnerTestProvider')

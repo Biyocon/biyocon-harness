@@ -91,6 +91,8 @@ export interface Config {
   maxMaterialTotalBytes?: number
   /** Require parent tasks to start with Conductor and prohibit solo fallback (default false). */
   routeTasks?: boolean
+  /** Expose durable owner questions through the typed host UI (default false). */
+  ownerQuestions?: boolean
   /** Fresh structured-output subagent provider (default `spawn`). */
   subagentProvider?: string
   /** Maximum rework decisions per gate before escalation (default 2). */
@@ -111,6 +113,7 @@ export const Config: z<Config> = z.object({
   maxMaterialBytes: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(65_536),
   maxMaterialTotalBytes: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(262_144),
   routeTasks: z.boolean().default(false),
+  ownerQuestions: z.boolean().default(false),
   subagentProvider: z.string().default('spawn'),
   maxReworkPerGate: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(2),
   maxOwnerReassessmentsPerGate: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(2),
@@ -926,7 +929,7 @@ export function apply(ctx: Context, config: Config): void {
   })
   const resolved = resolveConfig(config)
   requireFreshProvider(ctx, resolved.subagentProvider)
-  const ownerController = new ConductorOwnerController(ctx)
+  const ownerController = new ConductorOwnerController(ctx, config.ownerQuestions === true)
   if (config.routeTasks === true) installModeRouting(ctx, ownerController)
 
   ctx.tools.register(defineTool({
@@ -1144,7 +1147,7 @@ export function apply(ctx: Context, config: Config): void {
         }
         const driven = await drive(run, dispatcher, saveCheckpoint)
         const { outcome } = await settleOwnerEscalation(ctx, driven, lastObservation,
-          parent.session.header.cwd ?? process.cwd(), saveCheckpoint, true)
+          parent.session.header.cwd ?? process.cwd(), saveCheckpoint, true, config.ownerQuestions === true)
 
         if (outcome.run.status === 'awaiting_owner') ownerController.offer(parent, outcome.run.runId)
 

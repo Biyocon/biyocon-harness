@@ -1,0 +1,47 @@
+- 'region "Conductor: owner question"':
+  - 'heading "Conductor: owner question" [level=2]'
+  - status: Waiting for owner
+  - text: "Run:"
+  - code: {{runId}}
+  - text: Gate B Strategist · Attempt 1
+  - paragraph: Which canonical provider ID should the plan use?; Which localhost bypass policy should the plan use?; May the report use owner-allowed/report.md?
+  - paragraph: An answer is not Gate C approval, GO, or closeout authorization.
+  - region "Proposed mandate changes":
+    - heading "Proposed mandate changes" [level=3]
+    - table:
+      - rowgroup:
+        - row "Proposed mandate changes Before After":
+          - columnheader "Proposed mandate changes"
+          - columnheader "Before"
+          - columnheader "After"
+      - rowgroup:
+        - row "Allowed paths owner-allowed owner-allowed/report.md":
+          - rowheader "Allowed paths"
+          - cell "owner-allowed":
+            - list:
+              - listitem:
+                - code: owner-allowed
+          - cell "owner-allowed/report.md":
+            - list:
+              - listitem:
+                - code: owner-allowed/report.md
+        - row "Excluded paths None None":
+          - rowheader "Excluded paths"
+          - cell "None"
+          - cell "None"
+        - row "Command IDs None None":
+          - rowheader "Command IDs"
+          - cell "None"
+          - cell "None"
+  - text: Which canonical provider ID should the plan use? (Required)
+  - textbox "Which canonical provider ID should the plan use? (Required)"
+  - text: Which localhost bypass policy should the plan use? (Required)
+  - textbox "Which localhost bypass policy should the plan use? (Required)"
+  - text: May the report use owner-allowed/report.md? (Required)
+  - textbox "May the report use owner-allowed/report.md? (Required)"
+  - checkbox "I confirm the displayed mandate changes."
+  - text: I confirm the displayed mandate changes.
+  - alert
+  - button "Reject"
+  - button "Approve" [disabled]
+  - button "Answer and continue" [disabled]

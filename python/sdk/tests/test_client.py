@@ -17,7 +17,8 @@ def test_required_conductor_owner_events_survive_sdk_transport(tmp_path: Path, s
     fixture = Path(__file__).resolve().parents[3] / "examples" / "headless-agent" / "tests" / "snapshots" / "conductor-owner" / scenario / "parent.expected.jsonl"
     expected = [event for line in fixture.read_text(encoding="utf-8").splitlines()
                 if (event := json.loads(line))["type"].startswith("conductor/owner-")]
-    assert len(expected) == (3 if scenario == "approved" else 2)
+    assert len(expected) == (4 if scenario == "approved" else 3)
+    assert any(event["type"] == "conductor/owner-response-acknowledged" for event in expected)
     assert all("ignorable" not in event for event in expected)
     script = tmp_path / "owner_wire_runtime.py"
     script.write_text("""

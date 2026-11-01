@@ -9,8 +9,8 @@
 
 export { ConductorRunId, QualityCommandId, QualityEvidenceId } from './types.ts'
 export type { OwnerTransportBinding } from './owner-types.ts'
-export { decodeOwnerInteractionEvent, publishOwnerInteractions } from './owner-events.ts'
-export type { OwnerInteractionEvent } from './owner-events.ts'
+export { decodeOwnerInteractionEvent, publishOwnerInteractions, decodeOwnerAcknowledgement, publishOwnerAcknowledgement } from './owner-events.ts'
+export type { OwnerInteractionEvent, OwnerAcknowledgement } from './owner-events.ts'
 export type { OwnerAnswer, OwnerEscalation, OwnerInteraction, OwnerMandate, OwnerMandateProposal, OwnerQuestion, OwnerQuestionItem, OwnerQuestionSource, OwnerResumePlan, RecoverableOwnerCause, ScriptedOwnerResponse, TerminalOwnerCause } from './owner-types.ts'
 export { applyScriptedOwnerAnswer, assertOwnerLedger, consumeOwnerContinuation, effectiveOwnerMandate, ownerCommandAllowed, ownerContinuationAt, ownerLifecycleStatus, ownerMandateHash, ownerReassessments, parkOwnerQuestion, pendingOwnerQuestion, pendingOwnerResumePlan } from './owner-ledger.ts'
 export type {

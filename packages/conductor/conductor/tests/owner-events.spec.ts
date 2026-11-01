@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { KNOWN_SESSION_EVENT_TYPES, Session, SessionId } from '@deepseek-ai/dsh-session'
 import { ConductorRunId, SessionConductorRunStore, applyScriptedOwnerAnswer, consumeOwnerContinuation,
   contentHash, createRun, ownerMandateHash, parkOwnerQuestion, recordGate, resumeRun } from '../src/index.ts'
-import { decodeOwnerInteractionEvent, publishOwnerInteractions, replayOwnerInteractions } from '../src/owner-events.ts'
+import { decodeOwnerAcknowledgement, publishOwnerAcknowledgement, decodeOwnerInteractionEvent, publishOwnerInteractions, replayOwnerInteractions } from '../src/owner-events.ts'
 import { implementationAdmission } from './intake-fixtures.ts'
 
 function stages(amend = false) {
@@ -126,5 +126,45 @@ describe('required owner interaction events', () => {
     const store = { load: () => Promise.resolve(consumed), save: () => Promise.resolve(), delete: () => Promise.resolve() }
     await expect(resumeRun(store, consumed.runId))
       .rejects.toThrow('ambiguous consumed owner dispatch')
+  })
+})
+
+
+describe('durable owner acknowledgement facts', () => {
+  it.each(['answered', 'rejected'] as const)('publishes one exact %s receipt and reconstructs it without granting anything', (key) => {
+    const states = stages()
+    const run = states[key]
+    const session = Session.create(states.initial.ownerSessionId!)
+    publishOwnerAcknowledgement(session, run, 'naming-question')
+    publishOwnerAcknowledgement(session, run, 'naming-question')
+    expect(session.events).toHaveLength(1)
+    const event = session.events[0]!
+    expect(event.type).toBe('conductor/owner-response-acknowledged')
+    expect(event.ignorable).toBeUndefined()
+    expect(KNOWN_SESSION_EVENT_TYPES.has(event.type)).toBe(true)
+    expect(decodeOwnerAcknowledgement(event.data)).toEqual({ runId: run.runId, questionId: 'naming-question', revision: 2,
+      status: key === 'answered' ? 'accepted' : 'rejected' })
+    expect(replayOwnerInteractions(run, session.events)).toEqual(run)
+    expect(replayOwnerInteractions({ ...run, runId: ConductorRunId('CON-2026-0038') }, session.events))
+      .toMatchObject({ runId: 'CON-2026-0038' })
+    const other = Session.create(states.initial.ownerSessionId!)
+    other.append('conductor/owner-response-acknowledged', { runId: run.runId, questionId: 'other', revision: 1, status: 'accepted' })
+    expect(() =>{  publishOwnerAcknowledgement(other, run, 'missing') }).toThrow('outside its owning ledger')
+    expect(() =>{  publishOwnerAcknowledgement(other, { ...run, ownerSessionId: SessionId('foreign') }, 'naming-question') }).toThrow('outside its owning ledger')
+    other.append('conductor/owner-response-acknowledged', { runId: run.runId, questionId: 'naming-question', revision: 2,
+      status: key === 'answered' ? 'rejected' : 'accepted' })
+    expect(() =>{  publishOwnerAcknowledgement(other, run, 'naming-question') }).toThrow('conflicts')
+  })
+
+  it('rejects malformed receipts and receipt identities that contradict the committed ledger', () => {
+    const { answered } = stages()
+    const data = { runId: answered.runId, questionId: 'naming-question', revision: 2, status: 'accepted' as const }
+    for (const invalid of [null, {}, { ...data, extra: true }, { ...data, runId: 'bad' }, { ...data, questionId: ' padded ' },
+      { ...data, revision: 0 }, { ...data, status: 'granted' }]) expect(() => decodeOwnerAcknowledgement(invalid)).toThrow()
+    for (const patch of [{ questionId: 'foreign' }, { revision: 1 }, { status: 'rejected' as const }]) {
+      const session = Session.create(answered.ownerSessionId!)
+      session.append('conductor/owner-response-acknowledged', { ...data, ...patch })
+      expect(() => replayOwnerInteractions(answered, session.events)).toThrow('contradicts its answer checkpoint')
+    }
   })
 })

@@ -1,0 +1,14 @@
+- 'region "Conductor: owner question"':
+  - 'heading "Conductor: owner question" [level=3]'
+  - text: "Run:"
+  - code: {{runId}}
+  - text: Gate A Detective · Attempt 1
+  - paragraph: The report needs an owner scope clarification.
+  - status: Answer accepted
+  - list:
+    - listitem:
+      - text: Which reporting scope should be used?
+      - paragraph: Documented scope
+    - listitem:
+      - text: Who is the intended audience?
+      - paragraph: Maintainers

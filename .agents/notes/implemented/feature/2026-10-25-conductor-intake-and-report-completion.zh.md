@@ -42,13 +42,13 @@ Detective 接受不确定的当前请求。较晚入口要求捕获的范围来�
 
 接受产生 `kind: report`、终态 `reported` 和 `currentStage: report-complete`，既不是 GO，也不批准发布或实现。有依据的负面发现和静态分析限制保留在报告中。reported 运行不能恢复、closeout 或变成实现运行。实施建议需要新 implementation 运行及真正的执行 C 批准。
 
-所有分析检查点保持 baseline/authorization 为 null、质量执行记录为空。[类型化分派](../../../../packages/conductor/tool-conductor/src/index.ts)、公布的工具允许列表和执行器守卫仅允许读取/搜索及结构化交接；排除写入/编辑、shell、质量执行、批准和外部操作。前向路线、返工与恢复不能到达 Headsman、Ralph 或 Integrator。从不调用批准服务。宿主 Session 日志与项目写入分离。[父级路由策略](../bug-fix/2026-10-25-conductor-mode-routing.md)仍在任何结果后禁止父级工具及重新分派，包括 reported，直到收到新用户输入。
+所有分析检查点保持 baseline/authorization 为 null、质量执行记录为空。[类型化分派](../../../../packages/conductor/tool-conductor/src/index.ts)、公布的工具允许列表和执行器守卫仅允许读取/搜索及结构化交接；排除写入/编辑、shell、质量执行、批准和外部操作。前向路线、返工与恢复不能到达 Headsman、Ralph 或 Integrator。从不调用批准服务。宿主 Session 日志与项目写入分离。[父级路由策略](../bug-fix/2026-10-25-conductor-mode-routing.md)仍在任何结果后禁止父级工具及重新分派，包括 reported，直到在没有待处理所有者交互时收到新用户输入；待答问题存在时，该输入保留在可见队列。
 
 规范[角色](../../../conductor/README.md)及[专家协议](../../../skills/conductor-specialist/SKILL.md)拥有按 purpose 区分的指令；名称和职责分配不变。安装副本由现有 build generator 生成，没有 #25 的新 source-launch 自动生成。实现保留现有报告 envelope、质量策略和 GO/NO-GO closeout 要求。
 
 ### 持久化
 
-记录格式 3 保存不可变准入、捕获内容/来源、已评估/跳过 gate、待处理返工返回、报告版本、审计及最终报告裁决。解析器重放准入的因果路线，检查材料/候选/审计哈希、引用、逐 gate 次数、终态以及不兼容的执行字段。旧格式包括 #27 的版本 2 均明确拒绝，没有迁移或兼容别名。准入和每次转换均在后续分派前保存检查点。现有 `conductor/checkpoint` 仍携带不透明运行 JSON；没有新 Session 事件或 SDK 生命周期变体。
+记录格式 4 保存不可变准入、捕获内容/来源、已评估/跳过 gate、待处理返工返回、报告版本、审计及最终报告裁决。解析器重放准入的因果路线，检查材料/候选/审计哈希、引用、逐 gate 次数、终态以及不兼容的执行字段。旧格式包括版本 3 均明确拒绝，没有迁移或兼容别名。准入和每次转换均在后续分派前保存检查点。现有 `conductor/checkpoint` 携带完整运行 JSON；[所有者升级](2026-10-30-conductor-owner-escalation-resumption.md)还记录必读所有者事件及同运行回答。分析澄清只能通过该宿主控制器恢复，保持只读，不能变成实现或 Gate C 批准。
 
 ## 考虑过的替代方案
 
