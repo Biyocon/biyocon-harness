@@ -6,16 +6,24 @@ Run only one Biyocon Harness server at a time. Every launch method below stores 
 
 ## Method 1: Pin the Launcher
 
-1. **Create a Shortcut to the Launcher**:
-   - Right-click on your Desktop or in a folder
-   - Select "New" → "Shortcut"
-   - Enter the path: `C:\Users\Biyocon\biyocon-harness\start-biyocon.bat`
-   - Click "Next" and name it "Biyocon Harness"
-   - Click "Finish"
+Windows 11 does not offer "Pin to taskbar" for a `.bat` file, so the shortcut runs the launcher through `cmd.exe`.
 
-2. **Pin to Taskbar**:
-   - Right-click on the new shortcut
-   - Select "Pin to Taskbar"
+1. **Create a Shortcut to the Launcher**:
+   - Right-click on your Desktop and select "New" → "Shortcut"
+   - Enter the location: `C:\Windows\System32\cmd.exe /c "C:\Users\Biyocon\biyocon-harness\start-biyocon.bat"`
+   - Click "Next", name it "Biyocon Harness", and click "Finish"
+
+2. **Set the Biyocon icon** (optional): without it, the shortcut shows the `cmd.exe` console icon. In PowerShell, run:
+   ```powershell
+   cd C:\Users\Biyocon\biyocon-harness
+   powershell -ExecutionPolicy Bypass -File scripts\set-biyocon-shortcut-icon.ps1
+   ```
+   The script draws `apps/web/public/biyocon-brandmark-512.png` on a white rounded tile, writes `%LOCALAPPDATA%\Biyocon\biyocon-white.ico`, and sets it on every Desktop and pinned taskbar shortcut that runs `start-biyocon.bat`. It fails if no such shortcut exists. `-Source` selects another image, `-CornerRadius 0` gives square corners, and `-Padding` sets the margin around the mark. Run it again after pinning to update the pinned copy.
+
+3. **Pin to Taskbar**:
+   - Right-click on the shortcut on the Desktop
+   - Select "Show more options" → "Pin to taskbar", or drag the shortcut onto the taskbar
+   - If the taskbar keeps showing an earlier icon, select "Unpin from taskbar" and pin the Desktop shortcut again; Windows caches pinned icons
 
 The launcher handles these cases:
 
@@ -25,7 +33,7 @@ The launcher handles these cases:
 - **Another launcher is still starting the server:** it reports that and starts nothing.
 - **Cold start:** it starts the server in a "Biyocon Server" window and opens the browser once the server listens, waiting up to `$StartTimeoutSeconds` seconds. If the server fails, the Biyocon Server window stays open with the error.
 
-A Biyocon Harness server is recognised as a `node.exe` process whose command line runs the `dsh` CLI entry (`bin.ts` or `bin.js`) with the `web` command, including the quoted `"web"` argument emitted by `pnpm dsh web`.
+A Biyocon Harness server is recognised as a `node.exe` process whose command line runs a `dsh` CLI entry (`apps/cli/scripts/source-launch.ts` from `pnpm dsh`, an earlier `bin.ts` source launch, or the built `bin.js`) with the `web` command, including the quoted `"web"` argument emitted by `pnpm dsh web`.
 
 ## Method 2: Pin the Web UI
 
@@ -41,7 +49,7 @@ A Biyocon Harness server is recognised as a `node.exe` process whose command lin
 
 ## Start on Login
 
-Press Win+R, run `shell:startup`, and place a shortcut to `C:\Users\Biyocon\biyocon-harness\start-biyocon.bat` in the folder that opens. The launcher's checks then apply at every login.
+Press Win+R, run `shell:startup`, and copy the Desktop shortcut from Method 1 into the folder that opens. The launcher's checks then apply at every login.
 
 ## Troubleshooting
 
