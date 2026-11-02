@@ -1,10 +1,11 @@
 /** Deterministic, bounded source excerpts for a future analysis critic dispatch. */
-import type { IntakeMaterial, ReportCandidate } from './types.ts'
+import type { ConductorMaterialId, IntakeMaterial, ReportCandidate } from './types.ts'
 import { captureIntakeMaterial } from './intake.ts'
+import { reportHash } from './analysis.ts'
 
 /** One inclusive, one-based range in an admitted material. */
 export interface AnalysisMaterialSpan {
-  material_id: string
+  material_id: ConductorMaterialId
   start_line: number
   end_line: number
 }
@@ -14,9 +15,20 @@ export interface CriticMaterialExcerpt extends AnalysisMaterialSpan {
   text: string
 }
 
+/** Runtime-owned dispatch identity and the candidate's ordered admitted material IDs. */
+interface CriticInputIdentity {
+  run_id: string
+  candidate_hash: string
+  candidate_version: string
+  critic_child_id: string
+  critic_attempt: number
+  material_ids: readonly ConductorMaterialId[]
+}
+
 /** Inputs needed to build and price the complete critic prompt. */
 export interface CriticInputSpec {
   candidate: ReportCandidate
+  identity: CriticInputIdentity
   acceptanceCriteria: readonly string[]
   materials: readonly IntakeMaterial[]
   materialSpans: unknown
@@ -84,6 +96,17 @@ export function buildCriticInput(spec: CriticInputSpec): CriticInput {
     || [...cited].some(id => !materialById.has(id))) {
     throw new Error('Conductor critic candidate references unknown or duplicate material')
   }
+  const identity = spec.identity
+  if (!identity.run_id || identity.run_id.trim() !== identity.run_id
+    || !identity.critic_child_id || identity.critic_child_id.trim() !== identity.critic_child_id
+    || !Number.isSafeInteger(identity.critic_attempt) || identity.critic_attempt < 1
+    || identity.candidate_hash !== reportHash(spec.candidate)
+    || identity.candidate_version !== spec.candidate.version
+    || !Array.isArray(identity.material_ids)
+    || identity.material_ids.length !== spec.candidate.material_ids.length
+    || identity.material_ids.some((id, index) => id !== spec.candidate.material_ids[index])) {
+    throw new Error('Conductor critic identity must match the candidate and dispatch')
+  }
   const selected = parseSpans(spec.materialSpans).map((span) => {
     const source = materialById.get(span.material_id)
     if (!cited.has(span.material_id) || source === undefined || span.end_line > source.lines.length) {
@@ -107,8 +130,11 @@ export function buildCriticInput(spec: CriticInputSpec): CriticInput {
     .slice(span.start_line - 1, span.end_line).join('\n') }))
   const references = [...materialById.values()].filter(({ material }) => cited.has(material.id))
     .map(({ material }) => ({ material_id: material.id, selector: material.selector, sha256: material.sha256 }))
-  const prompt = JSON.stringify({ instructions: spec.instructionText, candidate: spec.candidate,
-    acceptance_criteria: spec.acceptanceCriteria, material_references: references, excerpts })
+  const prompt = JSON.stringify({ identity: {
+    run_id: identity.run_id, candidate_hash: identity.candidate_hash, candidate_version: identity.candidate_version,
+    critic_child_id: identity.critic_child_id, critic_attempt: identity.critic_attempt, material_ids: identity.material_ids,
+  }, instructions: spec.instructionText, candidate: spec.candidate,
+  acceptance_criteria: spec.acceptanceCriteria, material_references: references, excerpts })
   const tokenCount = spec.countTokens(prompt)
   if (!Number.isSafeInteger(tokenCount) || tokenCount < 1) {
     throw new Error('Conductor critic token counter returned an invalid count')

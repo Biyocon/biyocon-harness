@@ -1,23 +1,24 @@
 /** Validation and hashing for a future, candidate-bound analysis challenge. */
 import { z } from 'zod'
 import { contentHash } from './intake.ts'
-import type { ConductorEntry, ReportDeliverable, SpecialistProblem } from './types.ts'
+import type { ConductorEntry, ConductorMaterialId, ReportDeliverable, SpecialistProblem } from './types.ts'
 
 const normalized = z.string().min(1).refine(value => value.trim() === value)
 const hash = z.string().regex(/^[a-f0-9]{64}$/)
+const materialId = normalized.transform(value => value as ConductorMaterialId)
 const findingSchema = z.strictObject({
   id: normalized,
   severity: z.enum(['minor', 'major', 'critical']),
   claim: normalized,
   rationale: normalized,
-  material_ids: z.array(normalized),
+  material_ids: z.array(materialId),
 })
 const fields = {
   run_id: normalized,
   purpose: z.literal('analysis'),
   candidate_hash: hash,
   candidate_version: normalized,
-  material_ids: z.array(normalized).min(1),
+  material_ids: z.array(materialId).min(1),
   critic_child_id: normalized,
   critic_attempt: z.int().positive(),
   findings: z.array(findingSchema),
@@ -44,9 +45,10 @@ export interface AnalysisChallengeContext {
   runId: string
   candidateHash: string
   candidateVersion: string
-  materialIds: readonly string[]
+  materialIds: readonly ConductorMaterialId[]
   criticChildId: string
   producerChildId: string
+  /** P2 must assign strictly increasing attempts across the whole run, never reset per candidate. */
   criticAttempt: number
   dispatchMode: 'producer' | 'critic'
   entry: ConductorEntry
@@ -78,7 +80,17 @@ function canonicalChallenge(challenge: AnalysisChallenge): string {
   })
 }
 
-function conclusionProblem(challenge: AnalysisChallenge): string | undefined {
+function semanticProblem(challenge: AnalysisChallenge): string | undefined {
+  if (new Set(challenge.material_ids).size !== challenge.material_ids.length) {
+    return 'analysis challenge material IDs must be unique'
+  }
+  if (new Set(challenge.findings.map(finding => finding.id)).size !== challenge.findings.length) {
+    return 'analysis challenge finding IDs must be unique'
+  }
+  if (challenge.findings.some(finding => new Set(finding.material_ids).size !== finding.material_ids.length
+    || finding.material_ids.some(id => !challenge.material_ids.includes(id)))) {
+    return 'analysis challenge findings need unique references to their own materials'
+  }
   const substantive = challenge.findings.some(finding => finding.severity === 'major' || finding.severity === 'critical')
   if (challenge.conclusion === 'holds' && substantive) return 'holds cannot carry unresolved major or critical findings'
   if (challenge.conclusion === 'does_not_hold' && !substantive) return 'does_not_hold requires a major or critical finding'
@@ -92,7 +104,7 @@ function conclusionProblem(challenge: AnalysisChallenge): string | undefined {
  */
 export function analysisChallengeHash(challenge: AnalysisChallenge): string {
   const parsed = ANALYSIS_CHALLENGE_SCHEMA.parse(challenge)
-  const problem = conclusionProblem(parsed)
+  const problem = semanticProblem(parsed)
   if (problem !== undefined) throw new Error(problem)
   return contentHash(canonicalChallenge(parsed))
 }
@@ -129,14 +141,12 @@ export function validateAnalysisChallenge(value: unknown, context: AnalysisChall
   if (!parsed.success) return report('malformed AnalysisChallenge result')
   const challenge = parsed.data
   if (challenge.summary.length > context.maxSummaryCharacters) return report('analysis challenge summary exceeds the configured character limit')
+  const semantic = semanticProblem(challenge)
+  if (semantic !== undefined) return report(semantic)
   if (challenge.material_ids.length !== context.materialIds.length
-    || challenge.material_ids.some((id, index) => id !== context.materialIds[index])
-    || new Set(challenge.material_ids).size !== challenge.material_ids.length) return report('analysis challenge requires the candidate material IDs in order')
-  if (new Set(challenge.findings.map(finding => finding.id)).size !== challenge.findings.length
-    || challenge.findings.some(finding => new Set(finding.material_ids).size !== finding.material_ids.length
-      || finding.material_ids.some(id => !challenge.material_ids.includes(id)))) return report('analysis challenge findings need unique IDs and admitted materials')
-  const contradiction = conclusionProblem(challenge)
-  if (contradiction !== undefined) return report(contradiction)
+    || challenge.material_ids.some((id, index) => id !== context.materialIds[index])) {
+    return report('analysis challenge requires the candidate material IDs in order')
+  }
   if (challenge.conclusion === 'does_not_hold' && challenge.defect === 'scope' && context.entry !== 'detective') {
     return report('Detective is not on the admitted route for scope rework')
   }
@@ -147,10 +157,13 @@ export function validateAnalysisChallenge(value: unknown, context: AnalysisChall
   for (const previous of context.previous) {
     const parsedPrevious = ANALYSIS_CHALLENGE_SCHEMA.safeParse(previous.challenge)
     if (!parsedPrevious.success) return authority('stored analysis challenge is malformed')
-    if (conclusionProblem(parsedPrevious.data) !== undefined) return authority('stored analysis challenge is contradictory')
+    const previousSemantic = semanticProblem(parsedPrevious.data)
+    if (previousSemantic !== undefined) return authority(`stored analysis challenge is semantically invalid: ${previousSemantic}`)
     if (previous.hash !== analysisChallengeHash(parsedPrevious.data)) return authority('stored analysis challenge hash disagrees with its content')
-    if (previous.challenge.critic_child_id === challenge.critic_child_id
-      || previous.challenge.critic_attempt === challenge.critic_attempt) return authority('critic child or attempt was already used')
+    if (previous.challenge.critic_child_id === challenge.critic_child_id) return authority('critic child was already used')
+    if (previous.challenge.critic_attempt >= challenge.critic_attempt) {
+      return authority('critic attempt must increase across the whole run')
+    }
     if (previous.challenge.candidate_hash === challenge.candidate_hash) return authority('candidate already has an accepted challenge')
   }
   const reworkTarget = challenge.conclusion === 'holds' ? undefined

@@ -3,7 +3,10 @@ import fc from 'fast-check'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { buildCriticInput } from '../src/analysis-materials.ts'
 import type { AnalysisMaterialSpan, CriticInputSpec } from '../src/analysis-materials.ts'
+import { analysisChallengeHash, validateAnalysisChallenge } from '../src/analysis-challenge.ts'
+import { reportHash } from '../src/analysis.ts'
 import { captureIntakeMaterial } from '../src/intake.ts'
+import type { ConductorMaterialId } from '../src/types.ts'
 
 const request = captureIntakeMaterial('current-request', 'Alpha\r\nBeta\nGamma\n',
   { sessionId: SessionId('parent'), eventIndex: 0 })
@@ -14,10 +17,14 @@ const spans: AnalysisMaterialSpan[] = [
 ]
 
 function fixture(overrides: Partial<CriticInputSpec> = {}): CriticInputSpec {
+  const candidate = overrides.candidate ?? { version: 'v1', deliverable: 'answer', content: 'A grounded answer.',
+    criteria: [{ criterion: 'Answer the question.', outcome: 'Addressed.' }],
+    material_ids: [request.id, file.id], assumptions: [], limitations: [] }
   return {
-    candidate: { version: 'v1', deliverable: 'answer', content: 'A grounded answer.',
-      criteria: [{ criterion: 'Answer the question.', outcome: 'Addressed.' }],
-      material_ids: [request.id, file.id], assumptions: [], limitations: [] },
+    candidate,
+    identity: { run_id: 'CON-test-critic', candidate_hash: reportHash(candidate),
+      candidate_version: candidate.version, critic_child_id: 'critic-child-1', critic_attempt: 1,
+      material_ids: candidate.material_ids as ConductorMaterialId[] },
     acceptanceCriteria: ['Answer the question.'], materials: [request, file], materialSpans: spans,
     instructionText: 'Challenge the reasoning.', maxTokens: 10_000, countTokens: text => text.length,
     ...overrides,
@@ -31,6 +38,7 @@ describe('analysis critic material selection', () => {
     const parsed: unknown = JSON.parse(result.prompt)
     expect(result.tokenCount).toBe(result.prompt.length)
     expect(parsed).toEqual({
+      identity: original.identity,
       instructions: original.instructionText, candidate: original.candidate,
       acceptance_criteria: original.acceptanceCriteria,
       material_references: [
@@ -44,6 +52,43 @@ describe('analysis critic material selection', () => {
     })
     expect(result.excerpts).toEqual((parsed as { excerpts: unknown }).excerpts)
     expect(original.materialSpans).toEqual(spans)
+  })
+
+  it('lets a critic produce a valid challenge from only the prompt identity', () => {
+    const spec = fixture()
+    const prompt = buildCriticInput(spec).prompt
+    const identity = (JSON.parse(prompt) as { identity: CriticInputSpec['identity'] }).identity
+    const response = { ...identity, purpose: 'analysis', findings: [], conclusion: 'holds',
+      summary: 'The recommendation follows from the cited material.' }
+    const validated = validateAnalysisChallenge(response, {
+      runId: spec.identity.run_id, candidateHash: reportHash(spec.candidate),
+      candidateVersion: spec.candidate.version, materialIds: spec.identity.material_ids,
+      criticChildId: spec.identity.critic_child_id, producerChildId: 'producer-child-1',
+      criticAttempt: spec.identity.critic_attempt, dispatchMode: 'critic', entry: 'detective',
+      deliverable: 'answer', producer: 'detective', maxSummaryCharacters: 1024, previous: [],
+    })
+    if ('problem' in validated) throw new Error(validated.problem.message)
+    expect(validated.challenge).toEqual(response)
+    expect(validated.hash).toMatch(/^[a-f0-9]{64}$/)
+    expect(validated.hash).toBe(analysisChallengeHash(validated.challenge))
+    expect(validated.reworkTarget).toBeUndefined()
+  })
+
+  it('rejects an identity that disagrees with the candidate or dispatch', () => {
+    const identity = fixture().identity
+    const invalid = [
+      { candidate_hash: '0'.repeat(64) },
+      { candidate_version: 'v0' },
+      { material_ids: [file.id, request.id] },
+      { material_ids: [request.id] },
+      { run_id: '' }, { run_id: ' CON-test-critic' },
+      { critic_child_id: '' }, { critic_child_id: 'critic-child-1 ' },
+      { critic_attempt: 0 }, { critic_attempt: 1.5 },
+    ]
+    for (const changes of invalid) {
+      expect(() => buildCriticInput(fixture({ identity: { ...identity, ...changes } })))
+        .toThrow(/identity must match the candidate and dispatch/)
+    }
   })
 
   it('uses admission order and then line order, independent of supplied span order', () => {

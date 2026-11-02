@@ -4,23 +4,26 @@ import {
   ANALYSIS_CHALLENGE_SCHEMA, analysisChallengeHash, validateAnalysisChallenge,
   type AnalysisChallenge, type AnalysisChallengeContext,
 } from '../src/analysis-challenge.ts'
+import type { ConductorMaterialId } from '../src/types.ts'
 
 const candidateHash = 'a'.repeat(64)
 const otherHash = 'b'.repeat(64)
+const materialA = 'material-a' as ConductorMaterialId
+const materialB = 'material-b' as ConductorMaterialId
 
 function challenge(): Extract<AnalysisChallenge, { conclusion: 'does_not_hold' }> {
   return {
     run_id: 'CON-2026-0047', purpose: 'analysis', candidate_hash: candidateHash, candidate_version: 'v1',
-    material_ids: ['material-a', 'material-b'], critic_child_id: 'critic-1', critic_attempt: 1,
+    material_ids: [materialA, materialB], critic_child_id: 'critic-1', critic_attempt: 1,
     findings: [{ id: 'risk-1', severity: 'major', claim: 'The priority is unsupported.',
-      rationale: 'The referenced material does not compare the alternatives.', material_ids: ['material-a'] }],
+      rationale: 'The referenced material does not compare the alternatives.', material_ids: [materialA] }],
     conclusion: 'does_not_hold', defect: 'report', summary: 'The evidence does not justify the priority.',
   }
 }
 
 function context(): AnalysisChallengeContext {
   return {
-    runId: 'CON-2026-0047', candidateHash, candidateVersion: 'v1', materialIds: ['material-a', 'material-b'],
+    runId: 'CON-2026-0047', candidateHash, candidateVersion: 'v1', materialIds: [materialA, materialB],
     criticChildId: 'critic-1', producerChildId: 'producer-1', criticAttempt: 1, dispatchMode: 'critic',
     entry: 'detective', deliverable: 'recommendations', producer: 'strategist', maxSummaryCharacters: 256, previous: [],
   }
@@ -31,6 +34,14 @@ function analysisChallengeProblem(value: unknown, facts: AnalysisChallengeContex
 }
 
 describe('candidate-bound analysis challenge', () => {
+  it('brands parsed challenge and finding material IDs', () => {
+    const parsed = ANALYSIS_CHALLENGE_SCHEMA.parse(challenge())
+    const materialIds: ConductorMaterialId[] = parsed.material_ids
+    const findingMaterialIds: ConductorMaterialId[] = parsed.findings[0]!.material_ids
+    expect(materialIds).toEqual([materialA, materialB])
+    expect(findingMaterialIds).toEqual([materialA])
+  })
+
   it('accepts holds with only minor findings and all three typed rework classes on allowed routes', () => {
     const failed = challenge()
     for (const defect of ['scope', 'plan', 'report'] as const) {
@@ -153,10 +164,10 @@ describe('candidate-bound analysis challenge', () => {
     const currentContext = { ...context(), candidateHash: otherHash, candidateVersion: 'v2', criticChildId: 'critic-2', criticAttempt: 2 }
     for (const [prior, message] of [
       [{ challenge: { ...previous, purpose: 'implementation' } as unknown as AnalysisChallenge, hash: otherHash }, 'stored analysis challenge is malformed'],
-      [{ challenge: contradictoryPrevious, hash: otherHash }, 'stored analysis challenge is contradictory'],
+      [{ challenge: contradictoryPrevious, hash: otherHash }, 'stored analysis challenge is semantically invalid'],
       [{ challenge: previous, hash: otherHash }, 'hash disagrees'],
       [{ challenge: { ...previous, critic_child_id: 'critic-2' }, hash: analysisChallengeHash({ ...previous, critic_child_id: 'critic-2' }) }, 'already used'],
-      [{ challenge: { ...previous, critic_attempt: 2 }, hash: analysisChallengeHash({ ...previous, critic_attempt: 2 }) }, 'already used'],
+      [{ challenge: { ...previous, critic_attempt: 2 }, hash: analysisChallengeHash({ ...previous, critic_attempt: 2 }) }, 'must increase'],
       [{ challenge: { ...previous, candidate_hash: otherHash }, hash: analysisChallengeHash({ ...previous, candidate_hash: otherHash }) }, 'already has'],
     ] as const) {
       expect(analysisChallengeProblem(current, { ...currentContext, previous: [prior] })?.message).toContain(message)
@@ -164,6 +175,58 @@ describe('candidate-bound analysis challenge', () => {
     expect(analysisChallengeProblem(current, {
       ...currentContext, previous: [{ challenge: previous, hash: analysisChallengeHash(previous) }],
     })).toBeUndefined()
+  })
+
+  it('rejects a reused critic attempt when the candidate and critic child both change', () => {
+    const previous = challenge()
+    const current = { ...challenge(), candidate_hash: otherHash, candidate_version: 'v2', critic_child_id: 'critic-2' }
+    const facts = { ...context(), candidateHash: otherHash, candidateVersion: 'v2', criticChildId: 'critic-2',
+      previous: [{ challenge: previous, hash: analysisChallengeHash(previous) }] }
+    const problem = analysisChallengeProblem(current, facts)
+    expect(problem?.kind).toBe('authority')
+    expect(problem?.message).toContain('attempt must increase')
+  })
+
+  it('rejects a lower unused attempt on a new candidate', () => {
+    const previous = { ...challenge(), critic_attempt: 3 }
+    const current = { ...challenge(), candidate_hash: otherHash, candidate_version: 'v2',
+      critic_child_id: 'critic-2', critic_attempt: 2 }
+    const facts = { ...context(), candidateHash: otherHash, candidateVersion: 'v2',
+      criticChildId: 'critic-2', criticAttempt: 2,
+      previous: [{ challenge: previous, hash: analysisChallengeHash(previous) }] }
+    const problem = analysisChallengeProblem(current, facts)
+    expect(problem?.kind).toBe('authority')
+    expect(problem?.message).toContain('attempt must increase')
+  })
+
+  it('rejects every semantic contradiction before hashing or trusting a stored challenge', () => {
+    const original = challenge()
+    const finding = original.findings[0]!
+    const { defect: _defect, ...withoutDefect } = original
+    const invalid = [
+      { challenge: { ...original, material_ids: [materialA, materialA] }, message: 'material IDs must be unique' },
+      { challenge: { ...original, findings: [finding, finding] }, message: 'finding IDs must be unique' },
+      { challenge: { ...original, findings: [{ ...finding, material_ids: ['foreign' as ConductorMaterialId] }] },
+        message: 'their own materials' },
+      { challenge: { ...original, findings: [{ ...finding, material_ids: [materialA, materialA] }] },
+        message: 'their own materials' },
+      { challenge: { ...withoutDefect, conclusion: 'holds', findings: [finding] } as AnalysisChallenge,
+        message: 'holds cannot' },
+      { challenge: { ...original, findings: [{ ...finding, severity: 'minor' }] } as AnalysisChallenge,
+        message: 'requires a major or critical' },
+    ]
+    for (const { challenge: result, message } of invalid) {
+      expect(analysisChallengeProblem(result, context())?.message).toContain(message)
+      expect(() => analysisChallengeHash(result)).toThrow(message)
+      const current = { ...original, candidate_hash: otherHash, candidate_version: 'v2',
+        critic_child_id: 'critic-2', critic_attempt: 2 }
+      const facts = { ...context(), candidateHash: otherHash, candidateVersion: 'v2',
+        criticChildId: 'critic-2', criticAttempt: 2,
+        previous: [{ challenge: result, hash: otherHash }] }
+      const problem = analysisChallengeProblem(current, facts)
+      expect(problem?.kind).toBe('authority')
+      expect(problem?.message).toContain(message)
+    }
   })
 
   it('hashes validated content in canonical field order', () => {
