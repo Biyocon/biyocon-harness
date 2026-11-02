@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { join, sep } from 'node:path'
 import type { Browser, Locator, Page } from 'playwright'
 import { chromium } from 'playwright'
-import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, onTestFailed, vi } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import {
   acknowledgeReloadConnectionLoss, assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
@@ -61,7 +61,7 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
    * Create a folder inside `parent` through the dialog and adopt it — the
    * product's only route to a brand-new workspace directory.
    */
-  async function addNewFolderWorkspace(parent: string, name: string): Promise<void> {
+  async function addNewFolderWorkspace(parent: string, name: string, onRegistered?: () => void): Promise<void> {
     const dialog = await browseTo(parent)
     await dialog.getByRole('button', { name: 'New folder' }).click()
     await page.getByLabel('Folder name').fill(name)
@@ -73,6 +73,11 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
       () => scaffold.ctx.workspaceRegistry.resolveByPath(join(parent, name)),
       { timeout: 10_000 },
     ).not.toBeUndefined()
+    onRegistered?.()
+    const row = page.locator('[role="treeitem"]').filter({ hasText: name }).first()
+    const group = row.locator('xpath=ancestor::*[contains(@class, "groupSection")][1]')
+    await group.locator('[role="treeitem"][aria-selected="true"]')
+      .getByText('New Session', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
   }
 
   /**
@@ -99,16 +104,10 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     }
   }
 
-  /**
-   * Reveal and click a row action, re-hovering if a projection update replaces
-   * the row before its hover-only button becomes visible.
-   */
+  /** Reveal and click a row's hover-only action once. */
   async function clickHoverAction(row: Locator, name: string): Promise<void> {
     const button = row.getByRole('button', { name })
-    await expect.poll(async () => {
-      await row.hover()
-      return await button.isVisible()
-    }, { timeout: 10_000 }).toBe(true)
+    await row.hover()
     await button.click()
   }
 
@@ -140,7 +139,35 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
       await expect.poll(() => page.getByText(name, { exact: true }).count(), { timeout: 10_000 }).toBeGreaterThanOrEqual(1)
     }
     await add('alpha-ws')
-    await add('beta-ws')
+    const betaCreateGate = Promise.withResolvers<undefined>()
+    let betaCreateStarted = false
+    let betaRegistered = false
+    const originalCreate = scaffold.ctx.apiProxy.sessions.create.bind(scaffold.ctx.apiProxy.sessions)
+    const createSpy = vi.spyOn(scaffold.ctx.apiProxy.sessions, 'create').mockImplementation(async (request) => {
+      const workspaceId = request.payload.workspaceId
+      if (workspaceId !== undefined && scaffold.ctx.workspaceRegistry.get(workspaceId)?.title === 'beta-ws') {
+        betaCreateStarted = true
+        await betaCreateGate.promise
+      }
+      return originalCreate(request)
+    })
+    let betaAdded = false
+    const addingBeta = addNewFolderWorkspace(scaffold.workspaceCwd, 'beta-ws', () => { betaRegistered = true })
+      .then(() => { betaAdded = true })
+    try {
+      await expect.poll(() => betaRegistered && betaCreateStarted, { timeout: 10_000 }).toBe(true)
+      await new Promise<undefined>(resolve => setImmediate(() => { resolve(undefined) }))
+      expect(betaAdded).toBe(false)
+    } finally {
+      betaCreateGate.resolve(undefined)
+      try {
+        await addingBeta
+      } finally {
+        createSpy.mockRestore()
+      }
+    }
+    await expect.poll(() => page.getByText('beta-ws', { exact: true }).count(), { timeout: 10_000 })
+      .toBeGreaterThanOrEqual(1)
     // Durable on the host: both registered, newest first (create prepends),
     // each titled after the folder the dialog made.
     const titles = scaffold.ctx.workspaceRegistry.list().map(workspace => workspace.title)
