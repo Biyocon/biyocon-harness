@@ -193,6 +193,9 @@ export class DeepSeekAdapter extends LlmAdapter {
         : modelInfo(provider, configured),
       context: { contextWindow },
       defaultMaxTokens: configured?.maxTokens ?? connection.maxTokens,
+      ...new URL(connection.baseURL).origin === 'https://api.deepseek.com'
+        ? { enforcesMaxTokensIncludingReasoning: true as const }
+        : {},
       ...connection.defaults.thinking === 'disabled'
         ? {
           reasoning: {
@@ -222,6 +225,13 @@ export class DeepSeekAdapter extends LlmAdapter {
     // The key resolves *from this snapshot*, so an endpoint and the secret
     // sent to it can never come from different configuration generations.
     const connection = this.config.options()
+    if (options.requireOutputTokenLimit === true
+      && new URL(connection.baseURL).origin !== 'https://api.deepseek.com') {
+      throw new LlmError(
+        `DeepSeek endpoint "${new URL(connection.baseURL).origin}" cannot guarantee a reasoning-inclusive output-token limit`,
+        'UNSUPPORTED_OUTPUT_TOKEN_LIMIT',
+      )
+    }
     const apiKey = await this.config.resolveApiKey(connection)
     const userId = this.config.resolveUserId()
     const consumer = new AbortController()

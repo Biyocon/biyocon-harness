@@ -26,6 +26,16 @@ function send(agent: Agent, text: string): void {
 }
 
 describe('Agent', () => {
+  it('refuses a second maintenance task while one owns the idle phase', async () => {
+    const ctx = await harness(new MockAdapter([]))
+    const agent = ctx.agentLoop.create(SessionId('maintenance-busy'), { provider: 'mock', model: 'mock' })
+    const release = Promise.withResolvers<undefined>()
+    const first = agent.runMaintenance(() => release.promise)
+    expect(() => agent.runMaintenance(() => Promise.resolve())).toThrow('already has active work')
+    release.resolve(undefined)
+    await first
+  })
+
   it('idle inject() durably stages context without opening a turn', async () => {
     const adapter = new MockAdapter([textResponse('ok')])
     const ctx = await harness(adapter)

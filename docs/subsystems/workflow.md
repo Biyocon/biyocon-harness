@@ -10,7 +10,7 @@ Sources: browser-safe vocabulary in [`packages/workflow/workflow/src/types.ts`](
 
 ## The start request
 
-What a caller asks for when starting a run. The ordinary workflow tool builds this from the model's `{ script, meta, args }` call plus the calling agent; specialized consumers may also select one engine-wide `subagentProvider` and lower `maxTotalAgents` for the run, but the script cannot observe or replace either policy. `meta` and `args` are plain JSON DATA (the engine validates `meta` against its schema and rejects loud BEFORE anything runs — no script text is ever evaluated to obtain it). `parent` is REQUIRED — every child the script starts is attributed to it, and cwd, lineage, and depth pass through the [subagent seam](subagent.md).
+What a caller asks for when starting a run. The ordinary workflow tool builds this from the model's `{ script, meta, args }` call plus the calling agent; specialized consumers may also select one engine-wide `subagentProvider`, lower `maxTotalAgents`, compose each child prompt after reserving its real session id, and set a reasoning-inclusive output-token ceiling per child. The script cannot observe or replace these host policies. `meta` and `args` are plain JSON DATA (the engine validates `meta` against its schema and rejects loud BEFORE anything runs — no script text is ever evaluated to obtain it). `parent` is REQUIRED — every child the script starts is attributed to it, and cwd, lineage, and depth pass through the [subagent seam](subagent.md).
 
 ```ts type-equiv
 /**
@@ -37,6 +37,18 @@ interface WorkflowStartRequest {
   childToolContribution?: SubagentChildToolContribution
   /** Trusted host-owned persona applied to every child in this run. */
   childPersona?: string
+  /**
+   * Compose each child's final prompt after its actual session id is reserved.
+   * Runs on the host before provider start; a thrown error fails that child
+   * start without publishing it. Requires a provider that supports reserved ids.
+   */
+  composeChildPrompt?: (sessionId: SessionId, prompt: string) => ContentBlock[]
+  /**
+   * Cumulative output-token ceiling for each child dispatch, including
+   * reasoning. No ceiling is applied when absent. The selected subagent and
+   * model providers must both support enforcement when this is set.
+   */
+  maxOutputTokensPerChild?: number
   /** The agent on whose behalf the run executes (parent of every child). */
   parent: Agent
   /** Cancels the run when aborted. */

@@ -45,6 +45,31 @@ async function setup(script: Script) {
 }
 
 describe('dsh-workflow-worker-thread over the real in-process stack', () => {
+  it('uses a host-reserved id in the real child prompt and published session', async () => {
+    const { ctx, parent, adapter } = await setup([(options) => {
+      expect(options.sessionId).toBe(reservedId)
+      expect(JSON.stringify(options.messages)).toContain(`child ${reservedId}`)
+      return textResponse('identified')
+    }])
+    let reservedId: SessionId | undefined
+    const published: SessionId[] = []
+    ctx.on('workflow/agent-start', (_info, agent) => { published.push(agent.childId) })
+    const run = ctx.workflowEngine.start({
+      meta: { name: 'reserved-id', description: 'host prompt identity' },
+      script: "return await agent('identify')",
+      parent,
+      composeChildPrompt: (id, prompt) => {
+        expect(ctx.agents.get(id)).toBeUndefined()
+        reservedId = id
+        return [{ type: 'text', text: `${prompt} child ${id}` }]
+      },
+    })
+    expect((await run.result).value).toBe('identified')
+    await run.dispose()
+    expect(adapter.requests).toHaveLength(1)
+    expect(published).toEqual([reservedId])
+  })
+
   it('runs a two-stage workflow: a plain child, then a schema child through the structured runtime', async () => {
     const { ctx, parent } = await setup([
       textResponse('the file list is a.ts'),

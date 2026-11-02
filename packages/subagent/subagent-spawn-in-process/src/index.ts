@@ -46,6 +46,8 @@ class SpawnInProcessProvider implements SubagentProvider {
     toolGuard: true,
     persona: true,
     toolContribution: true,
+    reservedSessionId: true,
+    outputTokenLimit: true,
   }
   // Context contract: a spawned child starts fresh — it never sees the parent conversation.
   readonly inheritsParentContext = false
@@ -53,7 +55,7 @@ class SpawnInProcessProvider implements SubagentProvider {
   constructor(readonly name: string) {}
 
   start(request: ResolvedSubagentStartRequest) {
-    // Fresh child: no seed. The shared driver mints ids, stamps cwd/lineage/
+    // Fresh child: no seed. The shared driver uses a reserved id or mints one, stamps cwd/lineage/
     // depth, drives the one-shot (including the structured capture when the
     // request carries an outputSchema), and maps the result.
     return startInProcessRun(request, {

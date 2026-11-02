@@ -12,7 +12,7 @@ spawn 提供方会在当前进程中创建一个全新的子 `Agent`。子 agent
 
 ## 能力
 
-spawn 声明 `{ outputSchema: true, depthLimit: true, toolFilter: true, persona: true }`，因为它控制子 agent 的创建窗口，能够强制执行全部四项功能。
+spawn 声明 `outputSchema`、`depthLimit`、`toolFilter`、`toolGuard`、`toolContribution`、`persona`、`reservedSessionId` 和 `outputTokenLimit`。其共享进程内驱动器以预留 id 创建子智能体，并将包含 reasoning 的累计输出上限传给子智能体循环。
 
 ## 配置
 

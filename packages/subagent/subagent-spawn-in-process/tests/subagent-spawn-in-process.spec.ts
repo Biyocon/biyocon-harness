@@ -94,6 +94,37 @@ describe('dsh-subagent-spawn-in-process', () => {
     await run.dispose()
   })
 
+  it('publishes a reserved child id and its id-dependent prompt together', async () => {
+    const { ctx, parent } = await setup([textResponse('child answer')])
+    const reservedSessionId = SessionId('reserved-spawn-child')
+    const prompt = [{ type: 'text' as const, text: `child identity: ${reservedSessionId}` }]
+    const started: SessionId[] = []
+    ctx.on('subagent/start', info => void started.push(info.id))
+
+    const run = await start(ctx, 'spawn', { prompt, parent, reservedSessionId })
+    expect(run.id).toBe(reservedSessionId)
+    expect(started).toEqual([reservedSessionId])
+    await run.result
+    const child = ctx.agents.get(reservedSessionId)!
+    const firstUser = child.session.events.find(event => event.type === 'user/message')
+    expect(firstUser?.type === 'user/message' && firstUser.data.content).toEqual(prompt)
+    await run.dispose()
+  })
+
+  it('rolls back a reserved child id that is already registered', async () => {
+    const { ctx, parent } = await setup([])
+    const started: SessionId[] = []
+    ctx.on('subagent/start', info => void started.push(info.id))
+
+    await expect(start(ctx, 'spawn', {
+      prompt: [{ type: 'text', text: 'unused' }],
+      parent,
+      reservedSessionId: parent.id,
+    })).rejects.toThrow(`session "${parent.id}" already exists`)
+    expect(started).toEqual([])
+    expect(ctx.agents.get(parent.id)).toBe(parent)
+  })
+
   it('gives the child its OWN session (not the parent\'s), with parentSession lineage', async () => {
     const { ctx, parent } = await setup([textResponse('hi')])
     const run = await start(ctx, 'spawn', { prompt: [{ type: 'text', text: 'p' }], parent })
@@ -292,6 +323,8 @@ describe('dsh-subagent-spawn-in-process', () => {
       toolGuard: true,
       persona: true,
       toolContribution: true,
+      reservedSessionId: true,
+      outputTokenLimit: true,
     })
   })
 

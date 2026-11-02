@@ -16,7 +16,7 @@ subagent 启动时，父 agent 当前的工具调用轮次仍未结束：其日�
 
 `start(request)` 将已完成轮次的初始内容传给 [`startInProcessRun`](../subagent-in-process-driver/README.md)，并等待子 agent 发布。共享驱动器负责取消、深度、定制、结果读取和 dispose（资源释放）。
 
-fork 声明 `{ outputSchema: true, depthLimit: true, toolFilter: true, persona: true }`，与 spawn 相同。
+fork 声明 `outputSchema`、`depthLimit`、`toolFilter`、`toolGuard`、`persona`、`reservedSessionId` 和 `outputTokenLimit`。它和 spawn 一样以提供的预留 id 创建子智能体，并将包含 reasoning 的累计输出上限传给子智能体循环；它不声明 `toolContribution`。
 
 ## 配置
 

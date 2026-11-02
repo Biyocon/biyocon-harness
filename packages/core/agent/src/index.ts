@@ -109,6 +109,8 @@ export interface CreateAgentOptions {
   readonly seed?: readonly SessionEvent[]
   /** Per-agent options (model, …). */
   readonly agentOptions?: AgentOptions
+  /** Host-owned cumulative output-token ceiling for this created agent, including reasoning across all model calls. */
+  readonly maxOutputTokens?: number
   /** Optional creation-only cancellation signal; detached before the returned handle becomes visible. */
   readonly signal?: AbortSignal
   /**

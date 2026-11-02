@@ -62,6 +62,8 @@ class StubProvider implements SubagentProvider {
     toolGuard: true,
     persona: true,
     toolContribution: true,
+    reservedSessionId: true,
+    outputTokenLimit: true,
   }
   readonly inheritsParentContext = false
   readonly runs: ControlledRun[] = []
@@ -113,7 +115,7 @@ class StubProvider implements SubagentProvider {
     }
     if (request.signal.aborted) throw new Error('child start aborted before publication')
     return {
-      id: SessionId(`stub-child-${index}`),
+      id: request.reservedSessionId ?? SessionId(`stub-child-${index}`),
       localAgent: undefined,
       result: terminal.promise,
       dispose: () => {
@@ -260,6 +262,81 @@ describe('dsh-workflow-worker-thread', () => {
       expect(provider.runs[0]!.request.toolGuard).toBe(childToolGuard)
       expect(provider.runs[0]!.request.toolContribution).toBe(childToolContribution)
       expect(provider.runs[0]!.request.persona).toBe('bounded persona')
+    })
+
+    it('reserves the published child id before the host composes its prompt', async () => {
+      const { ctx, parent, provider } = await setup()
+      const composed: string[] = []
+      const handle = ctx.workflowEngine.start({
+        ...scripted("return await agent('worker prompt')"),
+        parent,
+        composeChildPrompt: (id, prompt) => {
+          composed.push(id)
+          return [{ type: 'text', text: `${prompt} for ${id}` }]
+        },
+        maxOutputTokensPerChild: 17,
+      })
+      expect((await handle.result).value).toBe('stub reply')
+      await handle.dispose()
+      expect(composed).toHaveLength(1)
+      expect(provider.runs[0]!.request.reservedSessionId).toBe(composed[0])
+      expect(provider.runs[0]!.request.prompt).toEqual([{ type: 'text', text: `worker prompt for ${composed[0]}` }])
+      expect(provider.runs[0]!.request.maxOutputTokens).toBe(17)
+    })
+
+    it('fails a child start when host prompt composition throws, without publishing a child', async () => {
+      const { ctx, parent, provider } = await setup()
+      const handle = ctx.workflowEngine.start({
+        ...scripted("return await agent('worker prompt')"),
+        parent,
+        composeChildPrompt: () => { throw new Error('host prompt failed') },
+      })
+      const result = await handle.result
+      await handle.dispose()
+      expect(result.stopReason).toBe('error')
+      expect(result.error).toContain('host prompt failed')
+      expect(provider.runs).toHaveLength(0)
+    })
+
+    it('forwards a host-supplied cumulative token ceiling on each child dispatch', async () => {
+      const { ctx, parent, provider } = await setup()
+      const handle = ctx.workflowEngine.start({
+        ...scripted("await agent('one'); await agent('two'); return 'done'"),
+        parent,
+        maxOutputTokensPerChild: 17,
+      })
+      expect((await handle.result).value).toBe('done')
+      await handle.dispose()
+      expect(provider.runs.map(run => run.request.maxOutputTokens)).toEqual([17, 17])
+      expect(provider.runs.every(run => run.request.reservedSessionId === undefined)).toBe(true)
+    })
+
+    it('rejects an invalid child token ceiling before publishing a workflow', async () => {
+      const { ctx, parent } = await setup()
+      for (const maxOutputTokensPerChild of [0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1]) {
+        expect(() => ctx.workflowEngine.start({
+          ...scripted("return await agent('must not start')"),
+          parent,
+          maxOutputTokensPerChild,
+        })).toThrow('workflow maxOutputTokensPerChild must be a positive safe integer')
+      }
+    })
+
+    it('rejects host prompt composition or a child token ceiling on unsupported providers', async () => {
+      const { ctx, parent } = await setup()
+      const start = vi.fn<SubagentProvider['start']>()
+      ctx.subagents.registerProvider({
+        name: 'without-host-controls',
+        capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+        inheritsParentContext: false,
+        start,
+      })
+      const common = { ...scripted("return await agent('must not start')"), parent, subagentProvider: 'without-host-controls' }
+      expect(() => ctx.workflowEngine.start({ ...common, composeChildPrompt: () => [] }))
+        .toThrow(/does not support.*reservedSessionId/)
+      expect(() => ctx.workflowEngine.start({ ...common, maxOutputTokensPerChild: 17 }))
+        .toThrow(/does not support.*outputTokenLimit/)
+      expect(start).not.toHaveBeenCalled()
     })
 
     it('rejects a child contribution synchronously when the selected provider cannot install it', async () => {

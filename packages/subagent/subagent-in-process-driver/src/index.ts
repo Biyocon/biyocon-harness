@@ -111,7 +111,7 @@ export async function startInProcessRun(
   const parent = request.parent
   const childDepth = resolveChildDepth(parent, request.maxDepth)
 
-  const childId = SessionId(randomUUID())
+  const childId = request.reservedSessionId ?? SessionId(randomUUID())
   const seed = options.seed
   const activationBoundary = seed?.length ?? 0
 
@@ -142,6 +142,7 @@ export async function startInProcessRun(
     meta: childSessionMeta(parent, childDepth, activationBoundary),
     ...seed !== undefined ? { seed } : {},
     agentOptions: resolveChildAgentOptions(parent, request.agentOptions, childDepth),
+    ...request.maxOutputTokens === undefined ? {} : { maxOutputTokens: request.maxOutputTokens },
     signal: request.signal,
     setup,
   })

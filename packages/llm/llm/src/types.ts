@@ -276,6 +276,8 @@ export interface LlmResolvedModelInfo extends LlmModelInfo {
   context?: LlmModelContext
   /** Adapter-configured per-request output cap materialized when callers omit one. */
   defaultMaxTokens?: number
+  /** Exact route enforces `maxTokens` across generated output, including reasoning tokens. */
+  enforcesMaxTokensIncludingReasoning?: true
   /** Adapter-owned selectable reasoning levels when exposed. */
   reasoning?: LlmModelReasoningInfo
 }
@@ -356,6 +358,8 @@ export interface GenerateOptions {
   tools?: ToolSchema[]
   temperature?: number
   maxTokens?: number
+  /** Host-only assurance: reject if the active adapter cannot enforce maxTokens including reasoning. Never serialized to provider wire. */
+  requireOutputTokenLimit?: true
   /**
    * Stop sequences: generation halts as soon as the model produces any one of
    * these strings (adapters map to the provider's stop field, e.g. OpenAI
