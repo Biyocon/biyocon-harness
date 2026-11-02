@@ -16,6 +16,8 @@ Gate C 提案只包含版本、rollback reference 和请求的质量命令 id，
 
 分析保持空执行状态且不执行质量命令。版本化报告经独立审计后，Arbiter 返回 `accept | revise | blocked`；接受终止为 `reported`/`report-complete`，而非 GO 或 closeout。从不请求批准或到达 Headsman、Ralph、Integrator。[准入决策](../../../.agents/notes/implemented/feature/2026-10-25-conductor-intake-and-report-completion.md)拥有来源、报告绑定和延期第二阶段行为。
 
+内部纯函数会验证分析质疑结果及已捕获材料的行区间，基于行结束符规范化的摘录确定性地构造受 token 上限约束的批评者输入，并计算已验证质疑结果的哈希。这些函数尚未接入派发或持久化：记录格式仍为 4，当前分析路线保持不变。[批评者基础函数的决策](../../../.agents/notes/implemented/feature/2026-11-02-conductor-analysis-critic-primitives.md)说明此处的分离。
+
 `conductor/child` 是模型不可见的父事件，标识一个具体工作流子会话：运行时角色、按角色的尝试编号、生命周期、派发历史偏移及可选的精确子会话门禁结果。`./child-types` 可安全导入客户端。将本包作为插件与 `sessionProjections` 一起挂载，即可独立于 agent 生命周期保留 `conductorChildren` 投影；共享 base bundle 已挂载。继承的种子子会话被清除。这些必读事件不改变检查点格式 4。[子会话显示决策](../../../.agents/notes/implemented/bug-fix/2026-10-28-conductor-child-role-status.md)定义归属与重放语义。
 
 所有者交互使用独立的只追加台账，绑定根会话、原始门禁、精确子会话尝试与报告哈希。单调递增的所有者修订号绑定完整回答和一次性重新评估计划；原始准入与历史 baseline 保持不变。`maxOwnerReassessmentsPerGate` 默认 2，与自动返工独立，并随运行持久化。同一门禁第三次所有者重新评估会终止升级。自由文本不授予权限；通过宿主能力检查的具体授权变更使当前批准失效，并要求新的 Gate C 批准。分析只接受只读澄清。待答问题不自动过期。[工具的生产所有者问题提供者](../tool-conductor/README.md)通过类型化浏览器卡片及限定作用域的宿主控制器收集完整答案；普通模型驱动恢复拒绝待答问题和待续回答。无密钥测试使用脚本化宿主回答覆盖同一控制器。五种 required-on-read 事件覆盖问题创建、回答、flush 后回答确认、继续执行消费和终止拒绝；均不可忽略。确认在宿主回答回合内证明回答检查点已成功 flush，避免仅凭推送的原始回答事实提前展示接受回执。解码验证事件与台账身份及传输绑定。检查点写入中断后，恢复协调完整的所有者事件，不重复应用回答或派发。已接受但未消费的计划在重启后要求显式宿主绑定继续，绝不重复记录回答或扣减重新评估额度。已消费的计划若没有后续门禁结算，不允许推测性恢复。记录仍为版本 4；新增会话词汇，不迁移旧运行记录。[所有者升级决策](../../../.agents/notes/implemented/feature/2026-10-30-conductor-owner-escalation-resumption.md)拥有问题、回答和恢复语义。
