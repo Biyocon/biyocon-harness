@@ -88,7 +88,15 @@ describe('Conductor role metadata through the filesystem provider', () => {
     async ({ skill: name, avatar, displayName }) => {
       const skill = await ctx.skills.get(name!)
       expect(skill).toBeDefined()
-      expect(skill!.metadata).toEqual({ displayName, avatar })
+      expect(skill!.metadata).toMatchObject({ displayName, avatar })
+      expect(Object.keys(skill!.metadata ?? {}).sort()).toEqual(name === 'conductor-devils-advocate'
+        ? ['analysisCritic', 'avatar', 'displayName']
+        : ['avatar', 'displayName'])
+      if (name === 'conductor-devils-advocate') {
+        const critic = skill!.metadata?.analysisCritic as Record<string, unknown>
+        expect(critic.dispatchMode).toBe('critic')
+        expect(typeof critic.instructions).toBe('string')
+      }
       expect(skill!.resourceBase).toEqual({ kind: 'directory', path: ROLE_DIRECTORY })
       expect(skill!.invocation).toEqual({ modelInvocable: false, userInvocable: false })
       const source = await readFile(join(ROLE_DIRECTORY, avatar.replace('.webp', '.md')), 'utf8')
