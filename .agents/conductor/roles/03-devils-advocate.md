@@ -6,6 +6,10 @@ user-invocable: false
 metadata:
   displayName: Devil's Advocate
   avatar: 03-devils-advocate.webp
+  analysisCritic:
+    dispatchMode: critic
+    instructions: >-
+      In an analysis critic dispatch, assess the latest ReportCandidate and only its admitted material excerpts. Challenge whether the priorities, alternatives, overlooked risks, and recommendations follow from that evidence; leave factual and citation verification to Auditor. Return exactly one AnalysisChallenge for the runtime-owned run, candidate, critic attempt, and material identities. Use holds only when the reasoning withstands the challenge. For does_not_hold, identify concrete findings and classify the defect as scope, plan, or report. Cite only admitted material IDs. Intake rejects image attachments; never infer image contents from a reference. Do not explore the repository again, alter the candidate, implement work, or treat an owner answer as implementation permission.
 ---
 
 # Devil's Advocate

@@ -36,6 +36,7 @@ async function harness(_model: string, config: Partial<Config> = {}) {
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
+  vi.restoreAllMocks()
   vi.unstubAllEnvs()
   await rm(identityHome, { recursive: true, force: true })
 })
@@ -65,21 +66,49 @@ const weatherTool: ToolSchema = {
 }
 
 describe.skipIf(!process.env.DEEPSEEK_API_KEY)('llm-deepseek e2e (real API)', () => {
-  it('includes reasoning within the official flash max_tokens ceiling', async () => {
-    const ctx = await harness(FLASH, { thinking: 'enabled', reasoningEffort: 'low' })
-    const maxTokens = 256
+  it.each([FLASH, PRO])('%s ends at the wire max_tokens ceiling including reasoning', async (model) => {
+    const ctx = await harness(model, { thinking: 'enabled', reasoningEffort: 'high' })
+    const maxTokens = 32
     const prepared = await ctx.llm.prepareCall({
-      provider: 'deepseek-official', model: FLASH, maxTokens,
-      reasoningEffort: ReasoningEffortId('low'),
+      provider: 'deepseek-official', model, maxTokens,
+      reasoningEffort: ReasoningEffortId('high'),
     })
     expect(prepared.enforcesMaxTokensIncludingReasoning).toBe(true)
     expect(prepared.config.maxTokens).toBe(maxTokens)
+    const nativeFetch = globalThis.fetch.bind(globalThis)
+    let sentMaxTokens: number | undefined
+    let wire = ''
+    const decoder = new TextDecoder()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (typeof init?.body !== 'string') throw new Error('DeepSeek request omitted its JSON body')
+      const payload = JSON.parse(init.body) as { max_tokens?: number }
+      sentMaxTokens = payload.max_tokens
+      const response = await nativeFetch(input, init)
+      if (response.body === null) return response
+      const body = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          wire += decoder.decode(chunk, { stream: true })
+          controller.enqueue(chunk)
+        },
+      }))
+      return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers })
+    })
     const result = await assemble(ctx, {
-      model: FLASH,
-      reasoningEffort: ReasoningEffortId('low'),
-      messages: ask('Compare 9.11 and 9.8, then give the larger number.'),
+      model,
+      reasoningEffort: ReasoningEffortId('high'),
+      messages: ask('For each integer from 1 through 1000, show the divisibility checks that prove whether it is prime or composite. Work in order, include every number and check, and do not abbreviate.'),
       maxTokens,
     })
+    expect(sentMaxTokens).toBe(maxTokens)
+    wire += decoder.decode()
+    const finishReasons = wire.split('\n')
+      .filter(line => line.startsWith('data: ') && line.trim() !== 'data: [DONE]')
+      .flatMap((line) => {
+        const event = JSON.parse(line.slice(6)) as { choices?: { finish_reason?: string | null }[] }
+        return (event.choices ?? []).flatMap(choice => choice.finish_reason ?? [])
+      })
+    expect(finishReasons).toContain('length')
+    expect(result.finish.kind).toBe('max-tokens')
     const usage = result.usage
     if (usage?.reasoningTokens === undefined) throw new Error('thinking response omitted reasoning usage')
     expect(usage.reasoningTokens).toBeGreaterThan(0)
