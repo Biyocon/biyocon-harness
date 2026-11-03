@@ -174,6 +174,16 @@ export class DeepSeekAdapter extends LlmAdapter {
     return Promise.resolve(this.config.options().models.map(model => modelInfo(provider, model)))
   }
 
+  /**
+   * The official Chat Completions API counts reasoning inside generated
+   * completion tokens subject to `max_tokens`: `completion_tokens_details`
+   * subdivides `completion_tokens` into reasoning and other output.
+   * DeepSeek API documentation, checked 2026-11-03:
+   * https://api-docs.deepseek.com/api/create-chat-completion/
+   * @param provider - registered provider id.
+   * @param model - wire model id.
+   * @returns route metadata; only the official origin advertises this limit.
+   */
   override resolveModel(
     provider: string,
     model: string,

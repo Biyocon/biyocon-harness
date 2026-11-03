@@ -14,6 +14,8 @@ Status: implemented
 
 请求还接受可选的正安全整数 `maxOutputTokens`，限制子智能体累计输出，包含 reasoning。`outputTokenLimit` 表示提供方支持该能力。服务在启动前拒绝不支持的请求；提供方及其选定的模型适配器必须强制执行上限，不能静默忽略。循环把每次模型调用记录在日志中的 `maxTokens` 降至剩余累计额度，在重试或执行工具前计入提供方报告的 `outputTokens`（其中已包含 reasoning），并在用量缺失、无效或超限时失败。确切 LLM 路由必须声明 `enforcesMaxTokensIncludingReasoning`；`requireOutputTokenLimit` 要求此保证，但不会进入提供方 wire。`deepseek-official` 路由在官方 `https://api.deepseek.com` origin 可以声明此能力；自定义网关与 pi-ai 则不能。上限属于本次 dispatch，并非部署默认值。两项选项都缺席时，普通请求沿用原有组装和输出行为。
 
+[DeepSeek Chat Completions API 文档](https://api-docs.deepseek.com/api/create-chat-completion/)（核对日期：2026-11-03）把 `max_tokens` 定义为生成 token 数，并在 `completion_tokens` 内的 `completion_tokens_details.reasoning_tokens` 报告推理 token。启用 thinking 的真实 API 测试验证报告的 completion token（包括 reasoning）不超过发送的上限。有效的工具调用响应耗尽最后的 token 时，循环先为每个未执行的调用记录合成错误结果，然后才结束该轮，使持久化历史可重放。
+
 [workflow 启动请求](../../../../docs/subsystems/workflow.md#the-start-request)提供两个相互独立、仅限宿主的选项。`composeChildPrompt(sessionId, prompt)` 接收新预留的真实子智能体 id 及脚本提示词，返回发送给该子智能体的内容块。它在提供方启动前于宿主运行；回调不会进入 worker 脚本。已发布的子智能体 id 仍通过既有启动结果和生命周期事件传给 worker。回调抛错会拒绝该次子智能体启动，不会发布子智能体；脚本可以处理或继续传播该失败。`maxOutputTokensPerChild` 是传给本次运行中每次子智能体 dispatch 的正安全整数上限。引擎在创建运行前检查选定的 subagent 提供方是否具备所需能力。这两个选项都不暴露给模型编写的 workflow 脚本；选项缺席时，dispatch 行为不变。最终子智能体提示词在进入模型前记录于该子智能体的会话日志。
 
 ## 考虑过的替代方案

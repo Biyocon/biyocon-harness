@@ -33,7 +33,7 @@ import { joinContextSections, renderContextSections, renderPrompt } from '@deeps
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import type { Context } from '@deepseek-ai/cordis'
 import { RuntimeContextProjection } from './runtime-context.ts'
-import { executeToolCalls } from './tool-calls.ts'
+import { executeToolCalls, recordOutputLimitedToolCalls } from './tool-calls.ts'
 
 type Phase =
   | { kind: 'idle'; lastTurn: number }
@@ -406,7 +406,10 @@ export class ReactLoopAgent implements Agent {
 
       const toolCalls = message.content.filter(block => block.type === 'tool-call')
       if (toolCalls.length === 0) return { kind: 'completed' }
-      if (this.remainingOutputTokens === 0) return { kind: 'max-tokens' }
+      if (this.remainingOutputTokens === 0) {
+        recordOutputLimitedToolCalls(this.session, turn, step, toolCalls)
+        return { kind: 'max-tokens' }
+      }
       const { concluded } = await executeToolCalls(
         this.loopCtx, turn, step, toolCalls, signal,
         context => this.inbox.splice('next-step', this.inbox.nextStep.length, 0, [context]),
