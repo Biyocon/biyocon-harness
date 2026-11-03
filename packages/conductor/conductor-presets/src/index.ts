@@ -66,6 +66,16 @@ const PROTOCOL_SKILL_NAMES: readonly string[] = [
   'conductor-specialist', 'conductor-ralph', 'conductor-closeout',
 ]
 
+/** Critic instructions remain separate from producer bodies until a typed critic dispatch selects them. */
+function hasAnalysisCriticInstructions(skill: SkillDefinition): boolean {
+  const value = skill.metadata?.analysisCritic
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const critic = value as Record<string, unknown>
+  return critic.dispatchMode === 'critic'
+    && typeof critic.instructions === 'string'
+    && critic.instructions.trim().length > 0
+}
+
 /**
  * Mount and validate the installation's role and protocol providers.
  * @param ctx - preset context carrying its isolated skill registry.
@@ -87,6 +97,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     const skill = await ctx.skills.get(skillName, { scope: scopeOf(ctx) })
     if (skill === undefined || skill.content.length === 0) {
       throw new Error(`conductor-presets: required skill "${skillName}" is unavailable or empty; rebuild or reinstall the Conductor preset assets`)
+    }
+    if ((skillName === ROLE_SKILL['devils-advocate'] || skillName === 'conductor-specialist')
+      && !hasAnalysisCriticInstructions(skill)) {
+      throw new Error(`conductor-presets: required skill "${skillName}" lacks valid analysis critic instructions in metadata; rebuild or reinstall the Conductor preset assets`)
     }
     skills.push(skill)
   }

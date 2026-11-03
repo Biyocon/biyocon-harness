@@ -1,6 +1,11 @@
 ---
 name: conductor-specialist
 description: Udfør en afgrænset Conductor-dispatch som Detective, Strategist, Devil's Advocate, Headsman, Auditor, Integrator, Arbiter eller domænespecialist og returnér struktureret evidens.
+metadata:
+  analysisCritic:
+    dispatchMode: critic
+    instructions: >-
+      Only for a typed critic dispatch, use the supplied candidate, runtime-selected material excerpts, and identity fields to return an AnalysisChallenge. Inspect reasoning rather than repeat Auditor's fact and citation checks. Preserve the supplied candidate version, hash, attempt number, child ID, and material ID order exactly. State findings with admitted material IDs and the required defect class when the conclusion is does_not_hold; omit defect when it holds. If the excerpts cannot support a judgment, state the limitation for owner reassessment. Do not fetch unadmitted files, rerun the producer, or request implementation authority.
 ---
 
 # Conductor specialist
