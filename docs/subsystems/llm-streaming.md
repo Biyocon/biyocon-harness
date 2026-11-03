@@ -482,6 +482,8 @@ interface LlmResolvedModelInfo extends LlmModelInfo {
   context?: LlmModelContext
   /** Adapter-configured per-request output cap materialized when callers omit one. */
   defaultMaxTokens?: number
+  /** Exact route enforces `maxTokens` across generated output, including reasoning tokens. */
+  enforcesMaxTokensIncludingReasoning?: true
   /** Adapter-owned selectable reasoning levels when exposed. */
   reasoning?: LlmModelReasoningInfo
 }
@@ -507,6 +509,8 @@ interface GenerateOptions {
   tools?: ToolSchema[]
   temperature?: number
   maxTokens?: number
+  /** Host-only assurance: reject if the active adapter cannot enforce maxTokens including reasoning. Never serialized to provider wire. */
+  requireOutputTokenLimit?: true
   /**
    * Stop sequences: generation halts as soon as the model produces any one of
    * these strings (adapters map to the provider's stop field, e.g. OpenAI
@@ -662,6 +666,8 @@ interface LlmCallConfigAdapterDefaults {
 interface PreparedLlmCall {
   /** Detached, deep-frozen config with any adapter-owned default materialized. */
   readonly config: LlmCallConfig
+  /** Captured exact-route guarantee that maxTokens includes generated reasoning. */
+  readonly enforcesMaxTokensIncludingReasoning: boolean
   /** Immutable retry policy captured with the adapter registration. */
   readonly retryPolicy: ResolvedRetryPolicy
   /** Detached context metadata resolved with the registration-bound call. */
@@ -864,7 +870,7 @@ async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<Prepared
 stream(options: GenerateOptions): AsyncIterable<StreamChunk>
 ```
 
-Source: [`packages/llm/llm/src/index.ts:284`](../../packages/llm/llm/src/index.ts)
+Source: [`packages/llm/llm/src/index.ts:286`](../../packages/llm/llm/src/index.ts)
 
 <a id="llm-events"></a>
 

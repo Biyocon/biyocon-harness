@@ -31,6 +31,8 @@ const ALL_CAPS: SubagentCapabilities = {
   toolGuard: true,
   persona: true,
   toolContribution: true,
+  reservedSessionId: true,
+  outputTokenLimit: true,
 }
 const NO_CAPS: SubagentCapabilities = {
   outputSchema: false,
@@ -39,6 +41,8 @@ const NO_CAPS: SubagentCapabilities = {
   toolGuard: false,
   persona: false,
   toolContribution: false,
+  reservedSessionId: false,
+  outputTokenLimit: false,
 }
 
 function baseRequest(overrides: Partial<SubagentStartRequest> = {}): SubagentStartRequest {
@@ -181,6 +185,7 @@ describe('SubagentRuntime', () => {
     ['toolGuard', { toolGuard: () => undefined }],
     ['persona', { persona: 'reviewer' }],
     ['toolContribution', { toolContribution: () => () => undefined }],
+    ['outputTokenLimit', { maxOutputTokens: 5 }],
   ] as const)('rejects unsupported %s before provider startup', async (_capability, override) => {
     const { subagents } = await service()
     const provider = new StubProvider('weak', NO_CAPS)
@@ -201,6 +206,17 @@ describe('SubagentRuntime', () => {
     expect(provider.startCount).toBe(0)
     expect(() => { assertSubagentMaxDepth(undefined) }).not.toThrow()
   })
+
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects invalid cumulative output limit %s before provider startup', async (maxOutputTokens) => {
+      const { subagents } = await service()
+      const provider = new StubProvider('strong')
+      subagents.registerProvider(provider)
+      await expect(subagents.start('strong', baseRequest({ maxOutputTokens })))
+        .rejects.toMatchObject({ code: 'INVALID_OUTPUT_TOKEN_LIMIT' })
+      expect(provider.startCount).toBe(0)
+    },
+  )
 
   it('publishes lifecycle only after async provider start and keeps parent scope', async () => {
     const { ctx, subagents } = await service()
@@ -260,6 +276,86 @@ describe('SubagentRuntime', () => {
     ctx.on('subagent/end', lifecycle)
     await expect(subagents.start('failed', baseRequest())).rejects.toThrow('setup rolled back')
     expect(lifecycle).not.toHaveBeenCalled()
+  })
+
+  it('rejects a reserved child id before invoking a provider without that capability', async () => {
+    const { subagents } = await service()
+    const provider = new StubProvider('unreserved', NO_CAPS)
+    subagents.registerProvider(provider)
+    await expect(subagents.start('unreserved', baseRequest({ reservedSessionId: SessionId('reserved') })))
+      .rejects.toHaveProperty('code', 'UNSUPPORTED_CAPABILITY')
+    expect(provider.startCount).toBe(0)
+  })
+
+  it('passes a reserved id to the provider and publishes only the matching child', async () => {
+    const { ctx, subagents } = await service()
+    const reservedSessionId = SessionId('reserved-child')
+    const started: SessionId[] = []
+    ctx.on('subagent/start', info => void started.push(info.id))
+    const provider: SubagentProvider = {
+      name: 'reserved', capabilities: ALL_CAPS, inheritsParentContext: false,
+      async start(request) {
+        expect(request.reservedSessionId).toBe(reservedSessionId)
+        return { id: reservedSessionId, localAgent: undefined,
+          result: Promise.resolve({ output: [], stopReason: 'completed' }), async dispose() {} }
+      },
+    }
+    subagents.registerProvider(provider)
+    const run = await subagents.start('reserved', baseRequest({ reservedSessionId }))
+    expect(run.id).toBe(reservedSessionId)
+    expect(started).toEqual([reservedSessionId])
+    await run.result
+    await run.dispose()
+  })
+
+  it('publishes no child when a reserved start fails', async () => {
+    const { ctx, subagents } = await service()
+    const lifecycle = vi.fn()
+    ctx.on('subagent/start', lifecycle)
+    subagents.registerProvider({
+      name: 'failed-reservation', capabilities: ALL_CAPS, inheritsParentContext: false,
+      start: async () => { throw new Error('creation rolled back') },
+    })
+    await expect(subagents.start('failed-reservation', baseRequest({ reservedSessionId: SessionId('reserved') })))
+      .rejects.toThrow('creation rolled back')
+    expect(lifecycle).not.toHaveBeenCalled()
+  })
+
+  it('disposes a provider run whose id disagrees with the reservation before publishing', async () => {
+    const { ctx, subagents } = await service()
+    const lifecycle = vi.fn()
+    ctx.on('subagent/start', lifecycle)
+    for (const { disposalFails, resultFails } of [
+      { disposalFails: false, resultFails: false },
+      { disposalFails: true, resultFails: false },
+      { disposalFails: false, resultFails: true },
+    ]) {
+      const dispose = vi.fn(async () => {
+        if (disposalFails) throw new Error('dispose failed')
+      })
+      const name = `mismatch-${String(disposalFails)}-${String(resultFails)}`
+      subagents.registerProvider({
+        name, capabilities: ALL_CAPS, inheritsParentContext: false,
+        async start() {
+          return { id: SessionId('other-child'), localAgent: undefined,
+            result: resultFails
+              ? Promise.reject(new Error('refused run failed'))
+              : Promise.resolve({ output: [], stopReason: 'completed' }), dispose }
+        },
+      })
+      const rejection: unknown = await subagents.start(name, baseRequest({ reservedSessionId: SessionId('reserved') }))
+        .then(() => undefined, (error: unknown) => error)
+      expect(rejection).toBeInstanceOf(SubagentError)
+      if (!(rejection instanceof SubagentError)) throw rejection
+      expect(rejection.code).toBe('RESERVED_ID_MISMATCH')
+      expect(rejection.message).toContain('other-child')
+      if (disposalFails) {
+        expect(rejection.cause).toBeInstanceOf(Error)
+        expect((rejection.cause as Error).message).toBe('dispose failed')
+      }
+      expect(dispose).toHaveBeenCalledOnce()
+      expect(lifecycle).not.toHaveBeenCalled()
+    }
   })
 
   it('emits an enriched end event and maps result rejection to error telemetry', async () => {

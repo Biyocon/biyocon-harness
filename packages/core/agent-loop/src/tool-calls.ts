@@ -93,11 +93,27 @@ export async function executeToolCalls(
     next += outcome.consumed
     concluded ||= outcome.concluded
     if (outcome.aborted) {
-      for (const call of planned.slice(next)) appendSkippedToolCall(session, turn, step, call.block)
+      for (const call of planned.slice(next)) appendSkippedToolCall(session, turn, step, call.block, 'abort')
       return { concluded }
     }
   }
   return { concluded }
+}
+
+/**
+ * Balance model calls without dispatch when the output budget is exhausted.
+ * @param session - session that owns the assistant call and result events.
+ * @param turn - current turn number.
+ * @param step - current step number.
+ * @param toolCalls - unexecuted model calls in model order.
+ */
+export function recordOutputLimitedToolCalls(
+  session: Session,
+  turn: number,
+  step: number,
+  toolCalls: ToolCallBlock[],
+): void {
+  for (const block of toolCalls) appendSkippedToolCall(session, turn, step, block, 'output-limit')
 }
 
 /** Parse model arguments, preserving invalid JSON as text and mapping empty input to `{}`. */
@@ -237,7 +253,7 @@ async function runGroup(
   if (aborted) {
     // Started calls and accepted context settle first; every remaining model
     // call then receives an ordered synthetic result before the turn aborts.
-    for (const call of group.slice(started)) appendSkippedToolCall(session, turn, step, call.block)
+    for (const call of group.slice(started)) appendSkippedToolCall(session, turn, step, call.block, 'abort')
     return { consumed: group.length, aborted: true, concluded }
   }
   /* v8 ignore next -- unreachable: a non-aborted group commits every started call */
@@ -245,15 +261,26 @@ async function runGroup(
   return { consumed: started, aborted: false, concluded }
 }
 
-/** Append the durable call/result pair for a model call skipped after cancellation. */
-function appendSkippedToolCall(session: Session, turn: number, step: number, block: ToolCallBlock): void {
+/** Append the durable call/result pair for a model call skipped before dispatch. */
+function appendSkippedToolCall(
+  session: Session,
+  turn: number,
+  step: number,
+  block: ToolCallBlock,
+  reason: 'abort' | 'output-limit',
+): void {
+  const message = reason === 'abort'
+    ? 'tool call aborted before dispatch'
+    : 'tool call skipped because the output-token limit was reached'
   const callSeq = appendToolCall(session, turn, step, block)
   appendToolResult(session, turn, step, block, {
-    content: [{ type: 'text', text: 'Error: tool call aborted before dispatch' }],
+    content: [{ type: 'text', text: `Error: ${message}` }],
     isError: true,
     error: {
-      message: 'tool call aborted before dispatch',
-      info: { name: 'AbortError', code: TOOL_ABORTED_BEFORE_DISPATCH },
+      message,
+      info: reason === 'abort'
+        ? { name: 'AbortError', code: TOOL_ABORTED_BEFORE_DISPATCH }
+        : { name: 'OutputTokenLimitError', code: 'OUTPUT_TOKEN_LIMIT_EXCEEDED' },
     },
   }, callSeq)
 }

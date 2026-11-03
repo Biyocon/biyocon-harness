@@ -16,7 +16,7 @@ import type {
   RequestErrorAction,
 } from '@deepseek-ai/dsh-agent'
 import { Inbox, agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
-import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall, TokenUsage } from '@deepseek-ai/dsh-llm'
 import {
   BlockAssembler,
   LlmError,
@@ -33,7 +33,7 @@ import { joinContextSections, renderContextSections, renderPrompt } from '@deeps
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import type { Context } from '@deepseek-ai/cordis'
 import { RuntimeContextProjection } from './runtime-context.ts'
-import { executeToolCalls } from './tool-calls.ts'
+import { executeToolCalls, recordOutputLimitedToolCalls } from './tool-calls.ts'
 
 type Phase =
   | { kind: 'idle'; lastTurn: number }
@@ -76,13 +76,16 @@ export class ReactLoopAgent implements Agent {
   /** Whether this loop instance has appended its initial/resume request anchor. */
   private requestHeaderLogged = false
   private readonly runtimeContext: RuntimeContextProjection
+  private remainingOutputTokens: number | undefined
 
   constructor(
     private loopCtx: Context,
     public readonly id: SessionId,
     public readonly options: AgentOptions,
     public readonly session: Session,
+    maxOutputTokens?: number,
   ) {
+    this.remainingOutputTokens = maxOutputTokens
     this.dispatch = agentEvents(loopCtx, this)
     this.inbox = new Inbox(session, {
       inserted: (message) => { this.dispatch.emit('agent/inbox/inserted', { message }) },
@@ -351,7 +354,18 @@ export class ReactLoopAgent implements Agent {
       }
       signal.throwIfAborted()
       const finish = assembler.finish
+      if (this.remainingOutputTokens !== undefined
+        && finish.kind === 'error'
+        && finish.failure.code === 'UNSUPPORTED_OUTPUT_TOKEN_LIMIT') {
+        throw new LlmError(finish.failure.message, finish.failure.code, finish.failure)
+      }
+      // A bounded request always gets maxTokens in buildRequest; unbounded
+      // agents return before the value is read by chargeOutputUsage.
+      this.chargeOutputUsage(assembler.usage, request.maxTokens as number)
       if (finish.kind === 'error' || finish.kind === 'aborted') {
+        if (this.remainingOutputTokens === 0) {
+          throw new LlmError(`agent "${this.id}" exhausted its cumulative output-token limit`, 'OUTPUT_TOKEN_LIMIT_EXCEEDED')
+        }
         const action = await this.dispatch.waterfall(
           'agent/request-error', {
             turn,
@@ -392,12 +406,43 @@ export class ReactLoopAgent implements Agent {
 
       const toolCalls = message.content.filter(block => block.type === 'tool-call')
       if (toolCalls.length === 0) return { kind: 'completed' }
+      if (this.remainingOutputTokens === 0) {
+        recordOutputLimitedToolCalls(this.session, turn, step, toolCalls)
+        return { kind: 'max-tokens' }
+      }
       const { concluded } = await executeToolCalls(
         this.loopCtx, turn, step, toolCalls, signal,
         context => this.inbox.splice('next-step', this.inbox.nextStep.length, 0, [context]),
       )
       return concluded ? { kind: 'completed' } : null
     }
+  }
+
+  /** Charge every model attempt before recovery can retry or a tool can execute. */
+  private chargeOutputUsage(usage: TokenUsage | undefined, requestedMaxTokens: number): void {
+    const remaining = this.remainingOutputTokens
+    if (remaining === undefined) return
+    if (usage === undefined) {
+      throw new LlmError(`agent "${this.id}" cannot account output tokens: the model call reported no usage`, 'OUTPUT_TOKEN_USAGE_MISSING')
+    }
+    const output = usage.outputTokens
+    if (!Number.isSafeInteger(output) || output < 0
+      || (usage.reasoningTokens !== undefined
+        && (!Number.isSafeInteger(usage.reasoningTokens)
+          || usage.reasoningTokens < 0
+          || usage.reasoningTokens > output))) {
+      throw new LlmError(`agent "${this.id}" received invalid reasoning-inclusive output usage`, 'OUTPUT_TOKEN_USAGE_INVALID')
+    }
+    // A non-conforming provider can report more than the request cap. The
+    // child must never publish that attempt as a successful result or retry it.
+    if (output > requestedMaxTokens || output > remaining) {
+      this.remainingOutputTokens = 0
+      throw new LlmError(
+        `agent "${this.id}" exceeded its output-token limit: ${output} generated against ${requestedMaxTokens} allowed`,
+        'OUTPUT_TOKEN_LIMIT_EXCEEDED',
+      )
+    }
+    this.remainingOutputTokens = remaining - output
   }
 
   /**
@@ -443,15 +488,34 @@ export class ReactLoopAgent implements Agent {
     if (!proposedConfig.provider || !proposedConfig.model) {
       throw new Error(`agent "${this.id}" has no provider/model: set AgentOptions.provider and AgentOptions.model or supply both via the agent/request waterfall`)
     }
+    const remaining = this.remainingOutputTokens
+    if (remaining === 0) {
+      throw new LlmError(`agent "${this.id}" exhausted its cumulative output-token limit`, 'OUTPUT_TOKEN_LIMIT_EXCEEDED')
+    }
+    const boundedConfig = remaining === undefined
+      ? proposedConfig
+      : deepFreeze({ ...proposedConfig, maxTokens: Math.min(proposedConfig.maxTokens ?? remaining, remaining) })
     let config: LlmCallConfig
     let preparedCall: PreparedLlmCall | undefined
     try {
-      preparedCall = await this.loopCtx.llm.prepareCall(proposedConfig, signal)
+      preparedCall = await this.loopCtx.llm.prepareCall(boundedConfig, signal)
+      if (remaining !== undefined && !preparedCall.enforcesMaxTokensIncludingReasoning) {
+        throw new LlmError(
+          `provider "${boundedConfig.provider}" model "${boundedConfig.model}" cannot enforce maxTokens including reasoning`,
+          'UNSUPPORTED_OUTPUT_TOKEN_LIMIT',
+        )
+      }
       config = preparedCall.config
     } catch (error: unknown) {
       // Middleware may serve an unregistered route; terminal dispatch still requires an adapter.
       if (!(error instanceof LlmError) || error.code !== 'NO_ADAPTER') throw error
-      config = proposedConfig
+      if (remaining !== undefined) {
+        throw new LlmError(
+          `provider "${boundedConfig.provider}" has no adapter that can enforce maxTokens including reasoning`,
+          'UNSUPPORTED_OUTPUT_TOKEN_LIMIT',
+        )
+      }
+      config = boundedConfig
     }
     signal.throwIfAborted()
 
@@ -490,6 +554,7 @@ export class ReactLoopAgent implements Agent {
       ...header.tools !== undefined ? { tools: header.tools } : {},
       sessionId: this.session.id,
       signal,
+      ...remaining === undefined ? {} : { requireOutputTokenLimit: true as const },
     }))
     return { request, ...preparedCall === undefined ? {} : { preparedCall } }
   }

@@ -416,6 +416,10 @@ export class SubagentRuntime extends Service {
     const provider = this.expectProvider(name)
     this.assertCapabilities(provider, request)
     assertSubagentMaxDepth(request.maxDepth)
+    if (request.maxOutputTokens !== undefined
+      && (!Number.isSafeInteger(request.maxOutputTokens) || request.maxOutputTokens <= 0)) {
+      throw new SubagentError('maxOutputTokens must be a positive safe integer', 'INVALID_OUTPUT_TOKEN_LIMIT')
+    }
     if (request.outputSchema !== undefined) assertObjectJsonSchema(request.outputSchema)
     const descriptor = snapshotSubagentDescriptor({
       mode: 'one-shot',
@@ -423,7 +427,23 @@ export class SubagentRuntime extends Service {
       ...request.label !== undefined ? { label: request.label } : {},
     })
     const resolved: ResolvedSubagentStartRequest = { ...request, descriptor }
-    return observeRun(this.emitLifecycle, name, request.parent, await provider.start(resolved))
+    const run = await provider.start(resolved)
+    if (request.reservedSessionId !== undefined && run.id !== request.reservedSessionId) {
+      // A refused run has no holder; contain its terminal result while disposal drains it.
+      void run.result.catch(() => undefined)
+      let disposalError: unknown
+      try {
+        await run.dispose()
+      } catch (error: unknown) {
+        disposalError = error
+      }
+      throw new SubagentError(
+        `subagent provider "${name}" returned child id "${run.id}" instead of reserved id "${request.reservedSessionId}"`,
+        'RESERVED_ID_MISMATCH',
+        disposalError === undefined ? undefined : { cause: disposalError },
+      )
+    }
+    return observeRun(this.emitLifecycle, name, request.parent, run)
   }
 
   /**
@@ -487,6 +507,8 @@ export class SubagentRuntime extends Service {
       { when: request.toolGuard !== undefined, cap: 'toolGuard' },
       { when: request.persona !== undefined, cap: 'persona' },
       { when: request.toolContribution !== undefined, cap: 'toolContribution' },
+      { when: request.maxOutputTokens !== undefined, cap: 'outputTokenLimit' },
+      { when: request.reservedSessionId !== undefined, cap: 'reservedSessionId' },
     ]
     for (const { when, cap } of needs) {
       if (when && !provider.capabilities[cap]) {

@@ -73,6 +73,22 @@ describe('dsh-subagent-fork-in-process', () => {
     await run.dispose()
   })
 
+  it('uses a reserved id for the seeded child without changing the child prompt', async () => {
+    const { ctx, parent } = await setup([textResponse('parent answer'), textResponse('child answer')])
+    parent.followup(createUserMessage({ content: [{ type: 'text', text: 'parent question' }], source: { kind: 'user' } }))
+    await parent.whenIdle()
+    const reservedSessionId = SessionId('reserved-fork-child')
+    const prompt = [{ type: 'text' as const, text: `review as ${reservedSessionId}` }]
+
+    const run = await start(ctx, 'fork', { prompt, parent, reservedSessionId })
+    expect(run.id).toBe(reservedSessionId)
+    await run.result
+    const child = ctx.agents.get(reservedSessionId)!
+    expect(child.session.events.some(event => event.type === 'user/message'
+      && JSON.stringify(event.data.content) === JSON.stringify(prompt))).toBe(true)
+    await run.dispose()
+  })
+
   it('forks an UNSEEDED (fresh) child when the parent has no completed turn', async () => {
     // The parent has never completed a turn → empty prefix → the provider omits
     // the seed → the child runs fresh. Exercises the `seed.length > 0` false arm.
@@ -203,6 +219,8 @@ describe('dsh-subagent-fork-in-process', () => {
       toolGuard: true,
       persona: true,
       toolContribution: false,
+      reservedSessionId: true,
+      outputTokenLimit: true,
     })
   })
 

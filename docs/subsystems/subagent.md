@@ -22,7 +22,7 @@ A provider advertises its **start-time** features on a static descriptor the ser
  * continuable children are composed by the continuation manager itself and are
  * gated by {@link SubagentProvider.prepareContinuable} instead. Each flag
  * corresponds one-to-one to a {@link SubagentStartRequest} option: `depthLimit`
- * to `maxDepth`; the other names match.
+ * to `maxDepth`, `outputTokenLimit` to `maxOutputTokens`; the other names match.
  */
 interface SubagentCapabilities {
   readonly outputSchema: boolean
@@ -31,12 +31,16 @@ interface SubagentCapabilities {
   readonly toolGuard?: boolean
   readonly persona: boolean
   readonly toolContribution?: boolean
+  /** Provider enforces a cumulative reasoning-inclusive output ceiling for one child run. */
+  readonly outputTokenLimit?: boolean
+  /** Use a host-reserved session id as the actual one-shot child id. */
+  readonly reservedSessionId?: boolean
 }
 ```
 
 ## The one-shot start request
 
-The tool layer builds this request from the model input and its own config; the service validates it against the named provider before `start`. Required `parent` supplies the session cwd, lineage, and delegation depth. Optional output schema, depth, tool filter, and persona require matching capability flags. Unsupported schemas fail at start; in-process backends scope filters and personas to child creation and implement the supported object-rooted schema with a forced capture tool.
+The tool layer builds this request from the model input and its own config; the service validates it against the named provider before `start`. Required `parent` supplies the session cwd, lineage, and delegation depth. Optional output schema, depth, tool filter, persona, reserved session id, and cumulative output-token ceiling require matching capability flags. The ceiling includes reasoning across the child's model calls; its exact LLM adapter must also enforce it. Unsupported schemas fail at start; in-process backends scope filters and personas to child creation and implement the supported object-rooted schema with a forced capture tool.
 
 ```ts type-equiv
 /**
@@ -66,6 +70,13 @@ interface SubagentStartRequest {
    */
   readonly signal: AbortSignal
   readonly agentOptions?: AgentOptions
+  /** Optional host-owned cumulative output-token limit across every model attempt in this child run, including reasoning. */
+  readonly maxOutputTokens?: number
+  /**
+   * Optional host-reserved identity for this one-shot child. A capable provider
+   * must use it as the actual session id; start rejects a different returned id.
+   */
+  readonly reservedSessionId?: SessionId
   /**
    * Object-rooted JSON Schema within `assertObjectJsonSchema`'s enforced subset. Start rejects
    * unsupported schemas or providers without the capability. Data must be plain host-realm JSON;

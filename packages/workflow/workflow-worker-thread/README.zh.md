@@ -36,12 +36,12 @@ worker 仍提供实用的隔离：
 
 ## 运行顺序
 
-`start()` 会校验 meta、解析脚本正文、解析一个已注册且规范化的提供方路由，并解析每次运行的子 agent 总数上限，然后才创建 worker 或发布 `workflow/start`。请求的 `maxTotalAgents` 必须是正安全整数，且不能超过引擎配置的部署上限。源代码模式通过 data URL bootstrap 安装 TypeScript 转换；构建模式把同级 `lib/worker.cjs` 作为文件系统路径传入，因为 pkg 的虚拟文件系统（VFS）钩子要求 CommonJS。两者都能在普通 Node 下运行。ready/go 握手可以避免启动信号取消与 worker 启动发生竞态，导致脚本最初的同步片段被执行。
+`start()` 会校验 meta、解析脚本正文、解析一个已注册且规范化的提供方路由，并解析每次运行的子 agent 总数上限，然后才创建 worker 或发布 `workflow/start`。请求的 `maxTotalAgents` 必须是正安全整数，且不能超过引擎配置的部署上限。请求的 `maxOutputTokensPerChild` 必须是正安全整数；`composeChildPrompt` 与输出上限要求选定提供方在运行创建前声明相应的启动时能力。源代码模式通过 data URL bootstrap 安装 TypeScript 转换；构建模式把同级 `lib/worker.cjs` 作为文件系统路径传入，因为 pkg 的虚拟文件系统（VFS）钩子要求 CommonJS。两者都能在普通 Node 下运行。ready/go 握手可以避免启动信号取消与 worker 启动发生竞态，导致脚本最初的同步片段被执行。
 
 对于每次 `agent()` 调用：
 
 1. worker 发送 `child-start`，其中包含普通数据提示词和选项。
-2. 宿主通过异步 `SubagentRuntime.start` 调用启动请求中指定的提供方，否则调用已配置的提供方；调用会传入工作流父级和该次运行共用的唯一中止信号。提供方选择应用于该次运行的每个子 agent，对脚本不可见。
+2. 设置 `composeChildPrompt` 时，宿主预留真实子会话 id，以该 id 与脚本提示词调用仅限宿主的回调；回调出错会拒绝该次子智能体启动，而不发布子智能体。随后宿主通过异步 `SubagentRuntime.start` 调用启动请求中指定的提供方，否则调用已配置的提供方；调用会传入工作流父级、可选的预留 id 与单个子智能体的输出上限，以及该次运行共用的唯一中止信号。提供方选择应用于该次运行的每个子 agent，对脚本不可见。
 3. 如果启动被拒绝，宿主会发送 `child-start-error`；提供方启动已经完全停稳，不会发出子 agent 生命周期事件。
 4. 如果启动兑现时工作流仍接纳工作，宿主会记录该运行、观察 `result`，然后发送 `child-started`。即使结果已经结算，也只会随后转发，以保持先启动、后结果的顺序。
 5. worker 发出成对的 `workflow/agent-start` 和 `workflow/agent-end` 叙述，并在收集后请求 dispose 子 agent。
@@ -83,7 +83,7 @@ worker 错误、消息失败或提前退出会在清理前关闭消息接纳，�
 | `syncTimeoutMs` | `5000` | 脚本最初同步片段的 VM 超时时间。 |
 | `disposeGraceMs` | `5000` | 强制结算/终止之前的期限，也是公开 dispose 的期限。 |
 
-负责该引擎的消费方可以为一次运行设置 `WorkflowStartRequest.subagentProvider`、`WorkflowStartRequest.maxTotalAgents` 和四个可信 `child*` policy。它们属于引擎级策略，不是脚本钩子或面向模型的选项；普通 `workflow` 工具不会设置这些字段。`childToolContribution` 始终是仅限 host 的 callback：host 把同一对象传给每次 child start，不会将其序列化进 worker protocol。每次运行的子 agent 总数上限可以降低、但绝不能提高已配置的 `maxTotalAgents` 上限。
+负责该引擎的消费方可以为一次运行设置 `WorkflowStartRequest.subagentProvider`、`WorkflowStartRequest.maxTotalAgents`、四个可信 `child*` policy、`composeChildPrompt` 与 `maxOutputTokensPerChild`。这些都是宿主策略，不是脚本钩子或面向模型的选项；普通 `workflow` 工具不会设置它们。宿主不会把 `childToolContribution` 或 `composeChildPrompt` 序列化进 worker protocol。worker 会通过既有启动结果和生命周期事件取得已发布子智能体的 id。每次运行的子 agent 总数上限可以降低、但绝不能提高已配置的 `maxTotalAgents` 上限；输出 token 上限分别作用于每个子智能体。
 
 ## 模型体验
 
@@ -91,7 +91,7 @@ worker 错误、消息失败或提前退出会在清理前关闭消息接纳，�
 
 #### 模型看到的内容
 
-脚本每次调用 `agent()`，都会把提示词原样发送给 subagent 提供方，并附带可选模型或结构化输出 schema。每个子 agent 看到该提供方自己的上下文；phase 和 log 叙述只留在观察器事件中。
+脚本每次调用 `agent()`，都会把提示词和可选模型或结构化输出 schema 发送给 subagent 提供方；宿主设置的 `composeChildPrompt` 可在启动前将脚本提示词转换为不同的子智能体内容块。每个子 agent 看到该提供方自己的上下文；phase 和 log 叙述只留在观察器事件中。
 
 #### Token 影响
 

@@ -7,6 +7,8 @@
  */
 
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { SubagentChildToolContribution } from '@deepseek-ai/dsh-subagent'
 import type { ToolGuard, ToolRestriction } from '@deepseek-ai/dsh-tools'
 import type {
@@ -37,6 +39,18 @@ export interface WorkflowStartRequest {
   childToolContribution?: SubagentChildToolContribution
   /** Trusted host-owned persona applied to every child in this run. */
   childPersona?: string
+  /**
+   * Compose each child's final prompt after its actual session id is reserved.
+   * Runs on the host before provider start; a thrown error fails that child
+   * start without publishing it. Requires a provider that supports reserved ids.
+   */
+  composeChildPrompt?: (sessionId: SessionId, prompt: string) => ContentBlock[]
+  /**
+   * Cumulative output-token ceiling for each child dispatch, including
+   * reasoning. No ceiling is applied when absent. The selected subagent and
+   * model providers must both support enforcement when this is set.
+   */
+  maxOutputTokensPerChild?: number
   /** The agent on whose behalf the run executes (parent of every child). */
   parent: Agent
   /** Cancels the run when aborted. */

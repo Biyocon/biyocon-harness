@@ -174,6 +174,16 @@ export class DeepSeekAdapter extends LlmAdapter {
     return Promise.resolve(this.config.options().models.map(model => modelInfo(provider, model)))
   }
 
+  /**
+   * The official Chat Completions API counts reasoning inside generated
+   * completion tokens subject to `max_tokens`: `completion_tokens_details`
+   * subdivides `completion_tokens` into reasoning and other output.
+   * DeepSeek API documentation, checked 2026-11-03:
+   * https://api-docs.deepseek.com/api/create-chat-completion/
+   * @param provider - registered provider id.
+   * @param model - wire model id.
+   * @returns route metadata; only the official origin advertises this limit.
+   */
   override resolveModel(
     provider: string,
     model: string,
@@ -193,6 +203,9 @@ export class DeepSeekAdapter extends LlmAdapter {
         : modelInfo(provider, configured),
       context: { contextWindow },
       defaultMaxTokens: configured?.maxTokens ?? connection.maxTokens,
+      ...new URL(connection.baseURL).origin === 'https://api.deepseek.com'
+        ? { enforcesMaxTokensIncludingReasoning: true as const }
+        : {},
       ...connection.defaults.thinking === 'disabled'
         ? {
           reasoning: {
@@ -222,6 +235,13 @@ export class DeepSeekAdapter extends LlmAdapter {
     // The key resolves *from this snapshot*, so an endpoint and the secret
     // sent to it can never come from different configuration generations.
     const connection = this.config.options()
+    if (options.requireOutputTokenLimit === true
+      && new URL(connection.baseURL).origin !== 'https://api.deepseek.com') {
+      throw new LlmError(
+        `DeepSeek endpoint "${new URL(connection.baseURL).origin}" cannot guarantee a reasoning-inclusive output-token limit`,
+        'UNSUPPORTED_OUTPUT_TOKEN_LIMIT',
+      )
+    }
     const apiKey = await this.config.resolveApiKey(connection)
     const userId = this.config.resolveUserId()
     const consumer = new AbortController()

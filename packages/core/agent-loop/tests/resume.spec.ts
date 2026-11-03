@@ -1,4 +1,4 @@
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { CallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -8,12 +8,12 @@ import LlmRuntime from '@deepseek-ai/dsh-llm'
 import SessionStore, { SESSION_FORMAT_VERSION, Session, SessionId, SessionPreparation } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import { MockAdapter, textResponse } from './mock-adapter.ts'
+import { MockAdapter, textResponse, toolCallResponse } from './mock-adapter.ts'
 
 const dirs: string[] = []
 afterEach(async () => { for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true }) })
@@ -677,6 +677,74 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     expect(allSeqs).toEqual(allSeqs.map((_, i) => i)) // 0..N contiguous, no duplicates
     const turnStarts = a2.session.events.filter(e => e.type === 'turn/start')
     expect(turnStarts.map(e => e.type === 'turn/start' && e.data.turn)).toEqual([1, 2])
+    await ctx2.fiber.dispose()
+  })
+
+  it('balances unexecuted tool calls at the output limit before follow-up and resume', async () => {
+    const first = toolCallResponse('c1', 'unused', {})
+    const second = toolCallResponse('c2', 'unused', {})
+      .filter(chunk => chunk.type !== 'usage' && chunk.type !== 'finish')
+      .map(chunk => 'index' in chunk ? { ...chunk, index: chunk.index + 1 } : chunk)
+    const adapter1 = new MockAdapter([[
+      ...first.filter(chunk => chunk.type !== 'usage' && chunk.type !== 'finish'),
+      ...second,
+      { type: 'usage', usage: { inputTokens: 10, outputTokens: 5, reasoningTokens: 2 } },
+      { type: 'finish', reason: { kind: 'tool-calls' } },
+    ]], undefined, undefined, true)
+    const { ctx: ctx1, root } = await persistentHarness(adapter1)
+    let executions = 0
+    ctx1.tools.register(defineContentToolFixture({
+      name: 'unused',
+      description: '',
+      parameters: {},
+      async execute() {
+        executions++
+        return [{ type: 'text', text: 'executed' }]
+      },
+    }))
+    const id = SessionId('output-limit-tool-resume')
+    const a1 = (await ctx1.agents.create({
+      sessionId: id,
+      agentOptions: { provider: 'mock', model: 'mock' },
+      maxOutputTokens: 5,
+    })).agent
+    a1.followup(createUserMessage({ content: [{ type: 'text', text: 'first' }], source: { kind: 'user' } }))
+    await waitForIdle(ctx1, a1)
+
+    const calls = a1.session.events.filter(event => event.type === 'tool/call')
+    const results = a1.session.events.filter(event => event.type === 'tool/result')
+    expect(calls.map(event => event.data.callId)).toEqual([CallId('c1'), CallId('c2')])
+    expect(results.map(event => event.data.message.source.callId)).toEqual([CallId('c1'), CallId('c2')])
+    expect(results.map(event => event.data.error)).toEqual([
+      { name: 'OutputTokenLimitError', code: 'OUTPUT_TOKEN_LIMIT_EXCEEDED' },
+      { name: 'OutputTokenLimitError', code: 'OUTPUT_TOKEN_LIMIT_EXCEEDED' },
+    ])
+    expect(a1.session.events.findLast(event => event.type === 'turn/end')?.data.reason)
+      .toEqual({ kind: 'max-tokens' })
+    expect(executions).toBe(0)
+    expect(a1.session.deriveMessages().slice(-3).map(message => message.role))
+      .toEqual(['assistant', 'user', 'user'])
+
+    a1.followup(createUserMessage({ content: [{ type: 'text', text: 'continue' }], source: { kind: 'user' } }))
+    await waitForIdle(ctx1, a1)
+    expect(adapter1.requests).toHaveLength(1)
+    await ctx1.sessions.flush(a1.session)
+    await ctx1.fiber.dispose()
+
+    const adapter2 = new MockAdapter([textResponse('resumed')])
+    const ctx2 = await mountPersistentHarness(root, adapter2)
+    const a2 = (await ctx2.agents.resume({
+      resumeSessionId: id,
+      agentOptions: { provider: 'mock', model: 'mock' },
+    })).agent
+    a2.followup(createUserMessage({ content: [{ type: 'text', text: 'resume' }], source: { kind: 'user' } }))
+    await waitForIdle(ctx2, a2)
+    expect(adapter2.requests).toHaveLength(1)
+    expect(adapter2.requests[0]?.messages.some(message => message.role === 'user'
+      && message.content.some(block => block.type === 'tool-result' && block.toolCallId === CallId('c2'))))
+      .toBe(true)
+    expect(a2.session.events.findLast(event => event.type === 'turn/end')?.data.reason)
+      .toEqual({ kind: 'completed' })
     await ctx2.fiber.dispose()
   })
 

@@ -151,6 +151,23 @@ class WorkerThreadWorkflowEngine extends WorkflowEngine {
         'AGENT_START',
       )
     }
+    if (request.composeChildPrompt !== undefined && !provider?.capabilities.reservedSessionId) {
+      throw new WorkflowError(
+        `subagent provider "${subagentProvider}" does not support the "reservedSessionId" capability`,
+        'AGENT_START',
+      )
+    }
+    if (request.maxOutputTokensPerChild !== undefined) {
+      if (!Number.isSafeInteger(request.maxOutputTokensPerChild) || request.maxOutputTokensPerChild < 1) {
+        throw new WorkflowError('workflow maxOutputTokensPerChild must be a positive safe integer', 'INVALID_ARGUMENT')
+      }
+      if (!provider?.capabilities.outputTokenLimit) {
+        throw new WorkflowError(
+          `subagent provider "${subagentProvider}" does not support the "outputTokenLimit" capability`,
+          'AGENT_START',
+        )
+      }
+    }
     const maxTotalAgents = resolveMaxTotalAgents(request.maxTotalAgents, this.config.maxTotalAgents)
     const id = WorkflowRunId(randomUUID())
     const info: WorkflowRunInfo = { id, meta }
@@ -192,6 +209,8 @@ class WorkerThreadWorkflowEngine extends WorkflowEngine {
           : {},
         ...request.childPersona !== undefined ? { persona: request.childPersona } : {},
       },
+      request.composeChildPrompt,
+      request.maxOutputTokensPerChild,
       this.config.disposeGraceMs,
       {
         phase: (title) => { this.emitWorkflowEvent('workflow/phase', info, title) },

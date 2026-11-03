@@ -456,8 +456,18 @@ export class AgentLoop extends Service implements AgentFactory {
    * BEFORE publication, so a mid-setup unload rolls everything back; `signal`
    * fuses caller cancellation with lifecycle teardown for setup awaits.
    */
-  private prepare(ownerCtx: Context, id: SessionId, options: AgentOptions, session: Session, callerSignal?: AbortSignal): PreparedAgent {
+  private prepare(
+    ownerCtx: Context,
+    id: SessionId,
+    options: AgentOptions,
+    session: Session,
+    callerSignal?: AbortSignal,
+    maxOutputTokens?: number,
+  ): PreparedAgent {
     assertAgentOptions(options)
+    if (maxOutputTokens !== undefined && (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens <= 0)) {
+      throw new TypeError('agent maxOutputTokens must be a positive safe integer')
+    }
     ownerCtx.fiber.assertActive()
     // Every caller reaches prepare() synchronously from a service method
     // whose Cordis dispatch already requires the live factory fiber, or
@@ -546,7 +556,7 @@ export class AgentLoop extends Service implements AgentFactory {
       throw abort.signal.reason instanceof Error ? abort.signal.reason : new Error(String(abort.signal.reason))
     }
     try {
-      const agent = machine = new ReactLoopAgent(loopCtx, id, options, session)
+      const agent = machine = new ReactLoopAgent(loopCtx, id, options, session, maxOutputTokens)
       machineReady.resolve()
       assertLive()
 
@@ -616,6 +626,7 @@ export class AgentLoop extends Service implements AgentFactory {
       options.setup,
       options.signal,
       'startup',
+      options.maxOutputTokens,
     )
     this.ownership.trackWrapper(published)
     return published
@@ -630,10 +641,11 @@ export class AgentLoop extends Service implements AgentFactory {
     setup: AgentSetup | undefined,
     signal: AbortSignal | undefined,
     source: SessionStartSource,
+    maxOutputTokens?: number,
   ): Promise<AgentHandle> {
     using ownedPreparation = preparation
     const session = ownedPreparation.session
-    const prepared = this.prepare(ownerCtx, id, agentOptions, session, signal)
+    const prepared = this.prepare(ownerCtx, id, agentOptions, session, signal, maxOutputTokens)
     try {
       const setupCommit = await raceAbort(setup?.(prepared.agent.ctx), prepared.signal, id)
       setupCommit?.commit()

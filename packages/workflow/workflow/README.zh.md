@@ -14,7 +14,7 @@
 
 运行由持有方负责。引擎插件卸载会阻止新的启动，但不会撤销已接受的运行。持有方必须在每条路径上调用 `dispose()`；dispose（资源释放）会取消剩余工作，并在文档规定的期限内达到或放弃完全停稳。
 
-`WorkflowStartRequest` 包含 `{ meta, script, args?, subagentProvider?, maxTotalAgents?, childToolFilter?, childToolGuard?, childToolContribution?, childPersona?, parent, signal? }`。`parent` 把每个子 agent（智能体）归属于调用 agent。`subagentProvider` 可以为该次运行的所有子 agent 指定路由，同时不向脚本公开提供方选择；省略时使用引擎配置的提供方。`maxTotalAgents` 可以为一次运行降低引擎的部署上限，同样对脚本不可见。四个 `child*` 字段是统一应用于所有 child 的可信 host policy，对脚本不可见。`childToolContribution` 是仅限 host 的同进程 callback：引擎既不会把它序列化到 worker，也不会向 workflow program 公开它，并且当 provider 不具备相应能力时会同步拒绝。实现会同步拒绝无效路由和限制。`meta` 与 `args` 是普通数据，不是脚本片段。
+`WorkflowStartRequest` 包含 `{ meta, script, args?, subagentProvider?, maxTotalAgents?, childToolFilter?, childToolGuard?, childToolContribution?, childPersona?, composeChildPrompt?, maxOutputTokensPerChild?, parent, signal? }`。`parent` 把每个子 agent（智能体）归属于调用 agent。`subagentProvider` 可以为该次运行的所有子 agent 指定路由，同时不向脚本公开提供方选择；省略时使用引擎配置的提供方。`maxTotalAgents` 可以为一次运行降低引擎的部署上限，同样对脚本不可见。四个 `child*` policy 字段是统一应用于所有 child 的可信 host policy，对脚本不可见。`childToolContribution` 是仅限 host 的同进程 callback：引擎既不会把它序列化到 worker，也不会向 workflow program 公开它，并且当 provider 不具备相应能力时会同步拒绝。`composeChildPrompt` 也是仅限 host 的回调：它在提供方启动前取得每个预留的真实子会话 id 及脚本提示词，再返回写入子会话日志的提示词内容块。`maxOutputTokensPerChild` 是分别应用于每次子智能体 dispatch 的正安全整数，包含 reasoning。引擎会同步拒绝不支持的提供方能力、无效路由和限制。`meta` 与 `args` 是普通数据，不是脚本片段。仅限宿主的提示词组装和上限执行的理由见[预留子智能体身份与输出上限决策](../../../.agents/notes/implemented/architecture/2026-11-02-reserved-child-identity-and-output-token-limit.md)。
 
 `WorkflowRun` 公开 `{ id, meta, result, cancel(reason?), dispose() }`。`WorkflowResult` 包含 `{ value, stopReason, error?, agentsStarted }`；`value` 是普通 JSON 数据或 `null`。
 
@@ -55,7 +55,7 @@
 - **仅支持前台收集**：调用方负责一个活动运行并等待它；后台启动／轮询、spill 句柄和分离收集均暂缓处理。
 - **没有日志化或恢复**：脚本、子 agent 进度和中间值均不设检查点，因此进程重启后无法继续运行。
 - **没有已保存或嵌套工作流**：该 seam 只启动调用方提供的脚本，工作流脚本不会收到用于递归编排的 `workflow()` 钩子。
-- **没有 token 预算词汇**：引擎会限制并发、条目和子 agent，但请求与结果都不会统计跨子 agent 的模型 token。
+- **没有汇总 token 预算**：可选的输出上限分别作用于每个子智能体；请求与结果不会统计所有子智能体的模型 token。
 - **运行由持有方负责，不由服务跟踪**：卸载引擎不会发现独立的活动句柄；每个消费方都必须 dispose 自己启动的运行。
 
 暂缓实现的工作流接口见[动态工作流 Agent Note（agent 决策记录）](../../../.agents/notes/implemented/feature/2026-07-05-dynamic-workflows.md)。

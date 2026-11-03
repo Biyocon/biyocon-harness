@@ -65,6 +65,28 @@ const weatherTool: ToolSchema = {
 }
 
 describe.skipIf(!process.env.DEEPSEEK_API_KEY)('llm-deepseek e2e (real API)', () => {
+  it('includes reasoning within the official flash max_tokens ceiling', async () => {
+    const ctx = await harness(FLASH, { thinking: 'enabled', reasoningEffort: 'low' })
+    const maxTokens = 256
+    const prepared = await ctx.llm.prepareCall({
+      provider: 'deepseek-official', model: FLASH, maxTokens,
+      reasoningEffort: ReasoningEffortId('low'),
+    })
+    expect(prepared.enforcesMaxTokensIncludingReasoning).toBe(true)
+    expect(prepared.config.maxTokens).toBe(maxTokens)
+    const result = await assemble(ctx, {
+      model: FLASH,
+      reasoningEffort: ReasoningEffortId('low'),
+      messages: ask('Compare 9.11 and 9.8, then give the larger number.'),
+      maxTokens,
+    })
+    const usage = result.usage
+    if (usage?.reasoningTokens === undefined) throw new Error('thinking response omitted reasoning usage')
+    expect(usage.reasoningTokens).toBeGreaterThan(0)
+    expect(usage.outputTokens).toBeGreaterThanOrEqual(usage.reasoningTokens)
+    expect(usage.outputTokens).toBeLessThanOrEqual(maxTokens)
+  })
+
   it('serves a real request with the key held only by a credentials-local document', async () => {
     const key = process.env.DEEPSEEK_API_KEY
     if (key === undefined) throw new Error('e2e ran without DEEPSEEK_API_KEY')

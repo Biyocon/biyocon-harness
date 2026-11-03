@@ -155,6 +155,8 @@ export function assertUsableApiKey(raw: string, pkg: string, ref: string): strin
 export interface PreparedLlmCall {
   /** Detached, deep-frozen config with any adapter-owned default materialized. */
   readonly config: LlmCallConfig
+  /** Captured exact-route guarantee that maxTokens includes generated reasoning. */
+  readonly enforcesMaxTokensIncludingReasoning: boolean
   /** Immutable retry policy captured with the adapter registration. */
   readonly retryPolicy: ResolvedRetryPolicy
   /** Detached context metadata resolved with the registration-bound call. */
@@ -671,6 +673,9 @@ export class LlmRuntime extends Service {
       ...inputModalities === undefined ? {} : { inputModalities },
       ...context === undefined ? {} : { context: { contextWindow: context.contextWindow } },
       ...defaultMaxTokens === undefined ? {} : { defaultMaxTokens },
+      ...resolved.enforcesMaxTokensIncludingReasoning === true
+        ? { enforcesMaxTokensIncludingReasoning: true }
+        : {},
     }
     const reasoning = resolved.reasoning
     if (reasoning === undefined) return info
@@ -735,7 +740,7 @@ export class LlmRuntime extends Service {
     registration: AdapterRegistration,
     config: LlmCallConfig,
     signal?: AbortSignal,
-  ): Promise<{ config: LlmCallConfig; context?: LlmModelContext }> {
+  ): Promise<{ config: LlmCallConfig; context?: LlmModelContext; enforcesMaxTokensIncludingReasoning: boolean }> {
     const info = await this.resolveModelInfoFor(registration, config.model, signal)
     const defaulted = config.maxTokens === undefined && info.defaultMaxTokens !== undefined
       ? { ...config, maxTokens: info.defaultMaxTokens }
@@ -764,6 +769,7 @@ export class LlmRuntime extends Service {
     }
     return {
       config: resolvedConfig,
+      enforcesMaxTokensIncludingReasoning: info.enforcesMaxTokensIncludingReasoning === true,
       ...info.context === undefined ? {} : { context: info.context },
     }
   }
@@ -794,6 +800,7 @@ export class LlmRuntime extends Service {
     let dispatched = false
     return Object.freeze({
       config: resolvedConfig,
+      enforcesMaxTokensIncludingReasoning: resolved.enforcesMaxTokensIncludingReasoning,
       retryPolicy: registration.retryPolicy,
       adapterDefaults,
       ...context === undefined ? {} : { context },
@@ -847,6 +854,12 @@ export class LlmRuntime extends Service {
     let iterator: AsyncIterator<StreamChunk>
     try {
       const registration = prepared?.registration ?? this.registration(options.provider)
+      if (options.requireOutputTokenLimit === true
+        && (options.maxTokens === undefined
+          || !Number.isSafeInteger(options.maxTokens)
+          || options.maxTokens <= 0)) {
+        throw new LlmError('requireOutputTokenLimit needs a positive explicit maxTokens for the model call', 'INVALID_OUTPUT_TOKEN_LIMIT')
+      }
       const resolvedConfig = prepared === undefined
         ? (await this.resolveCallFor(registration, options, options.signal)).config
         : prepared.config
@@ -861,6 +874,15 @@ export class LlmRuntime extends Service {
         : Object.isFrozen(options)
           ? deepFreeze({ ...options, ...resolvedConfig })
           : { ...options, ...resolvedConfig }
+      if (resolvedOptions.requireOutputTokenLimit === true) {
+        const exact = await this.resolveModelInfoFor(registration, resolvedOptions.model, resolvedOptions.signal)
+        if (!exact.enforcesMaxTokensIncludingReasoning) {
+          throw new LlmError(
+            `provider "${resolvedOptions.provider}" model "${resolvedOptions.model}" cannot enforce maxTokens including reasoning`,
+            'UNSUPPORTED_OUTPUT_TOKEN_LIMIT',
+          )
+        }
+      }
       const adapter = registration.adapter
       const stream = adapter.stream(this.forAdapter(resolvedOptions, adapter))
       iterator = stream[Symbol.asyncIterator]()

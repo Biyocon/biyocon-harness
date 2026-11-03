@@ -6,6 +6,7 @@
  * @module @deepseek-ai/dsh-workflow-worker-thread/host
  */
 
+import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { Worker } from 'node:worker_threads'
 import type { WorkerOptions } from 'node:worker_threads'
@@ -13,11 +14,12 @@ import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { assertNever } from '@deepseek-ai/dsh-llm'
-import { snapshotJsonValue } from '@deepseek-ai/dsh-session'
+import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import { SessionId, snapshotJsonValue } from '@deepseek-ai/dsh-session'
 import type SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import type { SubagentChildToolContribution, SubagentRun } from '@deepseek-ai/dsh-subagent'
 import type { ToolGuard, ToolRestriction } from '@deepseek-ai/dsh-tools'
-import type { WorkflowAgentEndInfo, WorkflowAgentInfo, WorkflowMeta, WorkflowResult, WorkflowRun, WorkflowRunId } from '@deepseek-ai/dsh-workflow'
+import type { WorkflowAgentEndInfo, WorkflowAgentInfo, WorkflowMeta, WorkflowResult, WorkflowRun, WorkflowRunId, WorkflowStartRequest } from '@deepseek-ai/dsh-workflow'
 import { renderThrown } from './realm.ts'
 import type { ExecutionObserver } from './runtime.ts'
 import { HostToWorkerType, WorkerToHostType } from './protocol.ts'
@@ -147,6 +149,8 @@ export class WorkerRun implements WorkflowRun {
     init: WorkerInit,
     private readonly provider: string,
     private readonly childComposition: WorkflowChildComposition,
+    private readonly composeChildPrompt: WorkflowStartRequest['composeChildPrompt'],
+    private readonly maxOutputTokensPerChild: number | undefined,
     private readonly disposeGraceMs: number,
     private readonly observer: ExecutionObserver,
     signal: AbortSignal | undefined,
@@ -359,10 +363,18 @@ export class WorkerRun implements WorkflowRun {
   private async startChild(callId: number, request: ChildStartRequest): Promise<void> {
     let run: SubagentRun
     try {
+      let prompt: ContentBlock[] = [{ type: 'text', text: request.prompt }]
+      let reservedSessionId: SessionId | undefined
+      if (this.composeChildPrompt !== undefined) {
+        reservedSessionId = SessionId(randomUUID())
+        prompt = this.composeChildPrompt(reservedSessionId, request.prompt)
+      }
       run = await this.subagents.start(this.provider, {
-        prompt: [{ type: 'text', text: request.prompt }],
+        prompt,
         parent: this.parent,
         signal: this.controller.signal,
+        ...reservedSessionId !== undefined ? { reservedSessionId } : {},
+        ...this.maxOutputTokensPerChild !== undefined ? { maxOutputTokens: this.maxOutputTokensPerChild } : {},
         ...this.childComposition.toolFilter !== undefined
           ? { toolFilter: this.childComposition.toolFilter }
           : {},

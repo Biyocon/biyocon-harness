@@ -57,6 +57,56 @@ function adapterOf(config: Partial<LlmDeepSeek.Config> & { apiKey?: string } = {
 }
 
 describe('DeepSeekAdapter against a mock server', () => {
+  it('refuses a capped call when its endpoint changes after official-route preparation', async () => {
+    const server = await mockServer([{ kind: 'sse', events: textEvents }])
+    let baseURL = 'https://api.deepseek.com'
+    let credentialReads = 0
+    const adapter = new DeepSeekAdapter({
+      options: () => resolveAdapterOptions({ baseURL }),
+      resolveApiKey: () => { credentialReads++; return Promise.resolve('k') },
+      resolveUserId: () => TEST_USER_ID,
+    })
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    ctx.llm.registerAdapter(['deepseek-official'], adapter)
+    const prepared = await ctx.llm.prepareCall({ provider: 'deepseek-official', model: 'deepseek-v4-flash', maxTokens: 5 })
+    expect(prepared.enforcesMaxTokensIncludingReasoning).toBe(true)
+
+    baseURL = server.url
+    const chunks = []
+    for await (const chunk of prepared.stream({
+      ...prepared.config,
+      messages: [createUserMessage({ content: [{ type: 'text', text: 'hi' }], source: { kind: 'plugin', plugin: 'test' } })],
+      requireOutputTokenLimit: true,
+    })) chunks.push(chunk)
+
+    expect(chunks.at(-1)).toMatchObject({
+      type: 'finish', reason: { kind: 'error', failure: { code: 'UNSUPPORTED_OUTPUT_TOKEN_LIMIT' } },
+    })
+    expect(credentialReads).toBe(0)
+    expect(server.requests).toHaveLength(0)
+    expect((await ctx.llm.resolveModelInfo('deepseek-official', 'deepseek-v4-flash')).enforcesMaxTokensIncludingReasoning)
+      .toBeUndefined()
+  })
+
+  it('refuses a direct capped stream on a custom endpoint before credential or HTTP access', async () => {
+    const server = await mockServer([{ kind: 'sse', events: textEvents }])
+    let credentialReads = 0
+    const adapter = new DeepSeekAdapter({
+      options: () => resolveAdapterOptions({ baseURL: server.url }),
+      resolveApiKey: () => { credentialReads++; return Promise.resolve('k') },
+      resolveUserId: () => TEST_USER_ID,
+    })
+    await expect((async () => {
+      for await (const chunk of adapter.stream({
+        provider: 'deepseek-official', model: 'deepseek-v4-flash', messages: [],
+        maxTokens: 5, requireOutputTokenLimit: true,
+      })) void chunk
+    })()).rejects.toMatchObject({ code: 'UNSUPPORTED_OUTPUT_TOKEN_LIMIT' })
+    expect(credentialReads).toBe(0)
+    expect(server.requests).toHaveLength(0)
+  })
+
   it('streams a text generation end to end through the assembler', async () => {
     const server = await mockServer([{ kind: 'sse', events: textEvents }])
     const ctx = await harness(server.url)

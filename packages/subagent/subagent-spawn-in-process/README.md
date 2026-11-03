@@ -12,7 +12,7 @@ The shared driver owns depth checking, persona and tool-filter setup, structured
 
 ## Capabilities
 
-Spawn advertises `{ outputSchema: true, depthLimit: true, toolFilter: true, persona: true }` because it controls the child's creation window and can enforce all four features.
+Spawn advertises `outputSchema`, `depthLimit`, `toolFilter`, `toolGuard`, `toolContribution`, `persona`, `reservedSessionId`, and `outputTokenLimit`. Its shared in-process driver creates the child under the reserved id and carries the cumulative, reasoning-inclusive output ceiling into the child loop.
 
 ## Config
 
