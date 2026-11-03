@@ -1,13 +1,11 @@
 /** Typed producer and critic dispatch over the same real child workflow. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { reportHash } from '@deepseek-ai/dsh-conductor'
-import { buildCriticInput } from '@deepseek-ai/dsh-conductor/src/analysis-materials.ts'
-import { validateAnalysisChallenge } from '@deepseek-ai/dsh-conductor/src/analysis-challenge.ts'
-import type { AnalysisChallengeContext, CapturedChallengeIdentity } from '@deepseek-ai/dsh-conductor/src/analysis-challenge.ts'
+import { buildCriticInput, reportHash, reportProducer, validateAnalysisChallenge } from '@deepseek-ai/dsh-conductor'
 import type {
-  ConductorMaterialId, ConductorRun, ConductorStage, ReportCandidate,
+  AnalysisChallengeContext, CapturedChallengeIdentity, ConductorMaterialId, ConductorRun, ConductorStage, ReportCandidate,
 } from '@deepseek-ai/dsh-conductor'
+import { ROLE_SKILL } from '@deepseek-ai/dsh-conductor-presets'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { ANALYSIS_CHALLENGE_OUTPUT_SCHEMA, ANALYSIS_SCHEMA } from './analysis-schema.ts'
 import { runWorkflowChild } from './workflow-child.ts'
@@ -72,7 +70,10 @@ export async function dispatchAnalysisChild(request: AnalysisDispatch): Promise<
     return await runWorkflowChild(ctx, providerName, parent, signal, request.stage, run,
       request.prompt, ANALYSIS_SCHEMA, request.persona)
   }
-  const names = ['conductor-devils-advocate', 'conductor-specialist'] as const
+  const criticRoleName = ROLE_SKILL['devils-advocate']
+  /* v8 ignore next -- the preset's fixed ROLE_SKILL mapping declares the critic role. */
+  if (criticRoleName === undefined) throw new Error('Conductor critic role skill mapping is unavailable')
+  const names = [criticRoleName, 'conductor-specialist'] as const
   const [roleSkill, specialistSkill] = await Promise.all(names.map(name => ctx.skills.get(name, {
     scope: parent, cwd: parent.session.header.cwd, signal,
   })))
@@ -118,8 +119,7 @@ export async function dispatchAnalysisChild(request: AnalysisDispatch): Promise<
     dispatchMode: 'critic',
     entry: run.admission.entry,
     deliverable: run.admission.deliverable,
-    producer: run.admission.entry === 'detective' && run.admission.deliverable === 'recommendations'
-      ? 'strategist' : run.admission.entry,
+    producer: reportProducer(run.admission),
     maxSummaryCharacters: request.maxSummaryCharacters,
     previous: request.previous,
   }
