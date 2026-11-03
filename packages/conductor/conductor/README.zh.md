@@ -16,7 +16,7 @@ Gate C 提案只包含版本、rollback reference 和请求的质量命令 id，
 
 分析保持空执行状态且不执行质量命令。版本化报告经独立审计后，Arbiter 返回 `accept | revise | blocked`；接受终止为 `reported`/`report-complete`，而非 GO 或 closeout。从不请求批准或到达 Headsman、Ralph、Integrator。[准入决策](../../../.agents/notes/implemented/feature/2026-10-25-conductor-intake-and-report-completion.md)拥有来源、报告绑定和延期第二阶段行为。
 
-内部纯函数会验证分析质疑结果及已捕获材料的行区间，基于行结束符规范化的摘录和专用的运行时身份字段确定性地构造受 token 上限约束的批评者输入，并且仅在包括先前结果的共享语义验证通过后计算质疑结果哈希。候选报告哈希会重新计算，材料 ID 使用品牌类型，批评者尝试编号在整个运行期间递增。这些函数尚未接入派发或持久化：记录格式仍为 4，当前分析路线保持不变。[批评者基础函数的决策](../../../.agents/notes/implemented/feature/2026-11-02-conductor-analysis-critic-primitives.md)说明此处的分离。
+内部纯函数会验证分析质疑结果及已捕获材料的行区间，基于行结束符规范化的摘录和专用的运行时身份字段确定性地构造受 token 上限约束的批评者输入，并且仅在包括先前结果的共享语义验证通过后计算质疑结果哈希。候选报告哈希会重新计算，材料 ID 使用品牌类型，批评者尝试编号在整个运行期间递增。已准备的批评分派使用这些函数，但记录格式仍为 4，当前分析路线保持不变。[批评者基础函数的决策](../../../.agents/notes/implemented/feature/2026-11-02-conductor-analysis-critic-primitives.md)说明此处的分离。
 
 `conductor/child` 是模型不可见的父事件，标识一个具体工作流子会话：运行时角色、按角色的尝试编号、生命周期、派发历史偏移及可选的精确子会话门禁结果。`./child-types` 可安全导入客户端。将本包作为插件与 `sessionProjections` 一起挂载，即可独立于 agent 生命周期保留 `conductorChildren` 投影；共享 base bundle 已挂载。继承的种子子会话被清除。这些必读事件不改变检查点格式 4。[子会话显示决策](../../../.agents/notes/implemented/bug-fix/2026-10-28-conductor-child-role-status.md)定义归属与重放语义。
 

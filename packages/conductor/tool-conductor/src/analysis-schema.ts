@@ -38,6 +38,26 @@ export const ANALYSIS_SCHEMA = {
   required: ['run_id', 'purpose', 'stage', 'deliverable', 'status', 'summary', 'material_ids', 'blockers', 'assumptions', 'limitations'],
 } satisfies ObjectJsonSchema
 
+/** Critic output is structurally constrained before candidate-bound validation. */
+export const ANALYSIS_CHALLENGE_OUTPUT_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    run_id: { type: 'string' }, purpose: { type: 'string', enum: ['analysis'] },
+    candidate_hash: { type: 'string' }, candidate_version: { type: 'string' },
+    material_ids: strings, critic_child_id: { type: 'string' }, critic_attempt: { type: 'integer' },
+    findings: { type: 'array', items: { type: 'object', additionalProperties: false,
+      properties: {
+        id: { type: 'string' }, severity: { type: 'string', enum: ['minor', 'major', 'critical'] },
+        claim: { type: 'string' }, rationale: { type: 'string' }, material_ids: strings,
+      }, required: ['id', 'severity', 'claim', 'rationale', 'material_ids'],
+    } },
+    conclusion: { type: 'string', enum: ['holds', 'does_not_hold'] },
+    defect: { type: 'string', enum: ['scope', 'plan', 'report'] }, summary: { type: 'string' },
+  },
+  required: ['run_id', 'purpose', 'candidate_hash', 'candidate_version', 'material_ids',
+    'critic_child_id', 'critic_attempt', 'findings', 'conclusion', 'summary'],
+} satisfies ObjectJsonSchema
+
 /** The Arbiter's report verdict cannot express implementation GO or write authorization. */
 export const REPORT_DECISION_SCHEMA = {
   type: 'object', additionalProperties: false,

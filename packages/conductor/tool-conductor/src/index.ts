@@ -47,21 +47,21 @@ import type {
   AnalysisEnvelope,
   ReportDecision,
 } from '@deepseek-ai/dsh-conductor'
-import { analysisToolGuard, READ_TOOLS, toolGuardForStage, toolRestrictionForStage } from './capability.ts'
+import { toolGuardForStage, toolRestrictionForStage } from './capability.ts'
 import { captureMaterials } from './materials.ts'
 import type { MaterialLimits } from './materials.ts'
-import { ANALYSIS_CRITERIA_INSTRUCTION, ANALYSIS_SCHEMA, REPORT_DECISION_SCHEMA } from './analysis-schema.ts'
+import { ANALYSIS_CRITERIA_INSTRUCTION, REPORT_DECISION_SCHEMA } from './analysis-schema.ts'
+import { dispatchAnalysisChild } from './analysis-dispatch.ts'
 import { ralphDirective } from './ralph.ts'
 import { observeConductorChildren, publishChildGates } from './children.ts'
+import { runWorkflowChild } from './workflow-child.ts'
 import { ROLE_SKILL } from '@deepseek-ai/dsh-conductor-presets'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CallId, ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { JsonValue, SessionId } from '@deepseek-ai/dsh-session'
+import type { JsonValue } from '@deepseek-ai/dsh-session'
 import type { SubagentProvider } from '@deepseek-ai/dsh-subagent'
-import type { SubagentChildToolContribution } from '@deepseek-ai/dsh-subagent'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ObjectJsonSchema, ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools'
-import type { WorkflowResult, WorkflowRun } from '@deepseek-ai/dsh-workflow'
 import { runRalphWorkflow } from '@deepseek-ai/dsh-tool-ralph'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 // Declaration merge only: makes ctx.skills visible for the role-skill lookup.
@@ -488,20 +488,6 @@ function composeArbiterPrompt(run: ConductorRun): string {
   ].join('\n\n')
 }
 
-const SPECIALIST_WORKFLOW_META = {
-  name: 'conductor-specialist',
-  description: 'Run one fresh Conductor specialist through the workflow engine.',
-  phases: [{ title: 'Specialist', detail: 'One policy-scoped structured-output child.' }],
-}
-
-const SPECIALIST_WORKFLOW_SCRIPT = String.raw`
-phase('Specialist')
-return await agent(args.prompt, {
-  label: args.label,
-  schema: args.schema,
-})
-`
-
 /** Load one required scoped skill or fail the dispatch before a child starts. */
 async function requireSkill(ctx: Context, parent: Agent, signal: AbortSignal, name: string): Promise<string> {
   const skill = await ctx.skills.get(name, {
@@ -511,74 +497,6 @@ async function requireSkill(ctx: Context, parent: Agent, signal: AbortSignal, na
   })
   if (skill === undefined) throw new Error(`Conductor required skill "${name}" is unavailable`)
   return skill.content
-}
-
-/** Run one fresh structured child through the existing workflow engine. */
-async function runWorkflowChild(
-  ctx: Context,
-  providerName: string,
-  parent: Agent,
-  signal: AbortSignal,
-  stage: ConductorStage,
-  run: ConductorRun,
-  prompt: string,
-  schema: ObjectJsonSchema,
-  persona: string,
-  childToolContribution?: SubagentChildToolContribution,
-): Promise<unknown> {
-  const workflow: WorkflowRun = ctx.workflowEngine.start({
-    script: SPECIALIST_WORKFLOW_SCRIPT,
-    meta: SPECIALIST_WORKFLOW_META,
-    args: { prompt, label: `conductor-${stage}`, schema },
-    subagentProvider: providerName,
-    maxTotalAgents: 1,
-    parent,
-    signal,
-    childToolFilter: run.admission.purpose === 'analysis' ? { allow: [...READ_TOOLS] } : toolRestrictionForStage(stage, run.executionAuthorization),
-    childToolGuard: run.admission.purpose === 'analysis' ? analysisToolGuard : toolGuardForStage(stage, run.baseline, run.executionAuthorization),
-    childPersona: persona,
-    ...childToolContribution === undefined ? {} : { childToolContribution },
-  })
-  const stopChildPresentation = observeConductorChildren(ctx, parent.session, workflow, run, stage as Exclude<ConductorStage, 'intake' | 'closeout' | 'report-complete'>)
-  let childFailure: string | undefined
-  let childStarted = false
-  const completedTurns = new Set<SessionId>()
-  const stopSessionObserving = ctx.on('session/event', (session, event) => {
-    if (event.type === 'turn/end' && event.data.reason.kind === 'completed') {
-      completedTurns.add(session.id)
-    } else if (event.type === 'turn/start' || event.type === 'turn/end') {
-      completedTurns.delete(session.id)
-    }
-  })
-  const stopObserving = ctx.on('workflow/agent-end', (info, child) => {
-    if (info.id === workflow.id) childStarted = true
-    // A completed turn without structured output is a report defect. The
-    // subagent seam also reports it as failed, unlike its authoritative turn.
-    if (info.id === workflow.id && child.outcome !== 'completed'
-      && !(child.outcome === 'failed' && completedTurns.has(child.childId))) {
-      childFailure = `Conductor ${stage} child ${child.outcome}`
-    }
-  })
-  try {
-    try {
-      const result: WorkflowResult = await workflow.result
-      if (childFailure !== undefined) throw new Error(childFailure)
-      if (result.stopReason !== 'completed') {
-        throw new Error(`Conductor ${stage} workflow stopped: ${result.stopReason}`)
-      }
-      return result.value
-    } finally {
-      try {
-        await workflow.dispose()
-      } finally {
-        stopObserving()
-        stopSessionObserving()
-        stopChildPresentation()
-      }
-    }
-  } catch (cause) {
-    throw new SpecialistExecutionFailure(cause, stage, childStarted)
-  }
 }
 
 /** Reject removed or changed command definitions before every resumed dispatch. */
@@ -696,8 +614,8 @@ async function runSpecialist(
   }
   const persona = [roleBody, specialistBody, ralphBody].filter(value => value !== undefined).join('\n\n')
   if (run.admission.purpose === 'analysis') {
-    return await runWorkflowChild(ctx, providerName, parent, signal, stage, run,
-      composeSpecialistPrompt(stage, run, new Map(), []), ANALYSIS_SCHEMA, persona) as AnalysisEnvelope
+    return await dispatchAnalysisChild({ mode: 'producer', ctx, providerName, parent, signal, stage, run,
+      prompt: composeSpecialistPrompt(stage, run, new Map(), []), persona }) as AnalysisEnvelope
   }
   assertCatalogBindings(run, catalog)
   const qualityExecutions: QualityExecutionRecord[] = []

@@ -10,7 +10,7 @@ The [analysis critic design in EN](../../proposed/feature/2026-10-28-conductor-a
 
 ## Decision
 
-[Challenge validation](../../../../packages/conductor/conductor/src/analysis-challenge.ts) and [captured-material selection](../../../../packages/conductor/conductor/src/analysis-materials.ts) are pure internal modules. Neither is imported by the analysis runtime or the package entry point. They create no checkpoint, event, dispatch, configuration value or public package export.
+[Challenge validation](../../../../packages/conductor/conductor/src/analysis-challenge.ts) and [captured-material selection](../../../../packages/conductor/conductor/src/analysis-materials.ts) are pure internal modules. The prepared critic dispatch imports them through source subpaths; the active analysis driver and package entry point do not. The helpers create no checkpoint, event, configuration value or public package export.
 
 The challenge validator treats a model result as untrusted. It checks the run, candidate version and hash, ordered material IDs, critic identity and attempt, findings, conclusion and the conditional `defect` field. One shared semantic check rejects duplicate material and finding IDs, findings that cite material outside the challenge, and conclusions inconsistent with finding severity. Validation, challenge hashing and validation of every `previous` challenge use this check, so a semantically invalid challenge cannot receive a hash. `does_not_hold` requires `scope | plan | report`; `holds` forbids `defect` and unresolved major or critical findings. A foreign, stale, contradictory or route-invalid result fails validation. The typed defect is the sole source for later rework routing; free-text findings cannot select a role.
 
@@ -24,4 +24,4 @@ Material spans identify admitted captured material and inclusive line ranges. Va
 
 ## Consequences
 
-Conductor still runs its existing analysis routes, persists format 4 and produces the same snapshots. The isolated modules add no critic tokens or model-visible input until dispatch deliberately uses them. Unit and property tests pin the schema, stale and contradictory rejection, span/hash validation, deterministic bounded extraction and stable challenge hashing at 100% source coverage. The linked proposal owns the later route, persistence and owner-escalation changes.
+Conductor still runs its existing analysis routes, persists format 4 and produces the same snapshots. The prepared critic dispatch uses the isolated modules only when explicitly selected; current routes add no critic tokens or model-visible input. Unit and property tests pin the schema, stale and contradictory rejection, span/hash validation, deterministic bounded extraction and stable challenge hashing at 100% source coverage. The linked proposal owns the later route, persistence and owner-escalation changes.

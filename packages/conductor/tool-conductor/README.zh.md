@@ -16,6 +16,8 @@
 
 分析使用准入生产者 → Auditor → Arbiter；从 Detective 开始的建议由 Strategist 生成。分派包含不变的 `acceptance_criteria`、按原顺序逐字复制的指令，以及带有返工理由的 `gate_history`。候选标准不匹配时，返工给出完整预期列表及缺失、多余、变更的标准。子级过滤器与执行器守卫独立于提示词拒绝写入、shell、质量命令、批准和外部效果。Arbiter `accept | revise | blocked` 绑定精确候选/审计；接受终止为 `reported`，绝不是 GO 或宿主批准。修改要求新生产者版本及审计。实现保留执行 C 批准和质量/closeout 策略。[准入决策](../../../.agents/notes/implemented/feature/2026-10-25-conductor-intake-and-report-completion.md)规定路线与因果返工。
 
+内部类型化分析子级分派还接受 critic 模式。它通过 workflow 引擎预留真实子级 id，从经过哈希核验的已准入材料行范围构造 P1 的候选绑定提示词，选择 `analysisCritic` 元数据而非生产者正文，并对每个子级应用包含 reasoning 的输出上限。批评者没有文件或搜索工具。结果在使用前由 P1 的 `AnalysisChallenge` 验证器分类。当前 v4 分析路由不选择该模式；[批评者决策](../../../.agents/notes/implemented/feature/2026-11-03-conductor-analysis-critic-instructions.md)记录保持生产者提示词不变的原因。
+
 `maxReworkPerGate` 是经验证的正安全整数，默认值为 2；随附预设也设置为 2。报告格式和 baseline 提案错误在该门禁预算内重试同一角色，包括 Arbiter 报告修复。专家 schema 省略 `allowedPaths` 和 `excludedPaths`；运行时插入该运行的所有者路径和排除项，不扩大权限。专家编写路径属于报告错误，伪造宿主绑定或权限则立即停止。Workflow 或传输故障在保存已完成宿主质量记录的检查点后传播，不编造专家 envelope 或门禁决策。只有已完成但没有有效报告的工作才进入报告修复。
 
 决策、报告和阻塞结果包含 `runId`、已达 `stage`、生命周期状态、含理由的完整 `gateHistory`，以及从运行时门禁尝试推导的 `specialistsRan`，包括被拒绝的报告。停放和所有者拒绝问题的结果保留原始升级原因；回答功能不可用的说明不使用实现阶段标签。运行创建前的错误明确说明没有启动 Conductor 运行；创建后的错误包含最后持久化运行状态及已确认启动但失败的子级，不编造门禁决策。这些诊断不将报告、受阻运行或 Arbiter GO 转变为执行权限。
