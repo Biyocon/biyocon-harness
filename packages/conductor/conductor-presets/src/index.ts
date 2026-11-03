@@ -80,7 +80,8 @@ function hasAnalysisCriticInstructions(skill: SkillDefinition): boolean {
  * Mount and validate the installation's role and protocol providers.
  * @param ctx - preset context carrying its isolated skill registry.
  * @param config - absolute installation directories, not task workspace paths.
- * @throws when a path is relative, a required skill is absent or empty, or the shared protocol is unreadable or empty.
+ * @throws when a path is relative, a required skill is absent or empty,
+ * critic metadata is invalid, or the shared protocol is unreadable or empty.
  */
 export async function apply(ctx: Context, config: Config): Promise<void> {
   for (const field of ['rolesDirectory', 'protocolDirectory', 'sharedProtocolFile'] as const) {
