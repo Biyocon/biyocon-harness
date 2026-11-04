@@ -1,7 +1,7 @@
 /** Causal gate-history validation shared by both admitted workflow purposes. */
 import type { ConductorRun, ConductorStage, GateId, RepairReturn } from './types.ts'
-import { admittedRoute, GATED_STAGES, transitionRoute } from './intake.ts'
-import { ownerContinuationAt } from './owner-ledger.ts'
+import { admittedRoute, GATED_STAGES, reportProducer, transitionRoute } from './intake.ts'
+import { ownerContinuationAt, ownerContinuationRoute } from './owner-ledger.ts'
 
 /**
  * Reject forged skips, invalid causal returns, reset budgets and impossible stages.
@@ -13,6 +13,8 @@ export function validateIntakeHistory(run: ConductorRun): void {
   let currentStage: ConductorStage = 'detective'
   let destination: ConductorStage = run.admission.entry
   let repairReturns: RepairReturn[] = []
+  let analysisMode: ConductorRun['analysisMode'] = run.admission.purpose === 'analysis'
+    && run.admission.entry === reportProducer(run.admission) ? 'producer' : null
   let evaluated = false
   let terminal = false
   const counts = new Map<GateId, number>()
@@ -24,7 +26,9 @@ export function validateIntakeHistory(run: ConductorRun): void {
       }
       currentStage = continuation.plan.stage
       destination = currentStage
-      if (continuation.question.proposal !== undefined) repairReturns = []
+      const resumed = ownerContinuationRoute(run, continuation.question, continuation.plan, repairReturns)
+      analysisMode = resumed.analysisMode
+      repairReturns = continuation.question.proposal === undefined ? resumed.repairReturns : []
       terminal = false
     }
     const gate = run.history[historyIndex]
@@ -34,7 +38,7 @@ export function validateIntakeHistory(run: ConductorRun): void {
     if (terminal) throw new Error('Conductor history cannot continue after a terminal gate')
     const keys = gate.kind === 'skipped'
       ? ['kind', 'gate', 'stage', 'decision', 'reason', 'purpose', 'deliverable', 'route', 'basis', 'evidenceReviewed', 'stateUpdate', 'nextStage']
-      : ['kind', 'gate', 'stage', 'decision', 'origin', 'defectClass', 'executionBaselineHash', 'basis', 'evidenceReviewed', 'stateUpdate', 'nextStage']
+      : ['kind', 'gate', 'stage', 'decision', 'origin', 'analysis', 'defectClass', 'executionBaselineHash', 'basis', 'evidenceReviewed', 'stateUpdate', 'nextStage']
     if (Object.keys(gate).some(key => !keys.includes(key))) throw new Error('Conductor gate history contains unsupported fields')
     const index = order.indexOf(currentStage)
     if (index < 0 || gate.stage !== currentStage || gate.gate !== 'ABCDEFG'[index]) {
@@ -56,8 +60,24 @@ export function validateIntakeHistory(run: ConductorRun): void {
       continue
     }
     if (metadata.kind !== 'evaluated' || currentStage !== destination) throw new Error('Conductor evaluated gate bypasses required skip records')
-    if (metadata.origin !== undefined && (metadata.origin !== 'intake-validation' || evaluated || gate.decision !== 'rework')) {
-      throw new Error('Conductor admission repair must precede specialist evaluation')
+    if (metadata.origin === 'intake-validation') {
+      if (evaluated || gate.decision !== 'rework' || gate.analysis !== undefined) {
+        throw new Error('Conductor admission repair must precede specialist evaluation')
+      }
+    } else if (metadata.origin === 'critic-budget') {
+      if (run.admission.purpose !== 'analysis' || gate.gate !== 'C' || analysisMode !== 'critic'
+        || gate.decision !== 'escalate' || gate.analysis !== undefined) {
+        throw new Error('Conductor critic budget must stop its exact Gate C dispatch')
+      }
+    } else if (metadata.origin !== undefined) throw new Error('Conductor gate has an unknown source')
+    if (run.admission.purpose === 'analysis' && gate.gate === 'C' && metadata.origin === undefined
+      && gate.analysis?.mode !== analysisMode) {
+      throw new Error('Conductor Gate C mode does not match its causal route')
+    }
+    if (run.admission.purpose === 'analysis' && metadata.origin === undefined
+      && gate.decision !== 'abort' && currentStage === reportProducer(run.admission) && analysisMode === 'producer'
+      && gate.analysis?.mode !== 'producer') {
+      throw new Error('Conductor report producer gate must record its typed dispatch')
     }
     evaluated = true
     terminal = gate.decision === 'abort' || gate.decision === 'escalate' || gate.gate === 'G' && gate.decision === 'pass'
@@ -66,16 +86,29 @@ export function validateIntakeHistory(run: ConductorRun): void {
       if (count > run.budget.maxReworkPerGate) throw new Error('Conductor gate exceeds its per-gate rework budget')
       counts.set(gate.gate, count)
     }
-    const transition = transitionRoute({ admission: run.admission, currentStage, repairReturns }, gate.decision, gate.defectClass,
-      gate.decision === 'pass' ? undefined : gate.nextStage)
+    const producerPassedAtC = run.admission.purpose === 'analysis' && gate.gate === 'C'
+      && gate.analysis?.mode === 'producer' && gate.decision === 'pass'
+    const transition: { nextStage: ConductorStage | undefined; repairReturns: RepairReturn[] } = producerPassedAtC
+      ? { nextStage: 'devils-advocate' as const, repairReturns: [...repairReturns] }
+      : transitionRoute({ admission: run.admission, analysisMode, currentStage, repairReturns }, gate.decision,
+        gate.defectClass, gate.decision === 'pass' ? undefined : gate.nextStage)
     repairReturns = transition.repairReturns
     destination = transition.nextStage ?? currentStage
+    if (run.admission.purpose === 'analysis') {
+      analysisMode = producerPassedAtC ? 'critic'
+        : gate.decision === 'escalate' ? analysisMode
+          : gate.decision === 'rework' && gate.analysis?.mode === 'critic' && gate.analysis.challengeHash === undefined
+            ? 'critic'
+            : (gate.decision === 'pass' || gate.decision === 'rework') && destination === reportProducer(run.admission)
+              ? 'producer'
+              : gate.decision === 'pass' && destination === 'devils-advocate' ? 'critic' : null
+    }
     const nextIndex = order.indexOf(destination)
     const immediate = gate.decision === 'pass' && nextIndex > index + 1 ? order[index + 1] : transition.nextStage
     if (gate.nextStage !== immediate) throw new Error('Conductor gate successor does not match its admitted transition')
     currentStage = immediate ?? currentStage
   }
-  if (currentStage !== destination || run.currentStage !== currentStage
+  if (currentStage !== destination || run.currentStage !== currentStage || run.analysisMode !== analysisMode
     || JSON.stringify(repairReturns) !== JSON.stringify(run.repairReturns)) {
     throw new Error('Conductor current stage or pending repairs do not match its complete gate history')
   }

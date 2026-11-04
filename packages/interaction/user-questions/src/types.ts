@@ -48,7 +48,8 @@ export interface ConductorOwnerIntent {
   revision: number
   gate: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'
   role: 'detective' | 'strategist' | 'devils-advocate' | 'headsman' | 'auditor' | 'integrator' | 'arbiter'
-  attempt: number
+  /** Null only for a host-owned critic budget escalation before a child starts. */
+  attempt: number | null
   reason: string
   items: { id: string; prompt: string; options: string[] }[]
   proposal?: { before: ConductorOwnerMandate; after: ConductorOwnerMandate; hash: string }

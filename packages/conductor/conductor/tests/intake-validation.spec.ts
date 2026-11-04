@@ -4,17 +4,17 @@ import type { ConductorRun } from '../src/index.ts'
 import { analysisEnvelopeProblem, candidateProblem, driveAnalysis, reportDecisionProblem } from '../src/analysis.ts'
 import { parseAdmission, transitionRoute } from '../src/intake.ts'
 import { reworkTarget } from '../src/routing.ts'
-import { acceptedReport, analysisReply, analysisRun, implementationAdmission } from './intake-fixtures.ts'
+import { acceptedReport, analysisReply, analysisRun, implementationAdmission, withAnalysisDispatch } from './intake-fixtures.ts'
 
 const materials = () => analysisRun().admission.materials
 const validChoice = { purpose: 'analysis', entry: 'detective', deliverable: 'answer', rationale: 'Answer the current owner question.' }
 
 async function reported() {
-  return (await drive(analysisRun(), {
+  return (await drive(analysisRun(), withAnalysisDispatch({
     authorizeExecution: () => { throw new Error('No analysis approval') },
     dispatchSpecialist: (stage, run) => Promise.resolve(analysisReply(run, stage)),
     dispatchArbiter: run => Promise.resolve(acceptedReport(run)),
-  })).run
+  }))).run
 }
 
 describe('Conductor admission rejects unsupported or unbound material', () => {
@@ -61,11 +61,11 @@ describe('Conductor analysis validation and recovery', () => {
     const run = createRun(original.runId, { admission, objective: original.objective, authority: original.authority,
       scope: original.scope, acceptanceCriteria: original.acceptanceCriteria })
     const called: string[] = []
-    const result = await drive(run, {
+    const result = await drive(run, withAnalysisDispatch({
       authorizeExecution: () => { throw new Error('No analysis approval') },
       dispatchSpecialist(stage, value) { called.push(stage); return Promise.resolve(analysisReply(value, stage)) },
       dispatchArbiter: value => Promise.resolve(acceptedReport(value)),
-    }, (value) => { expect(parseRun(serializeRun(value))).toEqual(value); return Promise.resolve() })
+    }), (value) => { expect(parseRun(serializeRun(value))).toEqual(value); return Promise.resolve() })
     expect(called[0]).toBe(defect === 'scope' ? 'detective' : 'strategist')
     expect(result.run.history[2]).toMatchObject({ kind: 'evaluated', origin: 'intake-validation', gate: 'C', decision: 'rework', defectClass: defect })
     expect(result.run.status).toBe('reported')
@@ -73,41 +73,41 @@ describe('Conductor analysis validation and recovery', () => {
 
   it('resumes captured analysis after a checkpoint without rerunning intake or duplicating skips', async () => {
     let saved: ConductorRun | undefined
-    await expect(drive(analysisRun(), {
+    await expect(drive(analysisRun(), withAnalysisDispatch({
       authorizeExecution: () => { throw new Error('No approval') },
       dispatchSpecialist: (stage, run) => Promise.resolve(analysisReply(run, stage)),
       dispatchArbiter: run => Promise.resolve(acceptedReport(run)),
-    }, (run) => { saved = run; return Promise.reject(new Error('simulated process interruption')) })).rejects.toThrow(/interruption/)
+    }), (run) => { saved = run; return Promise.reject(new Error('simulated process interruption')) })).rejects.toThrow(/interruption/)
     const recovered = parseRun(serializeRun(saved!))
     validateResumable(recovered)
     const calls: string[] = []
-    const result = await drive(recovered, {
+    const result = await drive(recovered, withAnalysisDispatch({
       authorizeExecution: () => { throw new Error('No approval') },
       dispatchSpecialist(stage, run) { calls.push(stage); return Promise.resolve(analysisReply(run, stage)) },
       dispatchArbiter(run) { calls.push('arbiter'); return Promise.resolve(acceptedReport(run)) },
-    })
-    expect(calls).toEqual(['auditor', 'arbiter'])
+    }, () => calls.push('devils-advocate')))
+    expect(calls).toEqual(['devils-advocate', 'auditor', 'arbiter'])
     expect(result.run.history.filter(gate => gate.gate === 'B')).toHaveLength(1)
   })
 
   it('keeps each gate budget independent and escalates a third Arbiter revision', async () => {
     let version = 0
-    const result = await drive(analysisRun(), {
+    const result = await drive(analysisRun(), withAnalysisDispatch({
       authorizeExecution: () => { throw new Error('No approval') },
       dispatchSpecialist: (stage, run) => Promise.resolve(analysisReply(run, stage, `report-${++version}`)),
       dispatchArbiter: run => Promise.resolve({ ...acceptedReport(run), decision: 'revise' }),
-    }, (run) => { expect(parseRun(serializeRun(run))).toEqual(run); return Promise.resolve() })
+    }), (run) => { expect(parseRun(serializeRun(run))).toEqual(run); return Promise.resolve() })
     expect(result.kind).toBe('blocked')
     expect(result.run.history.filter(gate => gate.gate === 'G').map(gate => gate.decision)).toEqual(['rework', 'rework', 'escalate'])
     expect(result.run.history.filter(gate => gate.gate === 'A').every(gate => gate.decision === 'pass')).toBe(true)
   })
 
   it.each(['blocked', 'failed'] as const)('retains honest %s specialist findings', async (status) => {
-    const result = await drive(analysisRun(), {
+    const result = await drive(analysisRun(), withAnalysisDispatch({
       authorizeExecution: () => { throw new Error('No approval') },
       dispatchSpecialist: (stage, run) => Promise.resolve({ ...analysisReply(run, stage), status, candidate: undefined }),
       dispatchArbiter: () => { throw new Error('No Arbiter after blocker') },
-    })
+    }))
     expect(result.kind).toBe('blocked')
     expect(parseRun(serializeRun(result.run))).toEqual(result.run)
     expect(result.run.analysisReports[0]!.status).toBe(status)
@@ -131,11 +131,11 @@ describe('Conductor analysis validation and recovery', () => {
   })
 
   it('retains an Arbiter blocker and a host abort without granting report or execution completion', async () => {
-    const result = await drive(analysisRun(), {
+    const result = await drive(analysisRun(), withAnalysisDispatch({
       authorizeExecution: () => { throw new Error('No approval') },
       dispatchSpecialist: (stage, run) => Promise.resolve(analysisReply(run, stage)),
       dispatchArbiter: run => Promise.resolve({ ...acceptedReport(run), decision: 'blocked' }),
-    })
+    }))
     expect(result.kind).toBe('blocked')
     expect(parseRun(serializeRun(result.run)).status).toBe('escalated')
     const aborted = recordGate(analysisRun(), { decision: 'abort', basis: ['Owner stopped the analysis.'], evidenceReviewed: [], stateUpdate: 'abort' })

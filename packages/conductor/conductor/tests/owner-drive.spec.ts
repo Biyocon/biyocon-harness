@@ -3,7 +3,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { ConductorRunId, QualityCommandId, QualityEvidenceId, SpecialistExecutionFailure, applyScriptedOwnerAnswer, consumeOwnerContinuation, contentHash, createRun, currentAuditHash, drive, executionBaselineHash, ownerMandateHash, parseRun, parkOwnerQuestion, recordGate, serializeRun } from '../src/index.ts'
 import { analysisEnvelopeProblem } from '../src/analysis.ts'
 import type { AnalysisEnvelope, ConductorDispatcher, ConductorRun, ConductorStage, SpecialistEnvelope, QualityExecutionRecord } from '../src/index.ts'
-import { analysisReply, analysisRun, implementationAdmission } from './intake-fixtures.ts'
+import { analysisReply, analysisRun, implementationAdmission, withAnalysisDispatch } from './intake-fixtures.ts'
 
 function implementation(): ConductorRun {
   return createRun(ConductorRunId('CON-2026-0037'), {
@@ -19,9 +19,9 @@ function envelope(run: ConductorRun, stage: ConductorStage, overrides: Partial<S
 }
 
 function dispatcher(reply: (stage: ConductorStage, run: ConductorRun) => unknown): ConductorDispatcher {
-  return { dispatchSpecialist: (stage, run) => Promise.resolve(reply(stage, run)),
+  return withAnalysisDispatch({ dispatchSpecialist: (stage, run) => Promise.resolve(reply(stage, run)),
     dispatchArbiter: () => { throw new Error('Must not reach Arbiter') },
-    authorizeExecution: () => { throw new Error('Must not authorize execution') } }
+    authorizeExecution: () => { throw new Error('Must not authorize execution') } })
 }
 
 function analysisBlocked(run: ConductorRun, overrides: Record<string, unknown> = {}) {
@@ -121,7 +121,7 @@ describe('P1 owner escalation classification in the driver', () => {
       ownerCapabilities: { allowedPaths: ['.'], excludedPaths: [], qualityCommandIds: ['unit', 'other'] } },
     { decision: 'escalate', basis: ['Approve an exact command.'], evidenceReviewed: [], stateUpdate: 'Await mandate.' })
     const question = parkOwnerQuestion(initial, 'command-question', { kind: 'recoverable', cause: 'authority-amendment', reason: 'Approve an exact command.' },
-      { childId: SessionId('child-1'), attempt: 1, reportHash: contentHash(JSON.stringify(report)), report }, [], proposal)
+      { sourceKind: 'child', childId: SessionId('child-1'), attempt: 1, reportHash: contentHash(JSON.stringify(report)), report }, [], proposal)
     const answered = applyScriptedOwnerAnswer(question, { source: 'scripted-test-provider', rootSessionId: SessionId('owner-root'),
       questionId: 'command-question', expectedRevision: 1, action: 'approve', answers: [], proposalHash: ownerMandateHash(proposal) })
     const consumed = consumeOwnerContinuation(answered, 'command-question')
@@ -153,7 +153,7 @@ describe('P1 owner escalation classification in the driver', () => {
     const report = { status: 'blocked', clarifications: [question] }
     const escalated = recordGate(initial, { decision: 'escalate', basis: ['Clarify naming.'], evidenceReviewed: [], stateUpdate: 'Wait.' })
     let run = parkOwnerQuestion(escalated, 'owner-question', { kind: 'recoverable', cause: 'clarification', reason: 'Clarify naming.' },
-      { childId: SessionId('child-1'), attempt: 1, reportHash: contentHash(JSON.stringify(report)), report }, [question])
+      { sourceKind: 'child', childId: SessionId('child-1'), attempt: 1, reportHash: contentHash(JSON.stringify(report)), report }, [question])
     if (state === 'answer') run = applyScriptedOwnerAnswer(run, { source: 'scripted-test-provider', rootSessionId: SessionId('owner-root'),
       questionId: 'owner-question', expectedRevision: 1, action: 'answer_continue', answers: [{ itemId: 'naming', text: 'Use the repository convention.' }] })
     const dispatch = vi.fn()

@@ -18,9 +18,10 @@ import type { ConductorRun, EvaluatedGateRecord as GateRecord, QualityCommandBin
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
-    recordFormatVersion: 4,
+    recordFormatVersion: 5,
     ownerSessionId: null, ownerCapabilities: null, ownerRevision: 0, ownerLedger: [],
-    admission: implementationAdmission(), repairReturns: [], analysisReports: [], reportCandidates: [],
+    admission: implementationAdmission(), repairReturns: [], analysisMode: null,
+    analysisReports: [], reportCandidates: [], analysisChallenges: [],
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -211,7 +212,7 @@ function specialistReport() {
 describe('dsh-conductor persistence', () => {
   it('rejects version 1 and removed budget fields instead of migrating them', () => {
     expect(() => parseRun(JSON.stringify({ ...makeRun(), recordFormatVersion: 1 })))
-      .toThrow(/format 1 is unsupported; expected 4/)
+      .toThrow(/format 1 is unsupported; expected 5/)
     expect(() => parseRun(JSON.stringify({
       ...makeRun(), budget: { maxReworkPerGate: 2, maxReworkCycles: 3, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 },
     }))).toThrow(/budget contains unsupported fields/)

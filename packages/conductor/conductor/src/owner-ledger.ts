@@ -3,9 +3,9 @@
  * @module @deepseek-ai/dsh-conductor/owner-ledger
  */
 import { z } from 'zod'
-import { contentHash } from './intake.ts'
+import { contentHash, reportProducer, transitionRoute } from './intake.ts'
 import { executionBaselineHash } from './quality.ts'
-import type { ConductorRun, ConductorStage, GateId, GateRecord, SpecialistProblem } from './types.ts'
+import type { ConductorRun, ConductorStage, GateId, GateRecord, RepairReturn, SpecialistProblem } from './types.ts'
 import type { OwnerEscalation, OwnerInteraction, OwnerMandate, OwnerQuestion, OwnerQuestionItem, OwnerQuestionSource, OwnerResumePlan, ScriptedOwnerResponse } from './owner-types.ts'
 
 /**
@@ -29,10 +29,16 @@ const itemSchema = z.object({ id: identity, prompt: text, options: distinct }).s
 const scriptedSourceSchema = z.looseObject({ source: z.enum(['scripted-test-provider', 'host-ui']) })
 const questionSchema = z.object({
   id: identity, runId: identity, rootSessionId: identity, gateIndex: count, historyLength: count,
-  stage, childId: identity, attempt: count.positive(), reportHash: hash, report: z.json(), mandateRevision: count,
+  stage, sourceKind: z.enum(['child', 'host']), childId: identity.nullable(), attempt: count.positive().nullable(),
+  reportHash: hash, report: z.json(), mandateRevision: count,
   mandateHash: hash, baselineHash: hash.nullable(), cause: z.enum(['clarification', 'authority-amendment', 'rework-exhausted']),
   reason: text, items: z.array(itemSchema).max(32), proposal: mandateSchema.optional(),
-}).strict()
+}).strict().superRefine((question, context) => {
+  if (question.sourceKind === 'child' ? question.childId === null || question.attempt === null
+    : question.childId !== null || question.attempt !== null) {
+    context.addIssue({ code: 'custom', message: 'owner source identity must match its kind' })
+  }
+})
 const answerSchema = z.object({ itemId: identity, text, optionId: identity.optional() }).strict()
 const planSchema = z.object({ id: identity, questionId: identity, gateIndex: count, gate, stage, mandateRevision: count }).strict()
 const position = { revision: count.positive(), previousRevision: count, historyLength: count }
@@ -157,6 +163,54 @@ export function ownerContinuationAt(
   return { question: question.question, plan: answer.plan }
 }
 
+function challengeReworkGate(run: ConductorRun, question: OwnerQuestion) {
+  const source = run.history[question.gateIndex]
+  return run.admission.purpose === 'analysis' && source?.kind === 'evaluated'
+    && source.gate === 'C' && source.analysis?.mode === 'critic'
+    && source.analysis.challengeHash !== undefined && source.analysis.conclusion === 'does_not_hold'
+    ? source : undefined
+}
+
+function resumeStage(run: ConductorRun, question: OwnerQuestion): ConductorStage {
+  if (question.proposal !== undefined) return 'strategist'
+  const source = challengeReworkGate(run, question)
+  if (source === undefined) return question.stage
+  if (source.nextStage === undefined || !['detective', 'strategist', 'devils-advocate'].includes(source.nextStage)) {
+    fail('critical challenge has no read-only owner continuation')
+  }
+  return source.nextStage
+}
+
+/**
+ * Reconstruct the read-only dispatch mode and prerequisite returns after an owner answer.
+ * @param run - exact recorded escalation and accepted challenge.
+ * @param question - question bound to the escalated gate.
+ * @param plan - reserved host-derived continuation stage.
+ * @param repairReturns - pending prerequisite returns at the owner checkpoint.
+ * @returns resumed analysis mode and return stack; neither grants execution authority.
+ */
+export function ownerContinuationRoute(
+  run: ConductorRun, question: OwnerQuestion, plan: OwnerResumePlan, repairReturns: RepairReturn[],
+): { analysisMode: ConductorRun['analysisMode']; repairReturns: RepairReturn[] } {
+  if (run.admission.purpose !== 'analysis') return { analysisMode: null, repairReturns }
+  const source = run.history[question.gateIndex]
+  const challengeGate = challengeReworkGate(run, question)
+  if (challengeGate !== undefined) {
+    const challenge = run.analysisChallenges.find(item => item.hash === challengeGate.analysis?.challengeHash)
+    if (challenge?.challenge.conclusion !== 'does_not_hold') fail('owner continuation requires its exact failed challenge')
+    const transition = transitionRoute({ admission: run.admission, analysisMode: 'critic',
+      currentStage: question.stage, repairReturns }, 'rework', challenge.challenge.defect, plan.stage)
+    return { analysisMode: plan.stage === reportProducer(run.admission) ? 'producer' : null,
+      repairReturns: transition.repairReturns }
+  }
+  if (plan.stage === 'devils-advocate' && source?.kind === 'evaluated') {
+    const mode = source.analysis?.mode ?? (source.origin === 'critic-budget' ? 'critic' : undefined)
+    if (mode === undefined) fail('analysis owner continuation requires typed Gate C dispatch')
+    return { analysisMode: mode, repairReturns }
+  }
+  return { analysisMode: plan.stage === reportProducer(run.admission) ? 'producer' : null, repairReturns }
+}
+
 function validateAnswers(
   question: OwnerQuestion, action: 'approve' | 'answer_continue', answers: ScriptedOwnerResponse['answers'], proposalHash?: string,
 ): void {
@@ -217,12 +271,33 @@ export function assertOwnerLedger(run: ConductorRun): void {
     if (entry.kind === 'question') {
       const question = entry.question
       const source = run.history[question.gateIndex]
-      if (pending !== undefined || questions.has(question.id) || children.has(question.childId)
+      if (pending !== undefined || questions.has(question.id) || (question.childId !== null && children.has(question.childId))
         || question.gateIndex <= previousQuestionGate
         || question.runId !== run.runId || question.rootSessionId !== run.ownerSessionId
         || question.historyLength !== entry.historyLength || question.gateIndex !== entry.historyLength - 1
         || source?.kind !== 'evaluated' || source.decision !== 'escalate' || source.stage !== question.stage
         || source.gate !== gateByStage[question.stage] || question.childId === question.rootSessionId) fail('question is not bound to its exact escalated gate and root/child identity')
+      if (challengeReworkGate(run, question) !== undefined) resumeStage(run, question)
+      if (question.sourceKind === 'host') {
+        const report = question.report
+        const candidateIndex = run.history.slice(0, question.gateIndex).filter(record => record.kind === 'evaluated'
+          && record.decision === 'pass' && record.stage === reportProducer(run.admission)
+          && record.analysis?.mode === 'producer').length - 1
+        if (source.gate !== 'C' || source.origin !== 'critic-budget' || source.analysis !== undefined
+          || !report || typeof report !== 'object' || Array.isArray(report)
+          || Object.keys(report).sort().join(',') !== 'candidateHash,kind,reason'
+          || !('kind' in report) || report.kind !== 'critic-budget'
+          || !('candidateHash' in report) || report.candidateHash !== run.reportCandidates[candidateIndex]?.hash
+          || !('reason' in report) || typeof report.reason !== 'string' || report.reason !== source.basis[0]
+          || source.stateUpdate !== `critic blocked: ${report.reason}`) {
+          fail('host owner question must match the exact critic budget gate and candidate')
+        }
+      } else if (source.origin === 'critic-budget' || question.childId === null || question.attempt === null) {
+        fail('child owner question requires a real child source')
+      } else if (source.analysis?.childId !== undefined && (question.childId !== source.analysis.childId
+        || source.analysis.mode === 'critic' && question.attempt !== source.analysis.criticAttempt)) {
+        fail('child owner question must match the exact analysis dispatch')
+      }
       if (question.mandateRevision !== mandateRevision || question.mandateHash !== ownerMandateHash(mandate)) fail('question mandate is stale')
       if (question.reportHash !== contentHash(JSON.stringify(question.report))) fail('question report hash does not match its captured child output')
       if (question.baselineHash !== null && !run.baselineHistory.some(baseline => executionBaselineHash(baseline) === question.baselineHash)) fail('question references an unknown historical baseline')
@@ -230,7 +305,7 @@ export function assertOwnerLedger(run: ConductorRun): void {
       if ((counts.get(source.gate) ?? 0) >= run.budget.maxOwnerReassessmentsPerGate) fail(`gate ${source.gate} owner reassessment limit exhausted`)
       validateProposal(run, question)
       questions.add(question.id)
-      children.add(question.childId)
+      if (question.childId !== null) children.add(question.childId)
       previousQuestionGate = question.gateIndex
       pending = question
       answer = undefined
@@ -243,7 +318,7 @@ export function assertOwnerLedger(run: ConductorRun): void {
       const sourceGate = (run.history[pending.gateIndex] as GateRecord).gate
       const nextMandateRevision = mandateRevision + (pending.proposal === undefined ? 0 : 1)
       if (entry.plan.id !== `${pending.id}:resume` || entry.plan.questionId !== pending.id || entry.plan.gateIndex !== pending.gateIndex
-        || entry.plan.gate !== sourceGate || entry.plan.stage !== (pending.proposal === undefined ? pending.stage : 'strategist')
+        || entry.plan.gate !== sourceGate || entry.plan.stage !== resumeStage(run, pending)
         || entry.plan.mandateRevision !== nextMandateRevision) fail('resume plan differs from its host-derived gate and mandate')
       const consumed = (counts.get(sourceGate) ?? 0) + 1
       counts.set(sourceGate, consumed)
@@ -285,7 +360,7 @@ export function assertOwnerLedger(run: ConductorRun): void {
  * @param run - run whose last evaluated gate escalated.
  * @param id - host-minted stable question identity.
  * @param escalation - typed classification; terminal failures cannot become questions.
- * @param source - host-captured concrete child, attempt and report hash.
+ * @param source - host-captured child or budget report with exact hash.
  * @param items - complete required clarification items.
  * @param proposal - optional exact host-capability-validated mandate preview.
  * @returns an immutable parked run; no authority or gate allowance is granted.
@@ -346,7 +421,7 @@ export function applyScriptedOwnerAnswer(run: ConductorRun, response: ScriptedOw
   }
   const question = questionEntry.question
   const plan: OwnerResumePlan = { id: `${question.id}:resume`, questionId: question.id, gateIndex: question.gateIndex,
-    gate: (run.history[question.gateIndex] as GateRecord).gate, stage: question.proposal === undefined ? question.stage : 'strategist',
+    gate: (run.history[question.gateIndex] as GateRecord).gate, stage: resumeStage(run, question),
     mandateRevision: question.mandateRevision + (question.proposal === undefined ? 0 : 1) }
   return append({ ...run, ...question.proposal === undefined ? {} : { baseline: null, executionAuthorization: null } },
     { kind: 'answer', questionId: question.id, action: response.action, answers: structuredClone(response.answers),
@@ -364,7 +439,9 @@ export function consumeOwnerContinuation(run: ConductorRun, questionId: string):
   const last = run.ownerLedger.at(-1)
   if (last?.kind !== 'answer' || last.questionId !== questionId || run.status !== 'continuation_pending') fail('no unconsumed owner continuation for this question')
   const question = run.ownerLedger.find(entry => entry.kind === 'question' && entry.question.id === questionId) as Extract<OwnerInteraction, { kind: 'question' }>
-  return append({ ...run, currentStage: last.plan.stage,
-    ...question.question.proposal === undefined ? {} : { baseline: null, executionAuthorization: null, repairReturns: [] } },
+  const route = ownerContinuationRoute(run, question.question, last.plan, run.repairReturns)
+  return append({ ...run, currentStage: last.plan.stage, analysisMode: route.analysisMode,
+    repairReturns: question.question.proposal === undefined ? route.repairReturns : [],
+    ...question.question.proposal === undefined ? {} : { baseline: null, executionAuthorization: null } },
   { kind: 'consumed', questionId, planId: last.plan.id }, 'rework')
 }

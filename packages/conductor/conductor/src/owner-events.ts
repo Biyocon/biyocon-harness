@@ -176,7 +176,8 @@ export function replayOwnerInteractions(initial: ConductorRun, events: readonly 
       case 'question': {
         const q = entry.question
         run = parkOwnerQuestion(run, q.id, { kind: 'recoverable', cause: q.cause, reason: q.reason },
-          { childId: q.childId, attempt: q.attempt, report: q.report, reportHash: q.reportHash }, q.items, q.proposal)
+          { sourceKind: q.sourceKind, childId: q.childId, attempt: q.attempt,
+            report: q.report, reportHash: q.reportHash }, q.items, q.proposal)
         break
       }
       case 'answer': case 'rejected':

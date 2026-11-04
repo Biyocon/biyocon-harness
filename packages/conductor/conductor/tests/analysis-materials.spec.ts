@@ -19,7 +19,7 @@ const spans: AnalysisMaterialSpan[] = [
 function fixture(overrides: Partial<CriticInputSpec> = {}): CriticInputSpec {
   const candidate = overrides.candidate ?? { version: 'v1', deliverable: 'answer', content: 'A grounded answer.',
     criteria: [{ criterion: 'Answer the question.', outcome: 'Addressed.' }],
-    material_ids: [request.id, file.id], assumptions: [], limitations: [] }
+    material_ids: [request.id, file.id], material_spans: spans, assumptions: [], limitations: [] }
   return {
     candidate,
     identity: { run_id: 'CON-test-critic', candidate_hash: reportHash(candidate),
@@ -97,9 +97,10 @@ describe('analysis critic material selection', () => {
       { material_id: request.id, start_line: 3, end_line: 3 },
       { material_id: file.id, start_line: 1, end_line: 1 },
     ]
-    const expected = buildCriticInput(fixture({ materialSpans: ordered }))
+    const candidate = { ...fixture().candidate, material_spans: ordered }
+    const expected = buildCriticInput(fixture({ candidate, materialSpans: ordered }))
     fc.assert(fc.property(fc.shuffledSubarray(ordered, { minLength: 3, maxLength: 3 }), (shuffled) => {
-      expect(buildCriticInput(fixture({ materialSpans: shuffled }))).toEqual(expected)
+      expect(buildCriticInput(fixture({ candidate, materialSpans: shuffled }))).toEqual(expected)
     }))
   })
 
@@ -160,6 +161,12 @@ describe('analysis critic material selection', () => {
     }
   })
 
+  it('rejects valid excerpts that differ from the candidate-bound material spans', () => {
+    expect(() => buildCriticInput(fixture({ materialSpans: [
+      { material_id: request.id, start_line: 1, end_line: 1 }, spans[1]!,
+    ] }))).toThrow(/excerpts must match the candidate material_spans/)
+  })
+
   it('requires complete instructions, criteria and a positive safe token limit', () => {
     for (const spec of [
       { maxTokens: 0 }, { maxTokens: -1 }, { maxTokens: Number.POSITIVE_INFINITY }, { maxTokens: 1.5 },
@@ -188,7 +195,8 @@ describe('analysis critic material selection', () => {
     const line = fc.string({ minLength: 1, maxLength: 20 }).filter(value => value.trim().length > 0 && !/[\r\n]/.test(value))
     fc.assert(fc.property(fc.array(line, { minLength: 1, maxLength: 10 }), (lines) => {
       const material = captureIntakeMaterial('current-request', `${lines.join('\r\n')}\r\n`, request.sourceMessage)
-      const candidate = { ...fixture().candidate, material_ids: [material.id] }
+      const candidate = { ...fixture().candidate, material_ids: [material.id],
+        material_spans: [{ material_id: material.id, start_line: 1, end_line: lines.length }] }
       const valid = buildCriticInput(fixture({ candidate, materials: [material],
         materialSpans: [{ material_id: material.id, start_line: 1, end_line: lines.length }] }))
       expect(valid.excerpts[0]!.text).toBe(lines.join('\n'))
@@ -200,7 +208,8 @@ describe('analysis critic material selection', () => {
 
   it('accepts a final line without a terminator', () => {
     const material = captureIntakeMaterial('current-request', 'Single line', request.sourceMessage)
-    const candidate = { ...fixture().candidate, material_ids: [material.id] }
+    const candidate = { ...fixture().candidate, material_ids: [material.id],
+      material_spans: [{ material_id: material.id, start_line: 1, end_line: 1 }] }
     const result = buildCriticInput(fixture({ candidate, materials: [material],
       materialSpans: [{ material_id: material.id, start_line: 1, end_line: 1 }] }))
     expect(result.excerpts[0]!.text).toBe('Single line')

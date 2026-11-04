@@ -1,13 +1,14 @@
 import type { Context } from '@deepseek-ai/cordis'
-import { CallId, LlmAdapter, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { CallId, LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { CapturedReport, ConductorAdmission, GateRecord } from '@deepseek-ai/dsh-conductor'
 
-function* call(name: string, value: unknown): Generator<StreamChunk> {
+function* call(name: string, value: unknown, outputTokens?: number): Generator<StreamChunk> {
   const id = CallId(`installed-${name}`)
   const args = JSON.stringify(value)
   yield { type: 'block-start', index: 0, blockType: 'tool-call' }
   yield { type: 'tool-call-delta', index: 0, id, name, argumentsDelta: args }
   yield { type: 'block-end', index: 0, block: { type: 'tool-call', id, name, arguments: args } }
+  if (outputTokens !== undefined) yield { type: 'usage', usage: { inputTokens: 10, outputTokens } }
   yield { type: 'finish', reason: { kind: 'tool-calls' } }
 }
 
@@ -15,6 +16,10 @@ function* call(name: string, value: unknown): Generator<StreamChunk> {
 class InstalledConductorAdapter extends LlmAdapter {
   private gateCAttempts = 0
   private reportVersions = 0
+
+  override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
+    return Promise.resolve({ provider, id: model, name: model, enforcesMaxTokensIncludingReasoning: true as const })
+  }
 
   async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     const intake = process.env['DSH_CONDUCTOR_INTAKE_SCENARIO']
@@ -152,6 +157,38 @@ class InstalledConductorAdapter extends LlmAdapter {
         yield* text('The specialist returned its report to Conductor.')
         return
       }
+      const criticPrompt = options.messages.flatMap(message => message.content)
+        .find(block => block.type === 'text' && block.text.startsWith('{"identity":'))
+      if (criticPrompt?.type === 'text') {
+        const prompt = JSON.parse(criticPrompt.text) as { identity: {
+          run_id: string
+          candidate_hash: string
+          candidate_version: string
+          material_ids: string[]
+          critic_child_id: string
+          critic_attempt: number
+        } }
+        const identity = prompt.identity
+        const rework = scenario === 'critic-rework' && identity.critic_attempt === 1
+        const malformed = scenario === 'critic-budget'
+          || (scenario === 'critic-malformed' && identity.critic_attempt === 1)
+        yield* call('structured_output', {
+          run_id: identity.run_id, purpose: 'analysis',
+          candidate_hash: scenario === 'critic-stale' ? '0'.repeat(64) : identity.candidate_hash,
+          candidate_version: identity.candidate_version,
+          material_ids: identity.material_ids,
+          critic_child_id: identity.critic_child_id,
+          critic_attempt: identity.critic_attempt,
+          findings: rework || malformed ? [{
+            id: 'reasoning-risk', severity: 'major', claim: 'The priority does not follow from the cited material.',
+            rationale: 'The report does not compare the available alternatives.', material_ids: identity.material_ids,
+          }] : [],
+          conclusion: rework ? 'does_not_hold' : 'holds',
+          ...rework ? { defect: 'report' } : {},
+          summary: rework ? 'The recommendation needs a new candidate.' : 'The reasoning follows the admitted material.',
+        }, 5)
+        return
+      }
       const source = options.messages.flatMap(message => message.content)
         .find(block => block.type === 'text' && (block.text.includes('Dispatch package:\n') || block.text.includes('Analysis record:\n')))
       if (source?.type !== 'text') throw new Error('No typed Conductor dispatch in fixture')
@@ -164,6 +201,8 @@ class InstalledConductorAdapter extends LlmAdapter {
         current_report: CapturedReport | null
         report: CapturedReport
         audit_hash: string
+        analysis_challenges: Array<{ hash: string }>
+        current_challenge_hash: string
         acceptance_criteria: string[]
         gate_history: GateRecord[]
         report_criteria_instruction: string
@@ -181,8 +220,13 @@ class InstalledConductorAdapter extends LlmAdapter {
       }
       if (input.admission.purpose !== 'analysis') throw new Error('Fixture expects an analysis dispatch')
       if (arbiter) {
+        const challengeHash = input.analysis_challenges.at(-1)?.hash
+        if (challengeHash === undefined || challengeHash !== input.current_challenge_hash) {
+          throw new Error('Arbiter must receive the latest accepted analysis challenge')
+        }
         yield* call('structured_output', {
           run_id: input.run_id, purpose: 'analysis', candidate_hash: input.report.hash, audit_hash: input.audit_hash,
+          challenge_hash: challengeHash,
           decision: 'accept', basis: ['The independent audit reviewed the exact report and its sources.'],
           evidence_reviewed: [input.report.hash, input.audit_hash], open_risks: ['Static review is not command verification.'],
         })
@@ -197,6 +241,11 @@ class InstalledConductorAdapter extends LlmAdapter {
         throw new Error('An analysis write unexpectedly succeeded')
       }
       const ids = input.admission.materials.map(material => material.id)
+      const materialSpans = input.admission.materials.map((material) => {
+        const lines = material.content.split(/\r\n|\n|\r/)
+        return { material_id: material.id, start_line: 1,
+          end_line: lines.length - (lines.at(-1) === '' ? 1 : 0) }
+      })
       const producer = input.admission.entry === 'detective' && input.admission.deliverable === 'recommendations'
         ? 'strategist' : input.admission.entry
       const rework = scenario === 'rework' && input.stage === 'devils-advocate' && this.gateCAttempts++ === 0
@@ -230,17 +279,28 @@ class InstalledConductorAdapter extends LlmAdapter {
             ? '1. Document ownership first because it removes ambiguity. 2. Add examples next because they make the plan reviewable.'
             : 'The supplied plan has a clear scope but needs explicit ownership. This is a report, not implementation approval.',
           criteria: criteria.map(criterion => ({ criterion, outcome: 'Assessed from the captured input.' })),
-          material_ids: ids, assumptions: [], limitations: ['No implementation or test verification was performed.'],
+          material_ids: ids, material_spans: materialSpans,
+          assumptions: [], limitations: ['No implementation or test verification was performed.'],
         } } : {},
       })
       return
     }
     if (result === undefined) {
-      const later = ['plan', 'rework', 'source-repair'].includes(scenario)
+      const resumeRunId = process.env.DSH_CONDUCTOR_RESUME_RUN_ID
+      if (resumeRunId !== undefined) {
+        yield* call('conductor', {
+          runId: resumeRunId, purpose: 'analysis', entry: 'detective', deliverable: 'answer',
+          objective: 'Analyze the supplied plan.md and report the findings without modifying files.',
+          authority: { owner: 'snapshot-user' },
+        })
+        return
+      }
+      const later = ['plan', 'rework', 'source-repair', 'critic-entry-c'].includes(scenario)
+      const strategistEntry = scenario === 'critic-entry-b-answer' || scenario === 'critic-entry-b-recommendations'
       yield* call('conductor', {
         purpose: scenario === 'source-repair' ? 'implementation' : 'analysis',
-        entry: scenario === 'forbidden' ? 'auditor' : later ? 'devils-advocate' : 'detective',
-        ...scenario === 'source-repair' ? {} : { deliverable: ['recommendations', 'authority', 'criteria-rework'].includes(scenario) ? 'recommendations' : 'answer' },
+        entry: scenario === 'forbidden' ? 'auditor' : later ? 'devils-advocate' : strategistEntry ? 'strategist' : 'detective',
+        ...scenario === 'source-repair' ? {} : { deliverable: ['recommendations', 'authority', 'criteria-rework', 'critic-entry-c', 'critic-entry-b-recommendations'].includes(scenario) ? 'recommendations' : 'answer' },
         rationale: later ? 'The owner supplied a plan for review.' : 'Answer or recommend improvements from the current request.',
         objective: 'Analyze the supplied plan.md and report the findings without modifying files.',
         scope: ['plan.md'], scopeSources: ['current-request'], materialFiles: ['plan.md'],
@@ -256,7 +316,9 @@ class InstalledConductorAdapter extends LlmAdapter {
       if (result.toolCallId === 'installed-read' && result.isError) { yield* call('write', { file_path: 'plan.md', content: 'NO' }); return }
       if (result.toolCallId === 'installed-write' && result.isError) { yield* call('conductor', {}); return }
       if (!result.isError) throw new Error('Parent analysis fallback unexpectedly succeeded')
-    } else if (result.isError && scenario !== 'forbidden' && scenario !== 'missing-criteria') throw new Error(`Unexpected intake failure: ${JSON.stringify(result)}`)
+    } else if (result.isError && !['forbidden', 'missing-criteria', 'critic-image', 'critic-resume-pause'].includes(scenario)) {
+      throw new Error(`Unexpected intake failure: ${JSON.stringify(result)}`)
+    }
     yield* text('Conductor returned its recorded report or explicit rejection; no implementation was performed.')
   }
 }

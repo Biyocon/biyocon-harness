@@ -12,7 +12,7 @@ function run(proposal = false) {
     admission: admitIntake({ purpose: 'implementation', entry: 'detective', rationale: 'New task.' }, [material]),
   }), { decision: 'escalate', basis: ['Clarification.'], evidenceReviewed: [], stateUpdate: 'Await owner.' })
   return parkOwnerQuestion(initial, 'question', { kind: 'recoverable', cause: proposal ? 'authority-amendment' : 'clarification', reason: 'Which evidence?' },
-    { childId: SessionId('child'), attempt: 1, report: {}, reportHash: contentHash('{}') },
+    { sourceKind: 'child', childId: SessionId('child'), attempt: 1, report: {}, reportHash: contentHash('{}') },
     [{ id: 'evidence', prompt: 'Which evidence?', options: [] }],
     proposal ? { allowedPaths: ['docs'], excludedPaths: [], qualityCommandIds: ['unit'] } : undefined)
 }

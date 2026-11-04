@@ -9,7 +9,7 @@ import type { OwnerInteraction, OwnerMandate, ScriptedOwnerResponse } from '../s
 
 const root = SessionId('root-owner-session')
 const report = { status: 'blocked', summary: 'Which schema is canonical?' }
-const source = { childId: SessionId('detective-attempt-1'), attempt: 1, report, reportHash: contentHash(JSON.stringify(report)) }
+const source = { sourceKind: 'child' as const, childId: SessionId('detective-attempt-1'), attempt: 1, report, reportHash: contentHash(JSON.stringify(report)) }
 const items = [{ id: 'schema', prompt: 'Choose the canonical schema.', options: ['v1', 'v2'] }]
 const reason = { kind: 'recoverable' as const, cause: 'clarification' as const, reason: 'The scope requires an owner decision.' }
 const caps: OwnerMandate = { allowedPaths: ['.'], excludedPaths: ['secrets'], qualityCommandIds: ['unit'] }
@@ -55,7 +55,7 @@ describe('durable Conductor owner interactions', () => {
 
   it('captures genuine host session and immutable capabilities with independently validated limits', () => {
     const run = blocked()
-    expect(run).toMatchObject({ recordFormatVersion: 4, ownerSessionId: root, ownerRevision: 0, ownerLedger: [], ownerCapabilities: caps })
+    expect(run).toMatchObject({ recordFormatVersion: 5, ownerSessionId: root, ownerRevision: 0, ownerLedger: [], ownerCapabilities: caps })
     expect(run.ownerCapabilities).not.toBe(caps)
     expect(run.budget.maxOwnerReassessmentsPerGate).toBe(2)
     expect(() =>{  assertOwnerLedger(run) }).not.toThrow()

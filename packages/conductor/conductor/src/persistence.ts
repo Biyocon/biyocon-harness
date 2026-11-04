@@ -454,7 +454,7 @@ export function parseRun(json: string): ConductorRun {
       `Conductor run record format ${String(record.recordFormatVersion)} is unsupported; expected ${CONDUCTOR_RECORD_FORMAT_VERSION}`,
     )
   }
-  const runKeys = ['recordFormatVersion', 'admission', 'repairReturns', 'analysisReports', 'reportCandidates', 'reportDecision',
+  const runKeys = ['recordFormatVersion', 'admission', 'repairReturns', 'analysisMode', 'analysisReports', 'reportCandidates', 'analysisChallenges', 'reportDecision',
     'runId', 'objective', 'scope', 'inputArtifacts', 'allowedPaths', 'excludedPaths', 'sourceBaseline', 'authority',
     'constraints', 'acceptanceCriteria', 'budget', 'baselineHistory', 'baseline', 'executionAuthorization', 'currentStage',
     'history', 'specialistReports', 'qualityExecutions', 'status', 'decision', 'closeout',
@@ -497,7 +497,8 @@ export function parseRun(json: string): ConductorRun {
   if (!Array.isArray(record.history)) throw new Error('Conductor run record history must be an array')
   assertOwnerLedger(record as unknown as ConductorRun)
   if (admission.purpose === 'analysis') return parseAnalysisState(record)
-  if (!Array.isArray(record.repairReturns) || record.repairReturns.length !== 0
+  if (record.analysisMode !== null || !Array.isArray(record.analysisChallenges) || record.analysisChallenges.length !== 0
+    || !Array.isArray(record.repairReturns) || record.repairReturns.length !== 0
     || !Array.isArray(record.analysisReports) || record.analysisReports.length !== 0
     || !Array.isArray(record.reportCandidates) || record.reportCandidates.length !== 0
     || record.reportDecision !== undefined) throw new Error('Implementation run cannot carry analysis report state')

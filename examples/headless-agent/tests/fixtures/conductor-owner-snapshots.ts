@@ -119,6 +119,9 @@ export function registerOwnerEscalationSnapshots(): void {
             for (const entry of run.ownerLedger) {
               if (entry.kind !== 'question') continue
               const question = entry.question
+              if (question.sourceKind !== 'child' || question.childId === null || question.attempt === null) {
+                throw new Error('This owner fixture expects a child-sourced question')
+              }
               const child = children.get(question.childId)!
               expect(question.rootSessionId).toBe(parent.header.id)
               expect(question.childId).not.toBe(parent.header.id)

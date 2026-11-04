@@ -25,32 +25,32 @@ Detective 接受不确定的当前请求。较晚入口要求捕获的范围来�
 | 目的 | 入口 | 交付物 | 专家路径 |
 |---|---|---|---|
 | implementation | A/B/C | 不提供 | 所选入口 → 剩余实现阶段，经 C → D → E → F → G。 |
-| analysis | A | answer | Detective → Auditor → Arbiter。 |
-| analysis | A | recommendations | Detective → Strategist → Auditor → Arbiter。 |
-| analysis | B | answer/recommendations | Strategist → Auditor → Arbiter。 |
-| analysis | C | answer/recommendations | Devil's Advocate → Auditor → Arbiter。 |
+| analysis | A | answer | Detective → Devil's Advocate 批评者 → Auditor → Arbiter。 |
+| analysis | A | recommendations | Detective → Strategist → Devil's Advocate 批评者 → Auditor → Arbiter。 |
+| analysis | B | answer/recommendations | Strategist → Devil's Advocate 批评者 → Auditor → Arbiter。 |
+| analysis | C | answer/recommendations | Devil's Advocate 生产者 → 不同的 Devil's Advocate 批评者 → Auditor → Arbiter。 |
 
-拟议的分析批评设计（[EN](../../proposed/feature/2026-10-28-conductor-analysis-critic.md)、[ZH](../../proposed/feature/2026-10-28-conductor-analysis-critic.zh.md)）将通过增加 Devil's Advocate 批评者改变这些分析路线。
+[分析批评者启用决策](2026-10-28-conductor-analysis-critic.md)记录新增的批评结果及其 Gate C 路线。
 
-从 Detective 开始的建议保留 A 的范围评估，并由 Strategist 生成报告。其他分析组合使用准入的 A/B/C 生产者。分析 C 审查报告，绝不审查执行 baseline。实现 C 仍须获得宿主对当前 baseline 和效果的精确批准，之后 Headsman、Ralph 或 Integrator 才能运行；已提供工作不能替代批准。
+从 Detective 开始的建议保留 A 的范围评估，并由 Strategist 生成报告。其他分析组合使用准入的 A/B/C 生产者；分析 C 有不同的生产者和批评者子会话，绝不评估执行 baseline。实现 C 仍须获得宿主对当前 baseline 和效果的精确批准，之后 Headsman、Ralph 或 Integrator 才能运行；已提供工作不能替代批准。
 
 绕过的 gate 具有 `kind: skipped`、决策 `skipped`、supplied-work 或 profile-not-applicable 原因、purpose/deliverable、完整路线、理由、捕获材料引用及因果后继。它们不算已评估的通过或批准。只记录实际到达的绕过；后续返工可以评估此前跳过的 gate，而不改写历史。
 
-因果返工返回保留 C → B → C 及嵌套 C → B → A → B → C。报告缺陷返回报告生产者；Arbiter 要求修改后，还必须经过新的 Auditor 才能再次裁决。[逐 gate 预算](../bug-fix/2026-10-25-conductor-gate-robustness.md)保持独立：预设允许每个决策 gate 返工两次，随后升级。准入修复、格式无效报告和修改消耗该 gate 的预算；跳过与恢复不重置预算。Ralph 独立的轮数限制不变。
+因果返工返回保留 C → B → C 及嵌套 C → B → A → B → C。报告缺陷返回报告生产者；Arbiter 要求修改后，还必须经过新的批评者和 Auditor 才能再次裁决。[逐 gate 预算](../bug-fix/2026-10-25-conductor-gate-robustness.md)保持独立：预设允许每个决策 gate 返工两次，随后升级。准入修复、格式无效报告和修改消耗该 gate 的预算；跳过与恢复不重置预算。Ralph 独立的轮数限制不变。
 
 ### 报告完成与效果
 
-生产者提供版本化 `ReportCandidate`，包含 deliverable、完整报告、按分派 `acceptance_criteria` 原顺序逐字复制的逐项 criterion/outcome 评估、捕获材料引用、假设和限制。约束不提供额外报告标准。不匹配会返回完整预期字符串及缺失、多余、变更的差异，变更位置从 1 开始。格式错误的 criterion/outcome 项也收到预期列表及从 1 开始的项目位置。每次分析分派均包含标准指令和持久化 gate 历史，让全新生产者收到具体返工理由。建议内容包含优先顺序与理由。运行时计算候选哈希；Auditor 在全新会话审查该精确版本和来源。另一个全新的 Arbiter 会话返回 `accept | revise | blocked`，绑定候选及成功审计哈希。修改产生新候选版本和新审计；旧哈希被拒绝。
+生产者提供版本化 `ReportCandidate`，包含 deliverable、完整报告、按分派 `acceptance_criteria` 原顺序逐字复制的逐项 criterion/outcome 评估、捕获材料引用、经过哈希核验的 `material_spans`、假设和限制。约束不提供额外报告标准。不匹配会返回完整预期字符串及缺失、多余、变更的差异，变更位置从 1 开始。格式错误的 criterion/outcome 项也收到预期列表及从 1 开始的项目位置。每次分析分派均包含标准指令和持久化 gate 历史，让全新生产者收到具体返工理由。建议内容包含优先顺序与理由。运行时计算候选哈希；全新 Devil's Advocate 子会话先质疑其推理，然后 Auditor 在另一全新会话审查该精确版本和来源。另一个全新的 Arbiter 会话返回 `accept | revise | blocked`，绑定候选、结论为 `holds` 的批评结果及成功审计哈希。修改产生新候选版本、新批评及新审计；旧哈希被拒绝。
 
 接受产生 `kind: report`、终态 `reported` 和 `currentStage: report-complete`，既不是 GO，也不批准发布或实现。有依据的负面发现和静态分析限制保留在报告中。reported 运行不能恢复、closeout 或变成实现运行。实施建议需要新 implementation 运行及真正的执行 C 批准。
 
 所有分析检查点保持 baseline/authorization 为 null、质量执行记录为空。[类型化分派](../../../../packages/conductor/tool-conductor/src/index.ts)、公布的工具允许列表和执行器守卫仅允许读取/搜索及结构化交接；排除写入/编辑、shell、质量执行、批准和外部操作。前向路线、返工与恢复不能到达 Headsman、Ralph 或 Integrator。从不调用批准服务。宿主 Session 日志与项目写入分离。[父级路由策略](../bug-fix/2026-10-25-conductor-mode-routing.md)仍在任何结果后禁止父级工具及重新分派，包括 reported，直到在没有待处理所有者交互时收到新用户输入；待答问题存在时，该输入保留在可见队列。
 
-规范[角色](../../../conductor/README.md)及[专家协议](../../../skills/conductor-specialist/SKILL.md)拥有按 purpose 区分的指令；名称和职责分配不变。安装副本由现有 build generator 生成，没有 #25 的新 source-launch 自动生成。实现保留现有报告 envelope、质量策略和 GO/NO-GO closeout 要求。
+规范[角色](../../../conductor/README.md)及[专家协议](../../../skills/conductor-specialist/SKILL.md)拥有按 purpose 区分的指令；名称和职责分配不变。安装副本在 source launch 时根据规范角色和 skill 文件重新生成。实现保留现有报告 envelope、质量策略和 GO/NO-GO closeout 要求。
 
 ### 持久化
 
-记录格式 4 保存不可变准入、捕获内容/来源、已评估/跳过 gate、待处理返工返回、报告版本、审计及最终报告裁决。解析器重放准入的因果路线，检查材料/候选/审计哈希、引用、逐 gate 次数、终态以及不兼容的执行字段。旧格式包括版本 3 均明确拒绝，没有迁移或兼容别名。准入和每次转换均在后续分派前保存检查点。现有 `conductor/checkpoint` 携带完整运行 JSON；[所有者升级](2026-10-30-conductor-owner-escalation-resumption.md)还记录必读所有者事件及同运行回答。分析澄清只能通过该宿主控制器恢复，保持只读，不能变成实现或 Gate C 批准。
+记录格式 5 保存不可变准入、捕获内容/来源、已评估/跳过 gate、待处理返工返回、报告版本、批评结果、审计及最终报告裁决。解析器重放准入的因果路线，检查材料/候选/批评/审计哈希、引用、逐 gate 次数、终态以及不兼容的执行字段。旧格式包括版本 4 均明确拒绝，没有迁移或兼容别名。准入和每次转换均在后续分派前保存检查点。现有 `conductor/checkpoint` 携带完整运行 JSON；[所有者升级](2026-10-30-conductor-owner-escalation-resumption.md)还记录必读所有者事件及同运行回答。分析澄清只能通过该宿主控制器恢复，保持只读，不能变成实现或 Gate C 批准。
 
 ## 考虑过的替代方案
 
@@ -58,7 +58,7 @@ Detective 接受不确定的当前请求。较晚入口要求捕获的范围来�
 
 **B：单独的 intake 专家。** 被拒绝，因为它增加固定模型延迟、成本及持久状态，仍需相同代码验证，并不能独立证明语义正确性。
 
-**修订 R1：生产者 → Auditor → Arbiter；Detective 建议另需 Strategist。** 所有者选择此方案。问题使用较短的只读路线，建议保留规划，已有计划避免重复发现。
+**修订 R1：生产者 → Devil's Advocate 批评者 → Auditor → Arbiter；Detective 建议另需 Strategist。** 所有者选择此方案。问题使用较短的只读路线，建议保留规划，已有计划避免重复发现。
 
 **R2：所选入口经过所有剩余只读 A/B/C 阶段后再审计。** 被拒绝，因为简单回答与已有计划会重复规划。仅以提示词省略 C 批准也被拒绝：reported 是有强制只读效果的独立类型结果。
 

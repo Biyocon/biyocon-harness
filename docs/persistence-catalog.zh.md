@@ -416,7 +416,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'conductor/child': ConductorChild
 ```
 
-Source: [`packages/conductor/conductor/src/child-types.ts:29`](../packages/conductor/conductor/src/child-types.ts)
+Source: [`packages/conductor/conductor/src/child-types.ts:39`](../packages/conductor/conductor/src/child-types.ts)
 
 #### `conductor/owner-continuation-consumed` — 仅日志
 

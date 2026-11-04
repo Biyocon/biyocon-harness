@@ -161,8 +161,10 @@ export function admittedRoute(admission: ConductorAdmission): ConductorStage[] {
     return ['detective', 'strategist', 'devils-advocate', 'headsman', 'auditor', 'integrator', 'arbiter']
   }
   return admission.entry === 'detective' && admission.deliverable === 'recommendations'
-    ? ['detective', 'strategist', 'auditor', 'arbiter']
-    : [admission.entry, 'auditor', 'arbiter']
+    ? ['detective', 'strategist', 'devils-advocate', 'auditor', 'arbiter']
+    : admission.entry === 'devils-advocate'
+      ? ['devils-advocate', 'auditor', 'arbiter']
+      : [admission.entry, 'devils-advocate', 'auditor', 'arbiter']
 }
 
 /** Canonical gate order; report profiles explicitly record inapplicable stages as skips. */
@@ -187,7 +189,7 @@ export function reportProducer(admission: ConductorAdmission): ConductorEntry {
  * @returns final successor and pending returns; callers record intervening skips separately.
  */
 export function transitionRoute(
-  run: Pick<ConductorRun, 'admission' | 'currentStage' | 'repairReturns'>,
+  run: Pick<ConductorRun, 'admission' | 'analysisMode' | 'currentStage' | 'repairReturns'>,
   decision: GateDecision,
   defect?: DefectClass,
   target?: ConductorStage,
@@ -213,7 +215,11 @@ export function transitionRoute(
   }
   if (decision !== 'rework') return { nextStage: decision === 'abort' ? undefined : target, repairReturns }
   if (target === undefined || defect === undefined) throw new Error('Conductor rework requires a defect class and target')
-  if (defect === 'report' && target !== run.currentStage) throw new Error('Conductor report rework must return to its reporting stage')
+  if (defect === 'report' && target !== run.currentStage
+    && !(analysis && run.currentStage === 'devils-advocate' && run.analysisMode === 'critic'
+      && target === reportProducer(run.admission))) {
+    throw new Error('Conductor report rework must return to its reporting stage')
+  }
   if (defect === 'scope' && target !== 'detective') throw new Error('Conductor scope rework must return to Detective')
   if (defect === 'plan' && target !== 'strategist') throw new Error('Conductor plan rework must return to Strategist')
   if (defect === 'analysis' && (!analysis || !['auditor', 'arbiter'].includes(run.currentStage)
@@ -222,15 +228,18 @@ export function transitionRoute(
     || defect === 'implementation' || defect === 'delivery')) throw new Error('Conductor analysis cannot rework into execution')
   if (target !== run.currentStage && analysis) {
     const producer = reportProducer(run.admission)
-    const prerequisites = ['detective', 'strategist', 'devils-advocate'] as const
+    const admittedPrerequisites = admittedRoute(run.admission)
+      .filter((stage): stage is ConductorEntry => ['detective', 'strategist', 'devils-advocate'].includes(stage))
+    const prerequisites = admittedPrerequisites.includes(target as ConductorEntry)
+      ? admittedPrerequisites : ['detective', 'strategist', 'devils-advocate'] as ConductorEntry[]
     const from = ['auditor', 'arbiter'].includes(run.currentStage) ? producer : run.currentStage
     const first = prerequisites.indexOf(target as ConductorEntry)
     const last = prerequisites.indexOf(from as ConductorEntry)
     if (first < 0 || last < 0 || first > last) throw new Error('Conductor analysis rework target is not an earlier prerequisite')
-    let returnTo = run.currentStage
+    let returnTo: ConductorStage = run.currentStage === 'auditor' || run.currentStage === 'arbiter'
+      ? 'devils-advocate' : run.currentStage
     if (run.currentStage === 'arbiter') {
       repairReturns.push({ stage: 'auditor', returnTo: 'arbiter' })
-      returnTo = 'auditor'
     }
     for (let index = last; index >= first; index--) {
       const stage = prerequisites[index] as ConductorEntry

@@ -8,7 +8,7 @@ type Copy = Pick<QuestionComposerProps, 't'>
 type OwnerResponse = NonNullable<QuestionAnswer['conductor']>
 
 /**
- * Render the exact host-issued run, gate and child identity.
+ * Render the exact host-issued run, gate and source identity.
  * @param props - typed provenance and the package's locale seat.
  * @returns visible provenance without parsing role names from prompts.
  */
@@ -17,7 +17,7 @@ export function OwnerProvenance({ owner, t }: { owner: Pick<ConductorOwnerQuesti
     <div className={css.identity}>
       <span>{t('conductor.run')}: <code>{owner.runId}</code></span>
       <span>{t('conductor.gate')} {owner.gate}</span>
-      <span>{t(`conductor.role.${owner.role}`)} · {t('conductor.attempt')} {owner.attempt}</span>
+      <span>{t(`conductor.role.${owner.role}`)}{owner.attempt === null ? '' : ` · ${t('conductor.attempt')} ${owner.attempt}`}</span>
     </div>
     <p className={css.reason}>{owner.reason}</p>
   </>

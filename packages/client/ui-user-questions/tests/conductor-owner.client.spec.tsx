@@ -68,6 +68,12 @@ describe('Conductor owner card', () => {
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' })
     expect(respond).not.toHaveBeenCalled()
   })
+  it('shows a host-owned critic budget question without inventing a child attempt', () => {
+    mount({ ...owner(), gate: 'C', role: 'devils-advocate', attempt: null,
+      reason: 'Critic token budget exhausted.' })
+    expect(screen.getByText('Devil’s Advocate')).toBeTruthy()
+    expect(screen.queryByText(/Attempt/)).toBeNull()
+  })
   it.each([{ language: en, label: 'Answer and continue' }, { language: da, label: 'Svar og fortsæt' }])(
     'keeps owner drafts on same-carrier replay and sends through its current transport: $label', ({ language, label }) => {
       const firstRespond = vi.fn(() => Promise.resolve<RpcReceipt>({ accepted: true }))

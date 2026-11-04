@@ -6,9 +6,18 @@ import type { ConductorChild } from './child-types.ts'
 const childSchema = z.object({
   childId: z.string(), runId: z.string(),
   role: z.enum(['detective', 'strategist', 'devils-advocate', 'headsman', 'auditor', 'integrator', 'arbiter', 'ralph']),
+  mode: z.enum(['producer', 'critic']).optional(),
   attempt: z.number().int().positive(), historyOffset: z.number().int().nonnegative(),
+  criticAttempt: z.number().int().positive().optional(),
   status: z.enum(['running', 'completed', 'failed']),
-  gate: z.object({ id: z.enum(['A', 'B', 'C', 'D', 'E', 'F', 'G']), decision: z.enum(['pass', 'rework', 'escalate', 'abort']), reworks: z.number().int().nonnegative(), limit: z.number().int().positive() }).optional(),
+  gate: z.object({ id: z.enum(['A', 'B', 'C', 'D', 'E', 'F', 'G']), decision: z.enum(['pass', 'rework', 'escalate', 'abort']), reworks: z.number().int().nonnegative(), limit: z.number().int().positive(), challengeConclusion: z.enum(['holds', 'does_not_hold']).optional() }).optional(),
+}).superRefine((child, issue) => {
+  if ((child.mode === 'critic') !== (child.criticAttempt !== undefined)) {
+    issue.addIssue({ code: 'custom', message: 'critic mode requires one run-wide attempt' })
+  }
+  if (child.gate?.challengeConclusion !== undefined && child.mode !== 'critic') {
+    issue.addIssue({ code: 'custom', message: 'only a critic child can carry a challenge conclusion' })
+  }
 })
 
 /** Durable parent projection; unrelated sessions and children are absent. */
@@ -18,5 +27,5 @@ export const conductorChildrenProjection: ProjectionDefinition<'conductorChildre
   init: () => ({}),
   apply: (state, event) => event.type === 'session/end-seed' ? {} : event.type === 'conductor/child' ? { ...state, [event.data.childId]: event.data } : state,
   view: state => state,
-  stateVersion: 1,
+  stateVersion: 2,
 }

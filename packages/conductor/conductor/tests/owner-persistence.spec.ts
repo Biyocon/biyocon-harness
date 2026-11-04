@@ -17,10 +17,12 @@ function parked(run: ConductorRun = initial()) {
   const report = { status: 'blocked', clarification: 'Which naming convention is authoritative?' }
   const escalated = recordGate({ ...run, ownerSessionId: SessionId('owner-root') }, {
     decision: 'escalate', basis: ['Owner clarification required.'], evidenceReviewed: [], stateUpdate: 'Await owner clarification.',
+    ...run.admission.purpose === 'analysis' && run.analysisMode === 'producer'
+      ? { analysis: { mode: 'producer' as const, childId: SessionId('detective-attempt-1') } } : {},
   })
   return parkOwnerQuestion(escalated, 'owner-question-1',
     { kind: 'recoverable', cause: 'clarification', reason: 'Which naming convention is authoritative?' },
-    { childId: SessionId('detective-attempt-1'), attempt: 1, reportHash: contentHash(JSON.stringify(report)), report },
+    { sourceKind: 'child', childId: SessionId('detective-attempt-1'), attempt: 1, reportHash: contentHash(JSON.stringify(report)), report },
     [{ id: 'naming', prompt: 'Choose the naming convention.', options: [] }])
 }
 
@@ -33,9 +35,9 @@ function answered(run: ConductorRun) {
 }
 
 describe('owner-ledger durable records' , () => {
-  it('refuses version 3 with an explicit version-4 error before inspecting other fields', () => {
-    expect(() => parseRun(JSON.stringify({ recordFormatVersion: 3 })))
-      .toThrow('Conductor run record format 3 is unsupported; expected 4')
+  it('refuses version 4 with an explicit version-5 error before inspecting other fields', () => {
+    expect(() => parseRun(JSON.stringify({ recordFormatVersion: 4 })))
+      .toThrow('Conductor run record format 4 is unsupported; expected 5')
     expect(parseRun(serializeRun(initial()))).toEqual(initial())
   })
 
@@ -98,6 +100,7 @@ describe('owner-ledger durable records' , () => {
   it('preserves a pending analysis repair return across owner clarification at an earlier stage', () => {
     const needsPlan = recordGate(analysisRun('devils-advocate'), {
       decision: 'rework', defectClass: 'plan', nextStage: 'strategist',
+      analysis: { mode: 'producer', childId: SessionId('producer-plan-1') },
       basis: ['Plan must be clarified.'], evidenceReviewed: [], stateUpdate: 'Repair plan.',
     })
     const consumed = consumeOwnerContinuation(answered(parked(needsPlan)), 'owner-question-1')
@@ -128,7 +131,7 @@ describe('owner-ledger durable records' , () => {
     const proposal = { allowedPaths: ['src', 'docs'], excludedPaths: ['src/private'], qualityCommandIds: ['unit'] }
     const question = parkOwnerQuestion(escalated, 'amendment-question',
       { kind: 'recoverable', cause: 'authority-amendment', reason: 'Additional path required.' },
-      { childId: SessionId('headsman-1'), attempt: 1, reportHash: contentHash(JSON.stringify(report)), report }, [], proposal)
+      { sourceKind: 'child', childId: SessionId('headsman-1'), attempt: 1, reportHash: contentHash(JSON.stringify(report)), report }, [], proposal)
     expect(parseRun(serializeRun(question))).toEqual(question)
     const response = applyScriptedOwnerAnswer(question, {
       source: 'scripted-test-provider', rootSessionId: SessionId('owner-root'), questionId: 'amendment-question', expectedRevision: 1,

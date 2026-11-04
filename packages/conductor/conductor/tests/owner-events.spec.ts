@@ -12,7 +12,7 @@ function stages(amend = false) {
     ownerCapabilities: { allowedPaths: ['.'], excludedPaths: [], qualityCommandIds: [] },
   }), { decision: 'escalate', basis: ['Naming needs owner input.'], evidenceReviewed: [], stateUpdate: 'Waiting.' })
   const question = parkOwnerQuestion(initial, 'naming-question', { kind: 'recoverable', cause: amend ? 'authority-amendment' : 'clarification', reason: 'Which name?' },
-    { childId: SessionId('owner-events-child'), attempt: 1, report: {}, reportHash: contentHash('{}') },
+    { sourceKind: 'child', childId: SessionId('owner-events-child'), attempt: 1, report: {}, reportHash: contentHash('{}') },
     [{ id: 'name', prompt: 'Choose the name.', options: [] }],
     amend ? { allowedPaths: ['report.md'], excludedPaths: [], qualityCommandIds: [] } : undefined)
   const response = { source: 'scripted-test-provider' as const, rootSessionId: initial.ownerSessionId!,

@@ -29,6 +29,7 @@ import {
   conductorChildrenProjection,
   effectiveOwnerMandate,
   ownerCommandAllowed,
+  validateAnalysisChallenge,
 } from '@deepseek-ai/dsh-conductor'
 import type {
   ConductorAuthority,
@@ -45,12 +46,13 @@ import type {
   SpecialistDispatchResult,
   SpecialistProblem,
   AnalysisEnvelope,
+  CapturedReport,
   ReportDecision,
 } from '@deepseek-ai/dsh-conductor'
 import { toolGuardForStage, toolRestrictionForStage } from './capability.ts'
 import { captureMaterials } from './materials.ts'
 import type { MaterialLimits } from './materials.ts'
-import { ANALYSIS_CRITERIA_INSTRUCTION, REPORT_DECISION_SCHEMA } from './analysis-schema.ts'
+import { ANALYSIS_CHALLENGE_OUTPUT_SCHEMA, ANALYSIS_CRITERIA_INSTRUCTION, REPORT_DECISION_SCHEMA } from './analysis-schema.ts'
 import { dispatchAnalysisChild } from './analysis-dispatch.ts'
 import { ralphDirective } from './ralph.ts'
 import { observeConductorChildren, publishChildGates } from './children.ts'
@@ -58,7 +60,7 @@ import { runWorkflowChild } from './workflow-child.ts'
 import { ROLE_SKILL } from '@deepseek-ai/dsh-conductor-presets'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CallId, ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
+import type { JsonValue, SessionId } from '@deepseek-ai/dsh-session'
 import type { SubagentProvider } from '@deepseek-ai/dsh-subagent'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ObjectJsonSchema, ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools'
@@ -99,6 +101,12 @@ export interface Config {
   maxReworkPerGate?: number
   /** Maximum owner-directed reassessments per gate, independent of rework (default 2). */
   maxOwnerReassessmentsPerGate?: number
+  /** Maximum estimated critic input tokens in one attempt (default 24000). */
+  maxCriticInputTokensPerAttempt?: number
+  /** Maximum reasoning-inclusive critic output tokens in one attempt (default 16000). */
+  maxCriticOutputTokensPerAttempt?: number
+  /** Maximum provider-reported critic tokens across an analysis run (default 120000). */
+  maxCriticTokensPerRun?: number
   /** Default Ralph round budget; 0 disables the Headsman sub-phase (default 0). */
   maxRalphRounds?: number
   /** Maximum serialized characters in one Ralph handoff (default 16384). */
@@ -117,6 +125,9 @@ export const Config: z<Config> = z.object({
   subagentProvider: z.string().default('spawn'),
   maxReworkPerGate: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(2),
   maxOwnerReassessmentsPerGate: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(2),
+  maxCriticInputTokensPerAttempt: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(24_000),
+  maxCriticOutputTokensPerAttempt: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(16_000),
+  maxCriticTokensPerRun: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(120_000),
   maxRalphRounds: z.number().step(1).min(0).max(Number.MAX_SAFE_INTEGER).default(0),
   maxRalphHandoffChars: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(16_384),
   qualityCommands: z.array(z.object({
@@ -137,6 +148,9 @@ interface ResolvedConfig extends MaterialLimits {
   readonly subagentProvider: string
   readonly maxReworkPerGate: number
   readonly maxOwnerReassessmentsPerGate: number
+  readonly maxCriticInputTokensPerAttempt: number
+  readonly maxCriticOutputTokensPerAttempt: number
+  readonly maxCriticTokensPerRun: number
   readonly maxRalphRounds: number
   readonly maxRalphHandoffChars: number
   readonly qualityCommands: ReadonlyMap<string, QualityCommandDefinition>
@@ -176,7 +190,7 @@ const DESCRIPTION = 'Delegate an objective to Conductor, the supervisor of a gat
   + 'Supply the user\'s objective and constraints without inventing write paths or permissions. '
   + 'Propose purpose implementation or analysis and entry detective, strategist or devils-advocate, with an intake rationale. '
   + 'Analysis requires deliverable answer or recommendations and at least one measurable acceptanceCriteria item. Put deliverable requirements in acceptanceCriteria, not constraints; omission or an empty list is rejected before any specialist starts. '
-  + 'Answer runs its producer, Auditor and Arbiter; recommendations entering Detective also require Strategist. '
+  + 'Analysis runs its producer, a separate Devil\'s Advocate critic, Auditor and Arbiter; recommendations entering Detective also require Strategist. '
   + 'Analysis is read-only: no Headsman, Ralph, Integrator, commands or Gate C approval. The Arbiter returns accept/revise/blocked; only accept ends in reported, never implementation GO. '
   + 'Implementation still requires execution Gate C review and separate host approval before writing. '
   + 'Use current-request and explicitly cited workspace-relative materialFiles as sources; never inspect files before this call or invent source ids. '
@@ -302,6 +316,9 @@ function resolveConfig(config: Config): ResolvedConfig {
   const subagentProvider = config.subagentProvider ?? 'spawn'
   const maxReworkPerGate = config.maxReworkPerGate ?? 2
   const maxOwnerReassessmentsPerGate = config.maxOwnerReassessmentsPerGate ?? 2
+  const maxCriticInputTokensPerAttempt = config.maxCriticInputTokensPerAttempt ?? 24_000
+  const maxCriticOutputTokensPerAttempt = config.maxCriticOutputTokensPerAttempt ?? 16_000
+  const maxCriticTokensPerRun = config.maxCriticTokensPerRun ?? 120_000
   const maxRalphRounds = config.maxRalphRounds ?? 0
   const maxRalphHandoffChars = config.maxRalphHandoffChars ?? 16_384
   const qualityCommands = resolveQualityCatalog(config.qualityCommands ?? [])
@@ -322,6 +339,13 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(maxOwnerReassessmentsPerGate) || maxOwnerReassessmentsPerGate < 1) {
     throw new TypeError('maxOwnerReassessmentsPerGate must be a positive safe integer')
   }
+  for (const [field, value] of Object.entries({ maxCriticInputTokensPerAttempt,
+    maxCriticOutputTokensPerAttempt, maxCriticTokensPerRun })) {
+    if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`${field} must be a positive safe integer`)
+  }
+  if (maxCriticTokensPerRun < maxCriticInputTokensPerAttempt + maxCriticOutputTokensPerAttempt) {
+    throw new TypeError('maxCriticTokensPerRun must cover one maximum critic input and output attempt')
+  }
   if (!Number.isSafeInteger(maxRalphRounds) || maxRalphRounds < 0) {
     throw new TypeError('maxRalphRounds must be a non-negative safe integer')
   }
@@ -329,6 +353,7 @@ function resolveConfig(config: Config): ResolvedConfig {
     throw new TypeError('maxRalphHandoffChars must be a positive safe integer')
   }
   return { subagentProvider, maxReworkPerGate, maxOwnerReassessmentsPerGate,
+    maxCriticInputTokensPerAttempt, maxCriticOutputTokensPerAttempt, maxCriticTokensPerRun,
     maxRalphRounds, maxRalphHandoffChars, qualityCommands, ...limits }
 }
 
@@ -434,6 +459,9 @@ function composeSpecialistPrompt(
       acceptance_criteria: run.acceptanceCriteria,
       ...run.admission.purpose === 'analysis' ? {
         report_criteria_instruction: ANALYSIS_CRITERIA_INSTRUCTION,
+        material_spans_instruction: 'For a new candidate, provide inclusive one-based material_spans that identify the exact cited lines in the admitted text. Do not invent a material id or cite an image.',
+        analysis_challenges: run.analysisChallenges,
+        analysis_mode: run.analysisMode,
         gate_history: run.history,
       } : {},
       constraints: run.constraints,
@@ -467,7 +495,9 @@ function composeArbiterPrompt(run: ConductorRun): string {
     return [
       'You are The Arbiter reviewing a read-only analysis. Return accept, revise or blocked for the exact report and independent audit. Never grant GO, request approval or authorize execution.',
       'Analysis record:\n' + JSON.stringify({ run_id: run.runId, admission: run.admission,
-        report: run.reportCandidates.at(-1), audit_hash: currentAuditHash(run), analysis_reports: run.analysisReports,
+        report: run.reportCandidates.at(-1), current_challenge_hash: run.analysisChallenges.at(-1)?.hash,
+        analysis_challenges: run.analysisChallenges,
+        audit_hash: currentAuditHash(run), analysis_reports: run.analysisReports,
         history: run.history, acceptance_criteria: run.acceptanceCriteria,
         owner_ledger: run.ownerLedger, owner_revision: run.ownerRevision }, null, 2),
     ].join('\n\n')
@@ -826,7 +856,8 @@ function runSummary(run: ConductorRun, failedStage?: ConductorStage) {
     status: run.status,
     gateHistory: run.history,
     specialistsRan: [...new Set([
-      ...run.history.filter(record => record.kind === 'evaluated' && record.origin !== 'intake-validation').map(record => record.stage),
+      ...run.history.filter(record => record.kind === 'evaluated'
+        && record.origin !== 'intake-validation' && record.origin !== 'critic-budget').map(record => record.stage),
       ...failedStage === undefined ? [] : [failedStage],
     ])],
   }
@@ -1018,13 +1049,16 @@ export function apply(ctx: Context, config: Config): void {
         assertCatalogBindings(run, resolved.qualityCommands)
 
         let lastObservation: OwnerDispatchObservation | undefined
-        const observeReport = (current: ConductorRun, report: unknown): void => {
+        const observeReport = (current: ConductorRun, report: unknown, criticAttempt?: number): void => {
           const child = parent.session.events.findLast(event => event.type === 'conductor/child'
             && event.data.runId === current.runId && event.data.role === current.currentStage
             && event.data.historyOffset === current.history.length)
-          lastObservation = child?.type === 'conductor/child' ? { historyOffset: current.history.length,
-            childId: child.data.childId, attempt: child.data.attempt,
-            report: JSON.parse(JSON.stringify(report ?? null)) as unknown } : undefined
+          if (child?.type !== 'conductor/child') {
+            lastObservation = undefined
+            return
+          }
+          lastObservation = { historyOffset: current.history.length, childId: child.data.childId,
+            attempt: criticAttempt ?? child.data.attempt, report: JSON.parse(JSON.stringify(report ?? null)) as unknown }
         }
         const dispatcher = {
           async authorizeExecution(
@@ -1050,6 +1084,99 @@ export function apply(ctx: Context, config: Config): void {
             )
             observeReport(current, 'envelope' in result ? result.envelope : result)
             return result
+          },
+          async dispatchAnalysisProducer(stage: ConductorStage, current: ConductorRun) {
+            const value = await runSpecialist(ctx, resolved.subagentProvider, parent, exec.signal, stage, current,
+              resolved.maxRalphHandoffChars, resolved.qualityCommands)
+            observeReport(current, value)
+            const child = parent.session.events.findLast(event => event.type === 'conductor/child'
+              && event.data.runId === current.runId && event.data.role === stage
+              && event.data.mode === 'producer' && event.data.historyOffset === current.history.length
+              && event.data.status === 'completed')
+            if (child?.type !== 'conductor/child') throw new Error('Conductor analysis producer has no completed child identity')
+            return { value, childId: child.data.childId }
+          },
+          async dispatchCritic(current: ConductorRun, criticAttempt: number) {
+            const consumed = current.history.reduce((sum, record) => record.kind === 'evaluated'
+              && record.analysis?.mode === 'critic'
+              // Unmetered critic failures terminate the run before another dispatch.
+              ? sum + (record.analysis.inputTokens as number) + (record.analysis.outputTokens as number) : sum, 0)
+            const reserved = resolved.maxCriticInputTokensPerAttempt + resolved.maxCriticOutputTokensPerAttempt
+            if (consumed + reserved > resolved.maxCriticTokensPerRun) {
+              return { kind: 'blocked' as const, problem: { kind: 'report' as const,
+                message: 'Conductor critic run token budget cannot reserve another complete attempt' } }
+            }
+            // driveAnalysis checks the retained candidate before invoking this callback.
+            const captured = current.reportCandidates.at(-1) as CapturedReport
+            let childId: SessionId | undefined
+            const usageState = { estimatedInputTokens: 0, inputTokens: 0, outputTokens: 0,
+              messages: 0, invalid: false }
+            let criticReport: unknown
+            const stopUsage = ctx.on('session/event', (session, event) => {
+              if (session.id !== childId || event.type !== 'assistant/message') return
+              const usage = event.data.usage
+              if (usage === undefined || !Number.isSafeInteger(usage.inputTokens)
+                || !Number.isSafeInteger(usage.outputTokens) || usage.inputTokens < 0 || usage.outputTokens < 0
+                || !Number.isSafeInteger(usage.cacheReadTokens ?? 0) || !Number.isSafeInteger(usage.cacheWriteTokens ?? 0)
+                || (usage.cacheReadTokens ?? 0) < 0 || (usage.cacheWriteTokens ?? 0) < 0) {
+                usageState.invalid = true
+                return
+              }
+              usageState.messages += 1
+              usageState.inputTokens += usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
+              usageState.outputTokens += usage.outputTokens
+            })
+            let dispatchOutcome: { kind: 'validated'; validation: ReturnType<typeof validateAnalysisChallenge> }
+              | { kind: 'failed'; cause: unknown }
+            try {
+              const validation = await dispatchAnalysisChild({ mode: 'critic', ctx, providerName: resolved.subagentProvider,
+                parent, signal: exec.signal, run: current, candidate: captured.candidate,
+                producerChildId: captured.producerChildId, criticAttempt,
+                materialSpans: captured.candidate.material_spans,
+                previous: current.analysisChallenges.map(item => ({ challenge: item.challenge, hash: item.hash })),
+                maxInputTokens: resolved.maxCriticInputTokensPerAttempt,
+                maxOutputTokens: resolved.maxCriticOutputTokensPerAttempt,
+                maxSummaryCharacters: resolved.maxCriticOutputTokensPerAttempt,
+                countTokens: prompt => Buffer.byteLength(`${prompt}\n${JSON.stringify(ANALYSIS_CHALLENGE_OUTPUT_SCHEMA)}`, 'utf8'),
+                onReservedChildId: (id) => { childId = id },
+                onPromptTokens: (tokens) => { usageState.estimatedInputTokens = tokens },
+                onRawResult: (value) => { criticReport = value },
+              }) as ReturnType<typeof validateAnalysisChallenge>
+              dispatchOutcome = { kind: 'validated', validation }
+            } catch (cause) {
+              dispatchOutcome = { kind: 'failed', cause }
+            } finally {
+              stopUsage()
+            }
+            if (dispatchOutcome.kind === 'failed') {
+              const childStarted = childId !== undefined && (usageState.messages > 0 || usageState.invalid
+                || parent.session.events.some(event => event.type === 'conductor/child'
+                  && event.data.childId === childId && event.data.runId === current.runId))
+              if (childId === undefined || !childStarted) throw dispatchOutcome.cause
+              const usageKnown = !usageState.invalid && usageState.messages > 0
+                && Number.isSafeInteger(usageState.inputTokens) && Number.isSafeInteger(usageState.outputTokens)
+              const message = String(dispatchOutcome.cause)
+              return { kind: 'blocked' as const, problem: { kind: 'authority' as const,
+                message: `Conductor critic child failed after dispatch: ${message}${usageKnown ? '' : '; token usage is unknown'}` },
+              childId, criticAttempt,
+              ...usageKnown ? { inputTokens: usageState.inputTokens, outputTokens: usageState.outputTokens } : {} }
+            }
+            observeReport(current, criticReport, criticAttempt)
+            // dispatchAnalysisChild rejects completion without a reserved child id.
+            const completedChildId = childId as SessionId
+            const { inputTokens, outputTokens } = usageState
+            const usage = { childId: completedChildId, criticAttempt, inputTokens, outputTokens }
+            if (usageState.invalid || usageState.messages === 0 || !Number.isSafeInteger(inputTokens)
+              || !Number.isSafeInteger(outputTokens) || usageState.estimatedInputTokens === 0) {
+              return { kind: 'blocked' as const, problem: { kind: 'authority' as const,
+                message: 'Conductor critic provider did not report valid input and output token usage' }, ...usage }
+            }
+            if (inputTokens > resolved.maxCriticInputTokensPerAttempt
+              || outputTokens > resolved.maxCriticOutputTokensPerAttempt) {
+              return { kind: 'blocked' as const, problem: { kind: 'authority' as const,
+                message: 'Conductor critic provider usage exceeded the configured token budget' }, ...usage }
+            }
+            return { kind: 'attempt' as const, validation: dispatchOutcome.validation, ...usage }
           },
           async dispatchArbiter(current: ConductorRun) {
             const result = await runArbiter(ctx, resolved.subagentProvider, parent, exec.signal, current)

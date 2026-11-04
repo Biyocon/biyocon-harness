@@ -109,19 +109,34 @@ class StubEngine extends WorkflowEngine {
   disposed = 0
   factory: ResultFactory = successfulResult
   publishChildren = true
+  criticUsage: {
+    inputTokens: number
+    outputTokens: number
+    cacheReadTokens?: number
+    cacheWriteTokens?: number
+    reasoningTokens?: number
+  } | null = { inputTokens: 100, outputTokens: 5 }
 
   start(request: WorkflowStartRequest): WorkflowRun {
     this.requests.push(request)
     const id = WorkflowRunId(`conductor-test-${this.requests.length}`)
-    const result = this.factory(request)
+    const childId = SessionId(`child-${id}`)
+    const originalPrompt = (request.args as { prompt: string }).prompt
+    const composed = request.composeChildPrompt?.(childId, originalPrompt)
+    const result = this.factory(composed === undefined ? request : { ...request,
+      args: { ...request.args as Record<string, unknown>, prompt: composed.find(block => block.type === 'text')?.text ?? '' } })
     return {
       id,
       meta: request.meta,
       result: Promise.resolve().then(() => {
         if (this.publishChildren && result.agentsStarted > 0) {
           const info = { id, meta: request.meta }
-          const child = { seq: 1, label: (request.args as { label: string }).label, childId: SessionId(`child-${id}`) }
+          const child = { seq: 1, label: (request.args as { label: string }).label, childId }
           this.ctx.emit('workflow/agent-start', info, child)
+          if (composed !== undefined && this.criticUsage !== null) {
+            this.ctx.emit('session/event', { id: childId } as never,
+              { type: 'assistant/message', data: { usage: this.criticUsage } } as never)
+          }
           this.ctx.emit('workflow/agent-end', info, {
             ...child, outcome: result.stopReason === 'completed' ? 'completed' : 'failed',
           })
@@ -202,7 +217,9 @@ async function setup(options: {
   if (options.factory !== undefined) engine.factory = options.factory
   if (options.flush !== false) ctx.on('session/flush', () => {})
   for (const name of options.skills ?? roleSkills) {
-    ctx.skills.register({ name, description: name, content: `${name} instructions`, source: 'test' })
+    ctx.skills.register({ name, description: name, content: `${name} instructions`, source: 'test',
+      ...['conductor-devils-advocate', 'conductor-specialist'].includes(name)
+        ? { metadata: { analysisCritic: { dispatchMode: 'critic', instructions: 'Challenge the evidence and reasoning.' } } } : {} })
   }
   await ctx.plugin(toolConductor, Object.assign({}, options.config ?? { subagentProvider: 'fresh' },
     options.liveParent === true ? { routeTasks: true } : {}))
@@ -310,6 +327,22 @@ const { rationale: _intakeRationale, ...resumeArgs } = baseArgs
 
 function analysisResult(request: WorkflowStartRequest): WorkflowResult {
   const prompt = (request.args as { prompt: string }).prompt
+  if (prompt.startsWith('{"identity":')) {
+    const critic = JSON.parse(prompt) as { identity: {
+      run_id: string
+      candidate_hash: string
+      candidate_version: string
+      material_ids: string[]
+      critic_child_id: string
+      critic_attempt: number
+    } }
+    return { stopReason: 'completed', agentsStarted: 1, value: {
+      run_id: critic.identity.run_id, purpose: 'analysis', candidate_hash: critic.identity.candidate_hash,
+      candidate_version: critic.identity.candidate_version, material_ids: critic.identity.material_ids,
+      critic_child_id: critic.identity.critic_child_id, critic_attempt: critic.identity.critic_attempt,
+      findings: [], conclusion: 'holds', summary: 'The report reasoning holds.',
+    } }
+  }
   const arbiter = prompt.includes('Analysis record:\n')
   const dispatch = JSON.parse(prompt.split(arbiter ? 'Analysis record:\n' : 'Dispatch package:\n')[1]!.split('\n\nReturn the structured result')[0]!) as {
     run_id: string
@@ -318,12 +351,14 @@ function analysisResult(request: WorkflowStartRequest): WorkflowResult {
     current_report: CapturedReport
     report: CapturedReport
     audit_hash: string
+    current_challenge_hash: string
     acceptance_criteria: string[]
   }
   if (dispatch.admission.purpose !== 'analysis') throw new Error('Expected analysis dispatch')
   const ids = dispatch.admission.materials.map(material => material.id)
   return { stopReason: 'completed', agentsStarted: 1, value: arbiter ? {
-    run_id: dispatch.run_id, purpose: 'analysis', candidate_hash: dispatch.report.hash, audit_hash: dispatch.audit_hash,
+    run_id: dispatch.run_id, purpose: 'analysis', candidate_hash: dispatch.report.hash,
+    challenge_hash: dispatch.current_challenge_hash, audit_hash: dispatch.audit_hash,
     decision: 'accept', basis: ['An independent audit assessed this report.'], evidence_reviewed: [dispatch.report.hash], open_risks: [],
   } : {
     run_id: dispatch.run_id, purpose: 'analysis', stage: dispatch.stage, deliverable: dispatch.admission.deliverable,
@@ -331,7 +366,8 @@ function analysisResult(request: WorkflowStartRequest): WorkflowResult {
     ...dispatch.stage === 'auditor' ? { candidate_hash: dispatch.current_report.hash } : { candidate: {
       version: 'v1', deliverable: dispatch.admission.deliverable, content: 'A documentation gap was found. No tests were executed.',
       criteria: dispatch.acceptance_criteria.map(criterion => ({ criterion, outcome: 'Assessed from the captured input.' })),
-      material_ids: ids, assumptions: [], limitations: ['Static review only.'],
+      material_ids: ids, material_spans: ids.map(id => ({ material_id: id, start_line: 1, end_line: 1 })),
+      assumptions: [], limitations: ['Static review only.'],
     } },
   } }
 }
@@ -358,19 +394,22 @@ describe('Conductor analysis tool admission and execution policy', () => {
     const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }, h.parent)
     expect(result.isError, JSON.stringify(result)).toBe(false)
     expect(result.value).toMatchObject({ status: 'reported', stage: 'report-complete', result: { kind: 'report' } })
-    expect(h.engine.requests).toHaveLength(3)
+    expect(h.engine.requests).toHaveLength(4)
     for (const request of h.engine.requests) {
       const prompt = (request.args as { prompt: string }).prompt
       if (prompt.includes('Dispatch package:')) {
         expect(prompt).toContain('copy every acceptance_criteria string verbatim and in the same order')
         expect(prompt).toContain('"gate_history"')
       }
-      expect(request.childToolFilter).toEqual({ allow: ['read', 'read_image', 'grep', 'glob'] })
+      const critic = request.composeChildPrompt !== undefined
+      expect(request.childToolFilter).toEqual({ allow: critic ? [] : ['read', 'read_image', 'grep', 'glob'] })
       expect(request.childToolContribution).toBeUndefined()
       const attempt = (name: string) => request.childToolGuard!({ name } as never)
-      expect(attempt('read')).toBeUndefined()
+      expect(attempt('read')).toBe(critic ? 'Conductor critic uses only admitted excerpts.' : undefined)
       expect(attempt('structured_output')).toBeUndefined()
-      for (const tool of ['write', 'bash', 'conductor_quality_check', 'approval', 'conductor']) expect(attempt(tool)).toMatch(/read-only/)
+      for (const tool of ['write', 'bash', 'conductor_quality_check', 'approval', 'conductor']) {
+        expect(attempt(tool)).toMatch(critic ? /admitted excerpts/ : /read-only/)
+      }
     }
     const tool = h.ctx.tools.get('conductor')!
     const value = result.value
@@ -419,7 +458,137 @@ describe('Conductor analysis tool admission and execution policy', () => {
       scopeSources: ['current-request'], plan: ['Review the supplied task.'], planSources: ['current-request'],
     }, h.parent)
     expect(result.isError, JSON.stringify(result)).toBe(false)
-    expect(h.engine.requests).toHaveLength(3)
+    expect(h.engine.requests).toHaveLength(4)
+  })
+
+  it('requires a completed producer child before accepting an analysis candidate', async () => {
+    const h = await setup({ factory: analysisResult })
+    h.engine.publishChildren = false
+    const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }, h.parent)
+    expect(result.isError).toBe(true)
+    expect(JSON.stringify(result.content)).toContain('Conductor analysis producer has no completed child identity')
+    expect(h.engine.requests).toHaveLength(1)
+  })
+
+  it('sends the prior accepted challenge to the next critic after a new candidate', async () => {
+    let producerVersion = 0
+    const h = await setup({ factory: (request) => {
+      const result = analysisResult(request)
+      const prompt = (request.args as { prompt: string }).prompt
+      if (prompt.startsWith('{"identity":')) {
+        const challenge = result.value as Record<string, unknown>
+        if (challenge.critic_attempt !== 1) return result
+        return { ...result, value: { ...challenge, conclusion: 'does_not_hold', defect: 'report',
+          findings: [{ id: 'unsupported-priority', severity: 'major', claim: 'The priority does not follow.',
+            rationale: 'The cited evidence supports an alternative.', material_ids: challenge.material_ids }],
+          summary: 'Reconsider the priority.' } }
+      }
+      if ((request.args as { label: string }).label !== 'conductor-detective') return result
+      const envelope = result.value as Record<string, unknown>
+      producerVersion++
+      return { ...result, value: { ...envelope,
+        candidate: { ...envelope.candidate as object, version: `v${producerVersion}` } } }
+    } })
+    const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }, h.parent)
+    expect(result.isError, JSON.stringify(result)).toBe(false)
+    expect(result.value).toMatchObject({ status: 'reported' })
+    const event = h.parent.session.events.findLast(item => item.type === 'conductor/checkpoint')
+    if (event?.type !== 'conductor/checkpoint' || event.data.record === null) throw new Error('Expected a checkpoint')
+    const run = await new SessionConductorRunStore(h.parent.session, () => Promise.resolve()).load(event.data.runId)
+    expect(run?.reportCandidates.map(item => item.candidate.version)).toEqual(['v1', 'v2'])
+    expect(run?.analysisChallenges.map(item => [item.criticAttempt, item.challenge.conclusion]))
+      .toEqual([[1, 'does_not_hold'], [2, 'holds']])
+  })
+
+  it('parks a host-owned Gate C question when another complete critic attempt cannot be reserved', async () => {
+    const h = await setup({ config: { subagentProvider: 'fresh',
+      maxCriticInputTokensPerAttempt: 10_000, maxCriticOutputTokensPerAttempt: 32,
+      maxCriticTokensPerRun: 10_032 }, factory: (request) => {
+      const result = analysisResult(request)
+      if (request.composeChildPrompt === undefined) return result
+      return { ...result, value: { ...result.value as Record<string, unknown>,
+        findings: [{ id: 'unresolved', severity: 'major', claim: 'Unsupported conclusion',
+          rationale: 'The evidence is incomplete.', material_ids: [] }] } }
+    } })
+    const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }, h.parent)
+    expect(result.isError, JSON.stringify(result)).toBe(false)
+    expect(result.value).toMatchObject({ status: 'awaiting_owner', result: { kind: 'blocked' } })
+    expect(h.engine.requests).toHaveLength(2)
+    const record = h.parent.session.events.findLast(event => event.type === 'conductor/checkpoint')
+    if (record?.type !== 'conductor/checkpoint' || record.data.record === null) throw new Error('Expected a checkpoint')
+    const run = JSON.parse(record.data.record) as ConductorRun
+    expect(run.history.at(-1)).toMatchObject({ gate: 'C', origin: 'critic-budget', decision: 'escalate' })
+    expect(run.ownerLedger.at(-1)).toMatchObject({ kind: 'question', question: {
+      sourceKind: 'host', childId: null, attempt: null,
+    } })
+    expect((result.value as { result: { run: { specialistsRan: string[] } } }).result.run.specialistsRan)
+      .toEqual(['detective', 'devils-advocate'])
+  })
+
+  it.each([
+    { usage: null, reason: 'did not report valid' },
+    { usage: { inputTokens: -1, outputTokens: 5 }, reason: 'did not report valid' },
+    { usage: { inputTokens: 24_001, outputTokens: 5 }, reason: 'exceeded the configured' },
+  ])('stops a critic with untrustworthy provider token usage: $reason', async ({ usage, reason }) => {
+    const h = await setup({ factory: analysisResult })
+    h.engine.criticUsage = usage
+    const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }, h.parent)
+    expect(result.isError, JSON.stringify(result)).toBe(false)
+    expect(result.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked' } })
+    expect(JSON.stringify(result.value)).toContain(reason)
+    expect(h.engine.requests).toHaveLength(2)
+    const record = h.parent.session.events.findLast(event => event.type === 'conductor/checkpoint')
+    if (record?.type !== 'conductor/checkpoint' || record.data.record === null) throw new Error('Expected a checkpoint')
+    const run = JSON.parse(record.data.record) as ConductorRun
+    expect(run.ownerLedger).toEqual([])
+  })
+
+  it('charges cached input once and retains the provider reasoning-inclusive output total', async () => {
+    const h = await setup({ factory: analysisResult })
+    h.engine.criticUsage = { inputTokens: 100, cacheReadTokens: 20, cacheWriteTokens: 30,
+      outputTokens: 17, reasoningTokens: 12 }
+    const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }, h.parent)
+    expect(result.value).toMatchObject({ status: 'reported' })
+    const record = h.parent.session.events.findLast(event => event.type === 'conductor/checkpoint')
+    if (record?.type !== 'conductor/checkpoint' || record.data.record === null) throw new Error('Expected a checkpoint')
+    const run = JSON.parse(record.data.record) as ConductorRun
+    const critic = run.history.find(gate => gate.kind === 'evaluated' && gate.analysis?.mode === 'critic')
+    expect(critic?.kind === 'evaluated' && critic.analysis).toMatchObject({ inputTokens: 150, outputTokens: 17 })
+  })
+
+  it.each([false, true])('checkpoints a failed started critic with %s token usage before stopping', async (missingUsage) => {
+    const h = await setup({ factory: (request) => {
+      const result = analysisResult(request)
+      return request.composeChildPrompt === undefined ? result
+        : { stopReason: 'error', error: 'critic provider stopped', agentsStarted: 1, value: null }
+    } })
+    if (missingUsage) h.engine.criticUsage = null
+    const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }, h.parent)
+    expect(result.isError, JSON.stringify(result)).toBe(false)
+    expect(result.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked' } })
+    const event = h.parent.session.events.findLast(item => item.type === 'conductor/checkpoint')
+    if (event?.type !== 'conductor/checkpoint' || event.data.record === null) throw new Error('Expected a checkpoint')
+    const run = await new SessionConductorRunStore(h.parent.session, () => Promise.resolve()).load(event.data.runId)
+    expect(run?.history.at(-1)).toMatchObject({ kind: 'evaluated', gate: 'C', decision: 'escalate',
+      analysis: { mode: 'critic', criticAttempt: 1,
+        ...missingUsage ? {} : { inputTokens: 100, outputTokens: 5 } } })
+    expect(run?.ownerLedger).toEqual([])
+    expect(h.engine.requests).toHaveLength(2)
+  })
+
+  it('does not checkpoint a critic child that never started', async () => {
+    const h = await setup({ factory: (request) => {
+      const result = analysisResult(request)
+      return request.composeChildPrompt === undefined ? result
+        : { stopReason: 'error', error: 'critic provider never started', agentsStarted: 0, value: null }
+    } })
+    const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }, h.parent)
+    expect(result.isError).toBe(true)
+    expect(JSON.stringify(result.content)).toContain('Conductor devils-advocate workflow stopped: error')
+    const event = h.parent.session.events.findLast(item => item.type === 'conductor/checkpoint')
+    if (event?.type !== 'conductor/checkpoint' || event.data.record === null) throw new Error('Expected a checkpoint')
+    const run = await new SessionConductorRunStore(h.parent.session, () => Promise.resolve()).load(event.data.runId)
+    expect(run?.history.filter(item => item.kind === 'evaluated').map(item => item.stage)).toEqual(['detective'])
   })
 })
 
@@ -783,6 +952,13 @@ describe('dsh-tool-conductor unit boundary', () => {
     expect(() => { toolConductor.apply(new Context(), { maxReworkPerGate: 0 }) }).toThrow(/maxReworkPerGate/)
     expect(() => { toolConductor.apply(new Context(), { maxRalphRounds: -1 }) }).toThrow(/maxRalphRounds/)
     expect(() => { toolConductor.apply(new Context(), { maxRalphHandoffChars: 0 }) }).toThrow(/maxRalphHandoffChars/)
+    for (const field of ['maxCriticInputTokensPerAttempt', 'maxCriticOutputTokensPerAttempt', 'maxCriticTokensPerRun'] as const) {
+      for (const value of [0, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+        expect(() => { toolConductor.apply(new Context(), { [field]: value }) }).toThrow(/positive safe integer/)
+      }
+    }
+    expect(() => { toolConductor.apply(new Context(), { maxCriticInputTokensPerAttempt: 25_000,
+      maxCriticOutputTokensPerAttempt: 16_000, maxCriticTokensPerRun: 40_000 }) }).toThrow(/cover one maximum/)
 
     const missing = new Context()
     await missing.plugin(SubagentRuntime)

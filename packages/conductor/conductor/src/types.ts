@@ -14,6 +14,8 @@
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { OwnerInteraction, OwnerMandate, OwnerMandateProposal, OwnerQuestionItem } from './owner-types.ts'
+import type { AnalysisChallenge } from './analysis-challenge.ts'
+import type { AnalysisMaterialSpan } from './analysis-materials.ts'
 
 /**
  * Identifies one Conductor run. The runtime mints `CON-YYYY-NNNN`; every
@@ -97,6 +99,8 @@ export interface ReportCandidate {
   content: string
   criteria: { criterion: string; outcome: string }[]
   material_ids: string[]
+  /** Exact admitted text ranges selected by runtime for the critic. */
+  material_spans: AnalysisMaterialSpan[]
   assumptions: string[]
   limitations: string[]
 }
@@ -106,6 +110,19 @@ export interface CapturedReport {
   producer: ConductorEntry
   candidate: ReportCandidate
   hash: string
+  /** Fresh child that authored this candidate, distinct from its critic. */
+  producerChildId: SessionId
+}
+
+/** One validated critique with its exact candidate and measured model cost. */
+export interface CapturedAnalysisChallenge {
+  challenge: AnalysisChallenge
+  hash: string
+  candidateHash: string
+  criticChildId: SessionId
+  criticAttempt: number
+  inputTokens: number
+  outputTokens: number
 }
 
 /** Analysis-specific specialist output; no execution baseline or command evidence. */
@@ -120,7 +137,8 @@ export interface AnalysisEnvelope {
   blockers: string[]
   assumptions: string[]
   limitations: string[]
-  defect?: 'scope' | 'plan' | 'report'
+  /** `analysis` requests a new producer candidate and is valid only for Auditor rework. */
+  defect?: 'scope' | 'plan' | 'report' | 'analysis'
   candidate?: ReportCandidate
   candidate_hash?: string
   /** Read-only owner clarification; it cannot request implementation authority. */
@@ -133,6 +151,7 @@ export interface ReportDecision {
   purpose: 'analysis'
   candidate_hash: string
   audit_hash: string
+  challenge_hash: string
   decision: 'accept' | 'revise' | 'blocked'
   basis: string[]
   evidence_reviewed: string[]
@@ -307,7 +326,7 @@ export type ConductorRunStatus =
  */
 export interface ConductorRun {
   /** Pre-release durable record format; unsupported versions are rejected without migration. */
-  recordFormatVersion: 4
+  recordFormatVersion: 5
   /** Actual owning root session; null only when no host session was captured. */
   ownerSessionId: SessionId | null
   /** Immutable capabilities captured by the admitting host, never supplied by a specialist. */
@@ -320,10 +339,14 @@ export interface ConductorRun {
   admission: ConductorAdmission
   /** Pending prerequisite repairs, in causal stack order. */
   repairReturns: RepairReturn[]
+  /** Active read-only dispatch mode; null outside an analysis producer or critic. */
+  analysisMode: 'producer' | 'critic' | null
   /** Validated analysis reports retained in dispatch order. */
   analysisReports: AnalysisEnvelope[]
   /** Append-only report versions; audits must name the latest exact hash. */
   reportCandidates: CapturedReport[]
+  /** Append-only validated critiques bound to their exact report candidates. */
+  analysisChallenges: CapturedAnalysisChallenge[]
   /** The final report-specific verdict; accept produces status reported. */
   reportDecision?: ReportDecision
   /** The run's id. */
@@ -393,8 +416,8 @@ export type DefectClass = 'scope' | 'plan' | 'implementation' | 'delivery' | 're
 export interface EvaluatedGateRecord {
   /** An actual runtime evaluation, distinct from an explicitly skipped gate. */
   kind: 'evaluated'
-  /** Admission insufficiency may be discovered before any specialist is dispatched. */
-  origin?: 'intake-validation'
+  /** Host-detected insufficiency before a specialist is dispatched. */
+  origin?: 'intake-validation' | 'critic-budget'
   /** The gate letter. */
   gate: GateId
   /** The gated stage this gate judged (one of the seven Detective–Arbiter stages). */
@@ -413,6 +436,17 @@ export interface EvaluatedGateRecord {
   stateUpdate: string
   /** Hash of the active execution baseline for Gate C pass and every later attempt under it. */
   executionBaselineHash?: string
+  /** Exact producer or critic dispatch at analysis Gate C. */
+  analysis?: {
+    mode: 'producer' | 'critic'
+    candidateHash?: string
+    childId?: SessionId
+    criticAttempt?: number
+    challengeHash?: string
+    inputTokens?: number
+    outputTokens?: number
+    conclusion?: 'holds' | 'does_not_hold'
+  }
 }
 
 /** A runtime-owned bypass with captured evidence; it is never a gate pass. */
