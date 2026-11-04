@@ -39,7 +39,7 @@ export function registerOwnerEscalationSnapshots(): void {
       'persists exact child provenance and truthful %s owner state', async (scenario) => {
         const analysis = scenario.startsWith('analysis')
         const answer = scenario === 'approved' || scenario === 'analysis-answer'
-        const stages = scenario === 'analysis-answer' ? ['detective', 'detective', 'auditor', 'arbiter']
+        const stages = scenario === 'analysis-answer' ? ['detective', 'detective', 'devils-advocate', 'auditor', 'arbiter']
           : scenario === 'approved' ? ['strategist', 'strategist'] : [analysis ? 'detective' : 'strategist']
         const result = await runLoaderSmoke({
           label: `Conductor P1 ${scenario}`, tempDirPrefix: 'conductor-owner-snapshot-',
@@ -82,7 +82,7 @@ export function registerOwnerEscalationSnapshots(): void {
             const records = parent.events.flatMap(event => event.type === 'conductor/checkpoint' && event.data.record !== null
               ? [parseRun(event.data.record)] : [])
             const run = records.at(-1)!
-            expect(run.recordFormatVersion).toBe(4)
+            expect(run.recordFormatVersion).toBe(5)
             expect(run.ownerSessionId).toBe(parent.header.id)
             expect(run.budget.maxOwnerReassessmentsPerGate).toBe(2)
             expect(run.ownerRevision).toBe(run.ownerLedger.length)
@@ -111,7 +111,7 @@ export function registerOwnerEscalationSnapshots(): void {
             expect(run.baselineHistory).toEqual([])
             expect(run.qualityExecutions).toEqual([])
             expect(run.history.filter(gate => gate.kind === 'evaluated').every(gate => !['headsman', 'ralph', 'integrator', 'closeout'].includes(gate.stage))).toBe(true)
-            if (analysis) expect(run.history.filter(gate => gate.kind === 'evaluated').every(gate => gate.gate !== 'C')).toBe(true)
+            if (analysis && !answer) expect(run.history.filter(gate => gate.kind === 'evaluated').every(gate => gate.gate !== 'C')).toBe(true)
             const children = new Map(parent.events.flatMap(event => event.type === 'conductor/child' ? [[event.data.childId, event.data] as const] : []))
             expect([...children.values()].map(child => child.role)).toEqual(stages)
             expect([...children.values()].filter(child => child.role === stages[0]).map(child => child.attempt))
@@ -138,8 +138,14 @@ export function registerOwnerEscalationSnapshots(): void {
                 const message = child.events.find(event => event.type === 'user/message')
                 if (message?.type !== 'user/message') throw new Error('A reassessed child requires its logged dispatch message')
                 const source = message.data.content.find(block => block.type === 'text'
-                  && (block.text.includes('Dispatch package:\n') || block.text.includes('Analysis record:\n')))
+                  && (block.text.includes('Dispatch package:\n') || block.text.includes('Analysis record:\n')
+                    || block.text.startsWith('{"identity":')))
                 if (source?.type !== 'text') throw new Error('A reassessed child must receive typed owner context')
+                if (source.text.startsWith('{"identity":')) {
+                  const critic = JSON.parse(source.text) as { identity: { run_id: string; critic_attempt: number } }
+                  expect(critic.identity).toMatchObject({ run_id: run.runId, critic_attempt: 1 })
+                  continue
+                }
                 const marker = source.text.includes('Analysis record:\n') ? 'Analysis record:\n' : 'Dispatch package:\n'
                 const visible = JSON.parse(source.text.split(marker)[1]!.split('\n\nReturn the structured result')[0]!) as {
                   owner_ledger: typeof run.ownerLedger
@@ -156,7 +162,8 @@ export function registerOwnerEscalationSnapshots(): void {
             }
             if (scenario === 'analysis-answer') {
               expect(effectiveOwnerMandate(run).allowedPaths).toEqual([])
-              expect(run.history.filter(gate => gate.kind === 'evaluated').map(gate => gate.decision)).toEqual(['escalate', 'pass', 'pass', 'pass'])
+              expect(run.history.filter(gate => gate.kind === 'evaluated').map(gate => gate.decision))
+                .toEqual(['escalate', 'pass', 'pass', 'pass', 'pass'])
             }
             expect(await readFile(join(cwd, 'probe.txt'), 'utf8')).toBe(probe)
             expect(await readFile(join(cwd, 'AGENTS.md'), 'utf8')).toBe(contrary)
