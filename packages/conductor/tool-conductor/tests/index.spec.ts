@@ -422,6 +422,27 @@ describe('Conductor analysis tool admission and execution policy', () => {
     expect(JSON.stringify(repeated)).toContain('terminal')
   })
 
+  it('admits a cited ASCII source whose byte length exceeds the critic token limit', async () => {
+    let criticPrompt = ''
+    const h = await setup({ factory: (request) => {
+      const prompt = (request.args as { prompt: string }).prompt
+      if (prompt.startsWith('{"identity":')) criticPrompt = prompt
+      return analysisResult(request)
+    } })
+    const material = 'The source evidence supports the proposed review sequence. '.repeat(600)
+    expect(Buffer.byteLength(material, 'utf8')).toBeGreaterThan(24_000)
+    h.parent.session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: material }], source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+
+    const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }, h.parent)
+    expect(result.isError, JSON.stringify(result)).toBe(false)
+    expect(result.value).toMatchObject({ status: 'reported' })
+    expect(h.engine.requests.map(request => (request.args as { label: string }).label))
+      .toEqual(['conductor-detective', 'conductor-devils-advocate', 'conductor-auditor', 'conductor-arbiter'])
+    expect(criticPrompt).toContain(material)
+  })
+
   it('rejects a changed admission on resume and reuses captured material without rereading it', async () => {
     const h = await setup({ factory: () => { throw new Error('interrupted before the child') } })
     const args = { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }

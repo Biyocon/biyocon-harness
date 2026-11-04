@@ -1137,7 +1137,8 @@ export function apply(ctx: Context, config: Config): void {
                 maxInputTokens: resolved.maxCriticInputTokensPerAttempt,
                 maxOutputTokens: resolved.maxCriticOutputTokensPerAttempt,
                 maxSummaryCharacters: resolved.maxCriticOutputTokensPerAttempt,
-                countTokens: prompt => Buffer.byteLength(`${prompt}\n${JSON.stringify(ANALYSIS_CHALLENGE_OUTPUT_SCHEMA)}`, 'utf8'),
+                // Match the token meter's fixed text-density estimate; provider usage is checked after dispatch.
+                countTokens: prompt => Math.ceil(`${prompt}\n${JSON.stringify(ANALYSIS_CHALLENGE_OUTPUT_SCHEMA)}`.length / 4),
                 onReservedChildId: (id) => { childId = id },
                 onPromptTokens: (tokens) => { usageState.estimatedInputTokens = tokens },
                 onRawResult: (value) => { criticReport = value },
