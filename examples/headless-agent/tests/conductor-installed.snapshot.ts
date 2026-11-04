@@ -172,7 +172,7 @@ describe('installed Conductor through the headless example', () => {
         expect(parent.events.filter(row => row.type === 'tool/call').map(row => row.data.name)).toEqual(['conductor'])
         const checkpoint = parent.events.filter(row => row.type === 'conductor/checkpoint').at(-1)!
         const run = JSON.parse(checkpoint.data.record!) as ConductorRun
-        expect(run.recordFormatVersion).toBe(4)
+        expect(run.recordFormatVersion).toBe(5)
         expect(run.budget.maxReworkPerGate).toBe(2)
         expect(run.allowedPaths).toEqual(['owner-allowed'])
         expect(run.excludedPaths).toEqual(['owner-allowed/protected'])

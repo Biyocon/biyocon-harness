@@ -1,6 +1,6 @@
 /** Deterministic model responses for the installed preset's P1 owner ledger. */
 import type { Context } from '@deepseek-ai/cordis'
-import { CallId, LlmAdapter, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { CallId, LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { CapturedReport, ConductorAdmission, OwnerInteraction } from '@deepseek-ai/dsh-conductor'
 
 interface Dispatch {
@@ -15,12 +15,13 @@ interface Dispatch {
   owner_ledger: OwnerInteraction[]
 }
 
-function* call(name: string, value: unknown, invocation = 0): Generator<StreamChunk> {
+function* call(name: string, value: unknown, invocation = 0, outputTokens?: number): Generator<StreamChunk> {
   const id = CallId(`owner-${name}${invocation === 0 ? '' : `-${invocation + 1}`}`)
   const args = JSON.stringify(value)
   yield { type: 'block-start', index: 0, blockType: 'tool-call' }
   yield { type: 'tool-call-delta', index: 0, id, name, argumentsDelta: args }
   yield { type: 'block-end', index: 0, block: { type: 'tool-call', id, name, arguments: args } }
+  if (outputTokens !== undefined) yield { type: 'usage', usage: { inputTokens: 10, outputTokens } }
   yield { type: 'finish', reason: { kind: 'tool-calls' } }
 }
 
@@ -34,6 +35,10 @@ function* text(value: string): Generator<StreamChunk> {
 export class OwnerConductorAdapter extends LlmAdapter {
   private producerAttempts = 0
   private parentCalls = 0
+
+  override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
+    return Promise.resolve({ provider, id: model, name: model, enforcesMaxTokensIncludingReasoning: true as const })
+  }
 
   private conductor(value: unknown): Generator<StreamChunk> {
     return call('conductor', value, this.parentCalls++)
@@ -99,7 +104,7 @@ export class OwnerConductorAdapter extends LlmAdapter {
         candidate_version: input.identity.candidate_version, material_ids: input.identity.material_ids,
         critic_child_id: input.identity.critic_child_id, critic_attempt: input.identity.critic_attempt,
         findings: [], conclusion: 'holds', summary: 'The owner-grounded report reasoning holds.',
-      })
+      }, 0, 5)
       return
     }
     const source = options.messages.flatMap(message => message.content).find(block => block.type === 'text'

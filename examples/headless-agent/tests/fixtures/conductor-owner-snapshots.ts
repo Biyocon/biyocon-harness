@@ -173,6 +173,8 @@ export function registerOwnerEscalationSnapshots(): void {
             // Hashes include the minted run ID. Raw source/hash/child bindings were checked above.
             const ownerReportHashes = new Map(run.ownerLedger.flatMap((entry, index) => entry.kind === 'question'
               ? [[entry.question.reportHash, `{{ownerReportHash${index + 1}}}`] as const] : []))
+            const challengeHashes = new Map(run.analysisChallenges.map((entry, index) =>
+              [entry.hash, `{{challengeHash${index + 1}}}`] as const))
             const hostIds = new Map<string, string>()
             for (const event of parent.events) {
               if ((event.type === 'conductor/owner-response-recorded' || event.type === 'conductor/owner-terminal-rejection')
@@ -197,6 +199,7 @@ export function registerOwnerEscalationSnapshots(): void {
                 .replace(/CON-\d{4}-\d{4}/g, '{{runId}}')
                 .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g, '{{isoTime}}')
               for (const [hash, token] of ownerReportHashes) normalized = normalized.replaceAll(hash, token)
+              for (const [hash, token] of challengeHashes) normalized = normalized.replaceAll(hash, token)
               for (const [id, token] of hostIds) normalized = normalized.replaceAll(id, token)
               const name = session.header.parentSession === undefined ? 'parent' : `${index}-${stages[index - 1]!}`
               const snapshot = canonicalSessionFixture(normalized, name)!
