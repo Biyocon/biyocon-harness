@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-11-03-conductor-analysis-critic-instructions.md
-2026-11-03-conductor-analysis-critic-instructions.md: 471991b9a0062bcc3ca31276eb5212a43d1b0bef
-2026-11-03-conductor-analysis-critic-instructions.zh.md: 0f6614f657b6fb097fb70b4402dd33615cf08cdd
+2026-11-03-conductor-analysis-critic-instructions.md: 1cb82b2176c717ea141aa893a1806bcbd788a82d
+2026-11-03-conductor-analysis-critic-instructions.zh.md: ecf65229a3a373b6c4b7b56839ed9a08c545849c

@@ -65,6 +65,9 @@ export type {
 } from './types.ts'
 export { admitIntake, admittedRoute, captureIntakeMaterial, CONDUCTOR_ENTRIES, contentHash, reportProducer } from './intake.ts'
 export { currentAuditHash, reportHash } from './analysis.ts'
+export { buildCriticInput } from './analysis-materials.ts'
+export { validateAnalysisChallenge } from './analysis-challenge.ts'
+export type { AnalysisChallengeContext, CapturedChallengeIdentity } from './analysis-challenge.ts'
 export {
   closeRun,
   CONDUCTOR_RECORD_FORMAT_VERSION,
