@@ -33,7 +33,8 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: [],
-    budget: { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 },
+    budget: { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2,
+      maxCriticInputTokensPerAttempt: 24_000, maxCriticOutputTokensPerAttempt: 16_000, maxCriticTokensPerRun: 120_000 },
     baselineHistory: [],
     baseline: null,
     executionAuthorization: null,
@@ -182,7 +183,23 @@ describe('dsh-conductor gate engine', () => {
       authority: { owner: 'user' },
     })
     expect(secondDefaulted.scope).toEqual([])
-    expect(secondDefaulted.budget).toEqual({ maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 })
+    expect(secondDefaulted.budget).toEqual({ maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2,
+      maxCriticInputTokensPerAttempt: 24_000, maxCriticOutputTokensPerAttempt: 16_000, maxCriticTokensPerRun: 120_000 })
+  })
+
+  it('rejects invalid critic limits at admission', () => {
+    const base = { maxReworkPerGate: 2, maxRalphRounds: 0 }
+    for (const field of ['maxCriticInputTokensPerAttempt', 'maxCriticOutputTokensPerAttempt',
+      'maxCriticTokensPerRun'] as const) {
+      for (const value of [0, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+        expect(() => createRun(ConductorRunId('CON-2026-0005'), { admission: implementationAdmission(),
+          objective: 'validate budget', authority: { owner: 'user' }, budget: { ...base, [field]: value } }))
+          .toThrow(/positive safe integer/)
+      }
+    }
+    expect(() => createRun(ConductorRunId('CON-2026-0005'), { admission: implementationAdmission(),
+      objective: 'validate budget', authority: { owner: 'user' }, budget: { ...base,
+        maxCriticTokensPerRun: 39_999 } })).toThrow(/cover one maximum critic attempt/)
   })
 
   it('maps each gated stage to its gate letter and back', () => {
@@ -313,7 +330,8 @@ describe('dsh-conductor gate engine', () => {
   it('escalates a rework once the rework budget is exhausted', () => {
     const run = makeRun({
       currentStage: 'auditor',
-      budget: { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 },
+      budget: { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2,
+        maxCriticInputTokensPerAttempt: 24_000, maxCriticOutputTokensPerAttempt: 16_000, maxCriticTokensPerRun: 120_000 },
       history: [
         gateRecord({ kind: 'evaluated', gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
         gateRecord({ kind: 'evaluated', gate: 'E', stage: 'auditor', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
@@ -340,7 +358,8 @@ describe('dsh-conductor gate engine', () => {
     })).toThrow(/report rework must return to its reporting stage/)
     const run = makeRun({
       currentStage: 'auditor',
-      budget: { maxReworkPerGate: 2, maxRalphRounds: 4, maxOwnerReassessmentsPerGate: 2 },
+      budget: { maxReworkPerGate: 2, maxRalphRounds: 4, maxOwnerReassessmentsPerGate: 2,
+        maxCriticInputTokensPerAttempt: 24_000, maxCriticOutputTokensPerAttempt: 16_000, maxCriticTokensPerRun: 120_000 },
       history: [
         gateRecord({ kind: 'evaluated', gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
         gateRecord({ kind: 'evaluated', gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),

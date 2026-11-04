@@ -32,7 +32,8 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: [],
-    budget: { maxReworkPerGate: 3, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 },
+    budget: { maxReworkPerGate: 3, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2,
+      maxCriticInputTokensPerAttempt: 24_000, maxCriticOutputTokensPerAttempt: 16_000, maxCriticTokensPerRun: 120_000 },
     baselineHistory: [],
     baseline: null,
     executionAuthorization: null,
@@ -219,7 +220,7 @@ describe('dsh-conductor persistence', () => {
   })
 
   it('round-trips same-role report repairs and rejects a forged third rework at a gate', () => {
-    let run = makeRun({ budget: { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 } })
+    let run = makeRun({ budget: { ...makeRun().budget, maxReworkPerGate: 2 } })
     const verdict = {
       decision: 'rework' as const, defectClass: 'report' as const, nextStage: 'detective' as const,
       basis: ['malformed report'], evidenceReviewed: [], stateUpdate: 'repair Detective report',
@@ -739,6 +740,10 @@ describe('dsh-conductor persistence', () => {
       [{ ...makeRun(), constraints: [' '] }, /constraints/],
       [{ ...makeRun(), budget: { maxReworkPerGate: 0, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 } }, /maxReworkPerGate/],
       [{ ...makeRun(), budget: { maxReworkPerGate: 1, maxRalphRounds: -1 } }, /maxRalphRounds/],
+      [{ ...makeRun(), budget: { ...makeRun().budget, maxCriticInputTokensPerAttempt: undefined } }, /maxCriticInputTokensPerAttempt/],
+      [{ ...makeRun(), budget: { ...makeRun().budget, maxCriticOutputTokensPerAttempt: 0 } }, /maxCriticOutputTokensPerAttempt/],
+      [{ ...makeRun(), budget: { ...makeRun().budget, maxCriticTokensPerRun: 1.5 } }, /maxCriticTokensPerRun/],
+      [{ ...makeRun(), budget: { ...makeRun().budget, maxCriticTokensPerRun: 39_999 } }, /cannot reserve one complete attempt/],
       [{ ...makeRun(), baseline: [] }, /baseline must be an object/],
       [{ ...makeRun(), baseline: {
         scopeVersion: 1, planVersion: 'p', acceptanceVersion: 'a',

@@ -63,8 +63,9 @@ export interface CreateRunInput {
   constraints?: string[]
   /** Measurable deliverable requirements; at least one is required for analysis. */
   acceptanceCriteria?: string[]
-  /** Rework and Ralph round limits; defaults to `{ maxReworkPerGate: 2, maxRalphRounds: 0 }`. */
-  budget?: Omit<ConductorBudget, 'maxOwnerReassessmentsPerGate'> & { maxOwnerReassessmentsPerGate?: number }
+  /** Limits retained at admission; omitted critic limits use the shipped Config defaults. */
+  budget?: Pick<ConductorBudget, 'maxReworkPerGate' | 'maxRalphRounds'>
+    & Partial<Omit<ConductorBudget, 'maxReworkPerGate' | 'maxRalphRounds'>>
 }
 
 /**
@@ -77,6 +78,18 @@ export function createRun(runId: ConductorRunId, input: CreateRunInput): Conduct
   if (input.budget?.maxOwnerReassessmentsPerGate !== undefined
     && (!Number.isSafeInteger(input.budget.maxOwnerReassessmentsPerGate) || input.budget.maxOwnerReassessmentsPerGate < 1)) {
     throw new Error('Conductor maxOwnerReassessmentsPerGate must be a positive safe integer')
+  }
+  const criticBudget = {
+    maxCriticInputTokensPerAttempt: input.budget?.maxCriticInputTokensPerAttempt ?? 24_000,
+    maxCriticOutputTokensPerAttempt: input.budget?.maxCriticOutputTokensPerAttempt ?? 16_000,
+    maxCriticTokensPerRun: input.budget?.maxCriticTokensPerRun ?? 120_000,
+  }
+  for (const [field, value] of Object.entries(criticBudget)) {
+    if (!Number.isSafeInteger(value) || value < 1) throw new Error(`Conductor ${field} must be a positive safe integer`)
+  }
+  if (criticBudget.maxCriticTokensPerRun
+    < criticBudget.maxCriticInputTokensPerAttempt + criticBudget.maxCriticOutputTokensPerAttempt) {
+    throw new Error('Conductor maxCriticTokensPerRun must cover one maximum critic attempt')
   }
   const acceptanceCriteria = [...(input.acceptanceCriteria ?? [])]
   requireAnalysisCriteria(input.admission, acceptanceCriteria)
@@ -105,8 +118,9 @@ export function createRun(runId: ConductorRunId, input: CreateRunInput): Conduct
     acceptanceCriteria,
     budget:
       input.budget === undefined
-        ? { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 }
-        : { ...input.budget, maxOwnerReassessmentsPerGate: input.budget.maxOwnerReassessmentsPerGate ?? 2 },
+        ? { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2, ...criticBudget }
+        : { ...input.budget, maxOwnerReassessmentsPerGate: input.budget.maxOwnerReassessmentsPerGate ?? 2,
+          ...criticBudget },
     baselineHistory: [],
     baseline: null,
     executionAuthorization: null,

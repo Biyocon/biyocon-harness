@@ -45,7 +45,8 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: ['feature works'],
-    budget: { maxReworkPerGate: 3, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 },
+    budget: { maxReworkPerGate: 3, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2,
+      maxCriticInputTokensPerAttempt: 24_000, maxCriticOutputTokensPerAttempt: 16_000, maxCriticTokensPerRun: 120_000 },
     baselineHistory: [],
     baseline: null,
     executionAuthorization: null,
@@ -510,7 +511,8 @@ describe('dsh-conductor drive', () => {
       },
       async dispatchArbiter() { return makeDecision('go') },
     }
-    const outcome = await drive(makeRun({ currentStage: 'detective', budget: { maxReworkPerGate: 1, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 } }), dispatcher)
+    const outcome = await drive(makeRun({ currentStage: 'detective', budget: { ...makeRun().budget,
+      maxReworkPerGate: 1 } }), dispatcher)
     expect(outcome.kind).toBe('blocked')
     if (outcome.kind === 'blocked') {
       expect(outcome.run.status).toBe('escalated')

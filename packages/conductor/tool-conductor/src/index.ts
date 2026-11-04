@@ -54,6 +54,7 @@ import { captureMaterials } from './materials.ts'
 import type { MaterialLimits } from './materials.ts'
 import { ANALYSIS_CHALLENGE_OUTPUT_SCHEMA, ANALYSIS_CRITERIA_INSTRUCTION, REPORT_DECISION_SCHEMA } from './analysis-schema.ts'
 import { dispatchAnalysisChild } from './analysis-dispatch.ts'
+import { criticBudgetReservation } from './critic-budget.ts'
 import { ralphDirective } from './ralph.ts'
 import { observeConductorChildren, publishChildGates } from './children.ts'
 import { runWorkflowChild } from './workflow-child.ts'
@@ -1028,7 +1029,10 @@ export function apply(ctx: Context, config: Config): void {
             constraints: resolveStringList(call.constraints, 'constraints'),
             acceptanceCriteria: resolveStringList(call.acceptanceCriteria, 'acceptanceCriteria'),
             budget: { maxReworkPerGate: resolved.maxReworkPerGate,
-              maxOwnerReassessmentsPerGate: resolved.maxOwnerReassessmentsPerGate, maxRalphRounds: resolved.maxRalphRounds },
+              maxOwnerReassessmentsPerGate: resolved.maxOwnerReassessmentsPerGate, maxRalphRounds: resolved.maxRalphRounds,
+              maxCriticInputTokensPerAttempt: resolved.maxCriticInputTokensPerAttempt,
+              maxCriticOutputTokensPerAttempt: resolved.maxCriticOutputTokensPerAttempt,
+              maxCriticTokensPerRun: resolved.maxCriticTokensPerRun },
           })
           await store.save(run)
         }
@@ -1097,14 +1101,11 @@ export function apply(ctx: Context, config: Config): void {
             return { value, childId: child.data.childId }
           },
           async dispatchCritic(current: ConductorRun, criticAttempt: number) {
-            const consumed = current.history.reduce((sum, record) => record.kind === 'evaluated'
-              && record.analysis?.mode === 'critic'
-              // Unmetered critic failures terminate the run before another dispatch.
-              ? sum + (record.analysis.inputTokens as number) + (record.analysis.outputTokens as number) : sum, 0)
-            const reserved = resolved.maxCriticInputTokensPerAttempt + resolved.maxCriticOutputTokensPerAttempt
-            if (consumed + reserved > resolved.maxCriticTokensPerRun) {
+            const { maxCriticInputTokensPerAttempt, maxCriticOutputTokensPerAttempt } = current.budget
+            const reservation = criticBudgetReservation(current)
+            if (reservation.exhausted) {
               return { kind: 'blocked' as const, problem: { kind: 'report' as const,
-                message: 'Conductor critic run token budget cannot reserve another complete attempt' } }
+                message: `Conductor critic run token budget exhausted: consumed ${reservation.consumed}, reserved ${reservation.reserved}, limit ${reservation.limit} tokens` } }
             }
             // driveAnalysis checks the retained candidate before invoking this callback.
             const captured = current.reportCandidates.at(-1) as CapturedReport
@@ -1134,9 +1135,9 @@ export function apply(ctx: Context, config: Config): void {
                 producerChildId: captured.producerChildId, criticAttempt,
                 materialSpans: captured.candidate.material_spans,
                 previous: current.analysisChallenges.map(item => ({ challenge: item.challenge, hash: item.hash })),
-                maxInputTokens: resolved.maxCriticInputTokensPerAttempt,
-                maxOutputTokens: resolved.maxCriticOutputTokensPerAttempt,
-                maxSummaryCharacters: resolved.maxCriticOutputTokensPerAttempt,
+                maxInputTokens: maxCriticInputTokensPerAttempt,
+                maxOutputTokens: maxCriticOutputTokensPerAttempt,
+                maxSummaryCharacters: maxCriticOutputTokensPerAttempt,
                 // Match the token meter's fixed text-density estimate; provider usage is checked after dispatch.
                 countTokens: prompt => Math.ceil(`${prompt}\n${JSON.stringify(ANALYSIS_CHALLENGE_OUTPUT_SCHEMA)}`.length / 4),
                 onReservedChildId: (id) => { childId = id },
@@ -1172,8 +1173,8 @@ export function apply(ctx: Context, config: Config): void {
               return { kind: 'blocked' as const, problem: { kind: 'authority' as const,
                 message: 'Conductor critic provider did not report valid input and output token usage' }, ...usage }
             }
-            if (inputTokens > resolved.maxCriticInputTokensPerAttempt
-              || outputTokens > resolved.maxCriticOutputTokensPerAttempt) {
+            if (inputTokens > maxCriticInputTokensPerAttempt
+              || outputTokens > maxCriticOutputTokensPerAttempt) {
               return { kind: 'blocked' as const, problem: { kind: 'authority' as const,
                 message: 'Conductor critic provider usage exceeded the configured token budget' }, ...usage }
             }

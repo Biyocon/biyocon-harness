@@ -521,7 +521,7 @@ describe('Conductor analysis tool admission and execution policy', () => {
       .toEqual([[1, 'does_not_hold'], [2, 'holds']])
   })
 
-  it('parks a host-owned Gate C question when another complete critic attempt cannot be reserved', async () => {
+  it('ends Gate C when another complete critic attempt cannot be reserved', async () => {
     const h = await setup({ config: { subagentProvider: 'fresh',
       maxCriticInputTokensPerAttempt: 10_000, maxCriticOutputTokensPerAttempt: 32,
       maxCriticTokensPerRun: 10_032 }, factory: (request) => {
@@ -533,15 +533,16 @@ describe('Conductor analysis tool admission and execution policy', () => {
     } })
     const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }, h.parent)
     expect(result.isError, JSON.stringify(result)).toBe(false)
-    expect(result.value).toMatchObject({ status: 'awaiting_owner', result: { kind: 'blocked' } })
+    expect(result.value).toMatchObject({ status: 'escalated', result: { kind: 'blocked' } })
+    expect(JSON.stringify(result.value)).toContain('consumed 105, reserved 10032, limit 10032 tokens')
     expect(h.engine.requests).toHaveLength(2)
     const record = h.parent.session.events.findLast(event => event.type === 'conductor/checkpoint')
     if (record?.type !== 'conductor/checkpoint' || record.data.record === null) throw new Error('Expected a checkpoint')
     const run = JSON.parse(record.data.record) as ConductorRun
     expect(run.history.at(-1)).toMatchObject({ gate: 'C', origin: 'critic-budget', decision: 'escalate' })
-    expect(run.ownerLedger.at(-1)).toMatchObject({ kind: 'question', question: {
-      sourceKind: 'host', childId: null, attempt: null,
-    } })
+    expect(run.ownerLedger).toEqual([])
+    expect(run.budget).toMatchObject({ maxCriticInputTokensPerAttempt: 10_000,
+      maxCriticOutputTokensPerAttempt: 32, maxCriticTokensPerRun: 10_032 })
     expect((result.value as { result: { run: { specialistsRan: string[] } } }).result.run.specialistsRan)
       .toEqual(['detective', 'devils-advocate'])
   })
@@ -727,6 +728,8 @@ describe('P1 owner configuration and observed child continuation', () => {
       ? [{ role: event.data.role, attempt: event.data.attempt }] : [])
     expect(children.slice(0, 2))
       .toEqual([{ role: 'detective', attempt: 1 }, { role: 'detective', attempt: 2 }])
+    expect(children).toContainEqual({ role: 'devils-advocate', attempt: 1 })
+    expect(final.analysisChallenges).toHaveLength(1)
     expect(final.history.filter(gate => gate.gate === 'A').map(gate => gate.decision)).toEqual(['escalate', 'pass'])
     expect(final.executionAuthorization).toBeNull()
   })

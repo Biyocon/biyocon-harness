@@ -41,9 +41,9 @@ export interface OwnerQuestion {
   gateIndex: number
   historyLength: number
   stage: ConductorStage
-  sourceKind: 'child' | 'host'
-  childId: SessionId | null
-  attempt: number | null
+  sourceKind: 'child'
+  childId: SessionId
+  attempt: number
   reportHash: string
   report: unknown
   mandateRevision: number
@@ -89,9 +89,9 @@ export type OwnerInteraction = OwnerLedgerPosition & (
 
 /** Host-captured provenance required before a recoverable escalation may be parked. */
 export interface OwnerQuestionSource {
-  sourceKind: 'child' | 'host'
-  childId: SessionId | null
-  attempt: number | null
+  sourceKind: 'child'
+  childId: SessionId
+  attempt: number
   reportHash: string
   report: unknown
 }

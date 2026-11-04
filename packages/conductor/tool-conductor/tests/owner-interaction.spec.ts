@@ -171,29 +171,13 @@ describe('P1 owner parking and the explicit scripted provider', () => {
     expect(result.outcome.run.ownerLedger[0]).toMatchObject({ kind: 'question', question: { stage: 'detective' } })
   })
 
-  it('parks a critic budget stop as a host source without inventing a child attempt', async () => {
-    const base = initial(true)
-    const first = base.history[0]
-    if (first?.kind !== 'evaluated') throw new Error('Expected an evaluated gate')
-    const material = base.admission.materials[0]
-    const run: ConductorRun = { ...base, currentStage: 'devils-advocate', analysisMode: 'critic',
-      history: [{ ...first, decision: 'pass', analysis: { mode: 'producer',
-        candidateHash: 'a'.repeat(64), childId: SessionId('producer-child') } },
-      { ...first, gate: 'C', stage: 'devils-advocate', origin: 'critic-budget',
-        basis: ['critic token budget exhausted'], stateUpdate: 'critic blocked: critic token budget exhausted' }],
-      reportCandidates: [{ producer: 'detective', producerChildId: SessionId('producer-child'),
-        hash: 'a'.repeat(64), candidate: { version: 'v1', deliverable: 'answer', content: 'Read-only answer.',
-          criteria: [{ criterion: 'Assess cited evidence.', outcome: 'Assessed.' }],
-          material_ids: [material.id], material_spans: [{ material_id: material.id, start_line: 1, end_line: 1 }],
-          assumptions: [], limitations: [] } }] }
-    const outcome: ConductorOutcome = { kind: 'blocked', blocker: 'critic token budget exhausted', run,
-      ownerEscalation: { kind: 'recoverable', cause: 'rework-exhausted', reason: 'critic token budget exhausted' } }
+  it('does not park a terminal critic budget stop', async () => {
+    const run = initial(true)
+    const outcome: ConductorOutcome = { kind: 'blocked', blocker: 'critic token budget exhausted', run }
     const settled = await settleOwnerEscalation(new Context(), outcome, observed(run), process.cwd(),
       () => Promise.resolve())
-    expect(settled.outcome.run.ownerLedger[0]).toMatchObject({ kind: 'question', question: {
-      sourceKind: 'host', childId: null, attempt: null,
-      report: { kind: 'critic-budget', candidateHash: 'a'.repeat(64), reason: 'critic token budget exhausted' },
-    } })
+    expect(settled.outcome).toBe(outcome)
+    expect(settled.outcome.run.ownerLedger).toEqual([])
   })
 
   it('refuses multiple proposals, workspace escapes and a non-test provider', async () => {

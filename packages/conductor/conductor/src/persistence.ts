@@ -482,7 +482,8 @@ export function parseRun(json: string): ConductorRun {
   requireNormalizedStringArray(record.acceptanceCriteria, 'acceptanceCriteria', true)
   requireAnalysisCriteria(admission, record.acceptanceCriteria)
   const budget = asObject(record.budget, 'budget')
-  if (Object.keys(budget).some(key => key !== 'maxReworkPerGate' && key !== 'maxRalphRounds' && key !== 'maxOwnerReassessmentsPerGate')) {
+  if (Object.keys(budget).some(key => !['maxReworkPerGate', 'maxRalphRounds', 'maxOwnerReassessmentsPerGate',
+    'maxCriticInputTokensPerAttempt', 'maxCriticOutputTokensPerAttempt', 'maxCriticTokensPerRun'].includes(key))) {
     throw new Error('Conductor run record budget contains unsupported fields; a fresh run is required')
   }
   if (!Number.isSafeInteger(budget.maxReworkPerGate) || Number(budget.maxReworkPerGate) < 1) {
@@ -493,6 +494,15 @@ export function parseRun(json: string): ConductorRun {
   }
   if (!Number.isSafeInteger(budget.maxOwnerReassessmentsPerGate) || Number(budget.maxOwnerReassessmentsPerGate) < 1) {
     throw new Error('Conductor run record budget.maxOwnerReassessmentsPerGate must be a positive safe integer')
+  }
+  for (const field of ['maxCriticInputTokensPerAttempt', 'maxCriticOutputTokensPerAttempt', 'maxCriticTokensPerRun'] as const) {
+    if (!Number.isSafeInteger(budget[field]) || Number(budget[field]) < 1) {
+      throw new Error(`Conductor run record budget.${field} must be a positive safe integer`)
+    }
+  }
+  if (Number(budget.maxCriticTokensPerRun)
+    < Number(budget.maxCriticInputTokensPerAttempt) + Number(budget.maxCriticOutputTokensPerAttempt)) {
+    throw new Error('Conductor run record critic budget cannot reserve one complete attempt')
   }
   if (!Array.isArray(record.history)) throw new Error('Conductor run record history must be an array')
   assertOwnerLedger(record as unknown as ConductorRun)

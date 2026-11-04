@@ -213,7 +213,7 @@ export async function driveAnalysis(
         })
         await checkpoint(current)
         return { kind: 'blocked', blocker: dispatched.problem.message, run: current,
-          ownerEscalation: ownerEscalationForProblem(dispatched.problem) }
+          ...attempted === undefined ? {} : { ownerEscalation: ownerEscalationForProblem(dispatched.problem) } }
       }
       const analysis = { mode: 'critic' as const, candidateHash: candidate.hash, childId: dispatched.childId,
         criticAttempt, inputTokens: dispatched.inputTokens, outputTokens: dispatched.outputTokens }

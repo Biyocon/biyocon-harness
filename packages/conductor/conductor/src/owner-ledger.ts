@@ -29,16 +29,11 @@ const itemSchema = z.object({ id: identity, prompt: text, options: distinct }).s
 const scriptedSourceSchema = z.looseObject({ source: z.enum(['scripted-test-provider', 'host-ui']) })
 const questionSchema = z.object({
   id: identity, runId: identity, rootSessionId: identity, gateIndex: count, historyLength: count,
-  stage, sourceKind: z.enum(['child', 'host']), childId: identity.nullable(), attempt: count.positive().nullable(),
+  stage, sourceKind: z.literal('child'), childId: identity, attempt: count.positive(),
   reportHash: hash, report: z.json(), mandateRevision: count,
   mandateHash: hash, baselineHash: hash.nullable(), cause: z.enum(['clarification', 'authority-amendment', 'rework-exhausted']),
   reason: text, items: z.array(itemSchema).max(32), proposal: mandateSchema.optional(),
-}).strict().superRefine((question, context) => {
-  if (question.sourceKind === 'child' ? question.childId === null || question.attempt === null
-    : question.childId !== null || question.attempt !== null) {
-    context.addIssue({ code: 'custom', message: 'owner source identity must match its kind' })
-  }
-})
+}).strict()
 const answerSchema = z.object({ itemId: identity, text, optionId: identity.optional() }).strict()
 const planSchema = z.object({ id: identity, questionId: identity, gateIndex: count, gate, stage, mandateRevision: count }).strict()
 const position = { revision: count.positive(), previousRevision: count, historyLength: count }
@@ -204,7 +199,7 @@ export function ownerContinuationRoute(
       repairReturns: transition.repairReturns }
   }
   if (plan.stage === 'devils-advocate' && source?.kind === 'evaluated') {
-    const mode = source.analysis?.mode ?? (source.origin === 'critic-budget' ? 'critic' : undefined)
+    const mode = source.analysis?.mode
     if (mode === undefined) fail('analysis owner continuation requires typed Gate C dispatch')
     return { analysisMode: mode, repairReturns }
   }
@@ -271,30 +266,17 @@ export function assertOwnerLedger(run: ConductorRun): void {
     if (entry.kind === 'question') {
       const question = entry.question
       const source = run.history[question.gateIndex]
-      if (pending !== undefined || questions.has(question.id) || (question.childId !== null && children.has(question.childId))
+      if (pending !== undefined || questions.has(question.id) || children.has(question.childId)
         || question.gateIndex <= previousQuestionGate
         || question.runId !== run.runId || question.rootSessionId !== run.ownerSessionId
         || question.historyLength !== entry.historyLength || question.gateIndex !== entry.historyLength - 1
         || source?.kind !== 'evaluated' || source.decision !== 'escalate' || source.stage !== question.stage
         || source.gate !== gateByStage[question.stage] || question.childId === question.rootSessionId) fail('question is not bound to its exact escalated gate and root/child identity')
       if (challengeReworkGate(run, question) !== undefined) resumeStage(run, question)
-      if (question.sourceKind === 'host') {
-        const report = question.report
-        const candidateIndex = run.history.slice(0, question.gateIndex).filter(record => record.kind === 'evaluated'
-          && record.decision === 'pass' && record.stage === reportProducer(run.admission)
-          && record.analysis?.mode === 'producer').length - 1
-        if (source.gate !== 'C' || source.origin !== 'critic-budget' || source.analysis !== undefined
-          || !report || typeof report !== 'object' || Array.isArray(report)
-          || Object.keys(report).sort().join(',') !== 'candidateHash,kind,reason'
-          || !('kind' in report) || report.kind !== 'critic-budget'
-          || !('candidateHash' in report) || report.candidateHash !== run.reportCandidates[candidateIndex]?.hash
-          || !('reason' in report) || typeof report.reason !== 'string' || report.reason !== source.basis[0]
-          || source.stateUpdate !== `critic blocked: ${report.reason}`) {
-          fail('host owner question must match the exact critic budget gate and candidate')
-        }
-      } else if (source.origin === 'critic-budget' || question.childId === null || question.attempt === null) {
+      if (source.origin === 'critic-budget') {
         fail('child owner question requires a real child source')
-      } else if (source.analysis?.childId !== undefined && (question.childId !== source.analysis.childId
+      }
+      if (source.analysis?.childId !== undefined && (question.childId !== source.analysis.childId
         || source.analysis.mode === 'critic' && question.attempt !== source.analysis.criticAttempt)) {
         fail('child owner question must match the exact analysis dispatch')
       }
@@ -305,7 +287,7 @@ export function assertOwnerLedger(run: ConductorRun): void {
       if ((counts.get(source.gate) ?? 0) >= run.budget.maxOwnerReassessmentsPerGate) fail(`gate ${source.gate} owner reassessment limit exhausted`)
       validateProposal(run, question)
       questions.add(question.id)
-      if (question.childId !== null) children.add(question.childId)
+      children.add(question.childId)
       previousQuestionGate = question.gateIndex
       pending = question
       answer = undefined
@@ -360,7 +342,7 @@ export function assertOwnerLedger(run: ConductorRun): void {
  * @param run - run whose last evaluated gate escalated.
  * @param id - host-minted stable question identity.
  * @param escalation - typed classification; terminal failures cannot become questions.
- * @param source - host-captured child or budget report with exact hash.
+ * @param source - host-captured child report with exact hash.
  * @param items - complete required clarification items.
  * @param proposal - optional exact host-capability-validated mandate preview.
  * @returns an immutable parked run; no authority or gate allowance is granted.

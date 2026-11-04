@@ -10,6 +10,7 @@ import { execa } from 'execa'
 import { canonicalSessionFixture } from '../../../scripts/session-fixture-layout.ts'
 import { sourceLaunchFixture } from '../../../apps/cli/tests/fixtures/source-launch-fixture.ts'
 import { registerOwnerEscalationSnapshots } from './fixtures/conductor-owner-snapshots.ts'
+import { analysisChallengeHash } from '../../../packages/conductor/conductor/src/analysis-challenge.ts'
 
 const root = fileURLToPath(new URL('../../../', import.meta.url))
 const configPath = join(root, 'examples/headless-agent/conductor-installed.cordis.snapshot.yml')
@@ -30,7 +31,7 @@ const analysisStages = {
   'critic-rework': ['detective', 'devils-advocate', 'detective', 'devils-advocate', 'auditor', 'arbiter'],
   'critic-malformed': ['detective', 'devils-advocate', 'devils-advocate', 'auditor', 'arbiter'],
   'critic-stale': ['detective', 'devils-advocate'],
-  'critic-budget': ['detective', 'devils-advocate', 'devils-advocate', 'devils-advocate'],
+  'critic-budget': ['detective', 'devils-advocate'],
   'critic-entry-b-answer': ['strategist', 'devils-advocate', 'auditor', 'arbiter'],
   'critic-entry-b-recommendations': ['strategist', 'devils-advocate', 'auditor', 'arbiter'],
   'critic-entry-c': ['devils-advocate', 'devils-advocate', 'auditor', 'arbiter'],
@@ -285,6 +286,12 @@ describe('installed Conductor through the headless example', () => {
         expect(relative(root, cwd)).toMatch(/^\.\./)
         await mkdir(join(cwd, '.git'))
         await cp(join(root, 'apps/cli/config/agent-presets/conductor'), join(cwd, 'installed-presets/conductor'), { recursive: true })
+        if (scenario === 'critic-budget') {
+          const presetPath = join(cwd, 'installed-presets/conductor/agent.cordis.yml')
+          const preset = await readFile(presetPath, 'utf8')
+          await writeFile(presetPath, preset.replace('maxOwnerReassessmentsPerGate: 2',
+            'maxOwnerReassessmentsPerGate: 2\n        maxCriticTokensPerRun: 40000'))
+        }
         await writeFile(join(cwd, 'plan.md'), plan)
         await writeFile(join(cwd, 'AGENTS.md'), contrary)
       },
@@ -317,6 +324,7 @@ describe('installed Conductor through the headless example', () => {
             if (entry.kind === 'question') expect(entry.question.reportHash).toBe(contentHash(JSON.stringify(entry.question.report)))
           }
           for (const captured of run.analysisChallenges) {
+            expect(captured.hash).toBe(analysisChallengeHash(captured.challenge))
             expect(captured.challenge.critic_child_id).toBe(captured.criticChildId)
             expect(captured.challenge.critic_attempt).toBe(captured.criticAttempt)
             expect(captured.challenge.candidate_hash).toBe(captured.candidateHash)
@@ -332,8 +340,8 @@ describe('installed Conductor through the headless example', () => {
           expect(run.closeout).toBeUndefined()
           expect(run.history.filter(gate => gate.kind === 'evaluated')
             .every(gate => !['headsman', 'ralph', 'integrator'].includes(gate.stage))).toBe(true)
-          expect(run.status).toBe(scenario === 'critic-budget' ? 'awaiting_owner'
-            : ['authority', 'source-repair', 'critic-stale'].includes(scenario) ? 'escalated' : 'reported')
+          expect(run.status).toBe(['authority', 'source-repair', 'critic-stale', 'critic-budget'].includes(scenario)
+            ? 'escalated' : 'reported')
           expect(run.currentStage).toBe(scenario === 'authority' ? 'strategist' : scenario === 'source-repair' ? 'detective'
             : scenario === 'critic-stale' || scenario === 'critic-budget' ? 'devils-advocate' : 'report-complete')
           if (run.admission.purpose === 'analysis' && run.status === 'reported') {
@@ -357,11 +365,12 @@ describe('installed Conductor through the headless example', () => {
               if (gate.kind !== 'evaluated' || gate.analysis?.mode !== 'critic') return []
               return [[gate.analysis.criticAttempt, gate.decision] as const]
             }))
-              .toEqual(scenario === 'critic-stale' ? [[1, 'escalate']]
-                : [[1, 'rework'], [2, 'rework'], [3, 'escalate']])
+              .toEqual(scenario === 'critic-stale' ? [[1, 'escalate']] : [[1, 'rework']])
             if (scenario === 'critic-budget') {
-              expect(run.ownerLedger.map(entry => entry.kind)).toEqual(['question'])
-              expect(parent.events.filter(event => event.type === 'conductor/owner-question-created')).toHaveLength(1)
+              expect(run.history.at(-1)).toMatchObject({ origin: 'critic-budget', decision: 'escalate',
+                basis: ['Conductor critic run token budget exhausted: consumed 15, reserved 40000, limit 40000 tokens'] })
+              expect(run.ownerLedger).toEqual([])
+              expect(parent.events.filter(event => event.type === 'conductor/owner-question-created')).toHaveLength(0)
               expect(run.executionAuthorization).toBeNull()
             } else expect(run.ownerLedger).toEqual([])
           }
@@ -426,7 +435,7 @@ describe('installed Conductor through the headless example', () => {
       },
     })
     expect(result.stderr).toBe('')
-    if (scenario === 'critic-image' || scenario === 'critic-budget') expect(result.stdout).toContain('"output":""')
+    if (scenario === 'critic-image') expect(result.stdout).toContain('"output":""')
     else expect(result.stdout).toContain('no implementation was performed')
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 

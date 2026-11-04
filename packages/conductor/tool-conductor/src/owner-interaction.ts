@@ -32,16 +32,6 @@ export interface OwnerDispatchObservation {
   report: unknown
 }
 
-function hostBudgetObservation(outcome: ConductorOutcome): OwnerQuestionSource | undefined {
-  const last = outcome.run.history.at(-1)
-  const candidateHash = outcome.run.reportCandidates.at(-1)?.hash
-  if (last?.kind !== 'evaluated' || last.origin !== 'critic-budget'
-    || last.stage !== 'devils-advocate' || candidateHash === undefined) return undefined
-  const report = { kind: 'critic-budget', candidateHash, reason: last.basis.join('; ') }
-  return { sourceKind: 'host', childId: null, attempt: null,
-    report, reportHash: contentHash(JSON.stringify(report)) }
-}
-
 function questionMaterial(
   run: ConductorRun, source: OwnerQuestionSource, exhausted: boolean,
 ): { items: OwnerQuestionItem[]; proposal?: OwnerMandate } {
@@ -67,7 +57,7 @@ function questionMaterial(
  * the run stays parked and no authorization or subsequent dispatch is possible.
  * @param ctx - optional scripted test-provider context.
  * @param outcome - driver result with an explicit runtime classification.
- * @param observation - host-captured child and raw report; a predispatch critic budget stop uses the last recorded gate.
+ * @param observation - host-captured child and raw report.
  * @param cwd - admitted workspace for canonical proposal validation.
  * @param save - authoritative flushed checkpoint writer.
  * @param parkOnly - production tool parking; answers belong to the scoped host controller.
@@ -79,16 +69,9 @@ export async function settleOwnerEscalation(
   cwd: string, save: (run: ConductorRun) => Promise<void>, parkOnly = false, answeringAvailable = false,
 ): Promise<{ outcome: ConductorOutcome; continuation?: ConductorRun }> {
   if (outcome.kind !== 'blocked' || outcome.ownerEscalation?.kind !== 'recoverable') return { outcome }
-  const hostSource = hostBudgetObservation(outcome)
-  let source: OwnerQuestionSource
-  if (hostSource !== undefined) {
-    source = hostSource
-  } else if (observation !== undefined && observation.historyOffset === outcome.run.history.length - 1) {
-    source = { sourceKind: 'child', childId: observation.childId, attempt: observation.attempt,
-      report: observation.report, reportHash: contentHash(JSON.stringify(observation.report)) }
-  } else {
-    return { outcome }
-  }
+  if (observation === undefined || observation.historyOffset !== outcome.run.history.length - 1) return { outcome }
+  const source: OwnerQuestionSource = { sourceKind: 'child', childId: observation.childId, attempt: observation.attempt,
+    report: observation.report, reportHash: contentHash(JSON.stringify(observation.report)) }
   const gate = outcome.run.history.at(-1)?.gate
   if (gate === undefined) throw new Error('Conductor owner escalation requires a recorded gate')
   const count = ownerReassessments(outcome.run, gate)

@@ -230,6 +230,12 @@ export interface ConductorBudget {
   maxRalphRounds: number
   /** Maximum accepted owner-directed reassessments at each gate, independently of rework. */
   maxOwnerReassessmentsPerGate: number
+  /** Maximum estimated input tokens reserved for each critic attempt. */
+  maxCriticInputTokensPerAttempt: number
+  /** Maximum reasoning-inclusive output tokens reserved for each critic attempt. */
+  maxCriticOutputTokensPerAttempt: number
+  /** Maximum total critic tokens across the admitted run. */
+  maxCriticTokensPerRun: number
 }
 
 /**

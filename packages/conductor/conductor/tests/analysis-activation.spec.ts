@@ -7,7 +7,7 @@ import { analysisEnvelopeProblem } from '../src/analysis.ts'
 import { parseAnalysisState } from '../src/analysis-persistence.ts'
 import { contentHash } from '../src/intake.ts'
 import { validateIntakeHistory } from '../src/intake-history.ts'
-import { ownerContinuationRoute, parseOwnerInteraction } from '../src/owner-ledger.ts'
+import { ownerContinuationRoute } from '../src/owner-ledger.ts'
 import { acceptedReport, analysisReply, analysisRun, implementationAdmission, withAnalysisDispatch } from './intake-fixtures.ts'
 
 function criticResult(run: ConductorRun, criticAttempt: number, result: 'holds' | 'major' | 'critical' | 'malformed',
@@ -310,42 +310,21 @@ describe('v5 analysis challenge routing and durable provenance', () => {
     [{ id: 'critical', prompt: 'Reconsider the risk.', options: [] }])).toThrow(/critical challenge has no read-only owner continuation/)
   })
 
-  it('binds a predispatch budget question to its host report without inventing a child', async () => {
+  it('makes a predispatch budget stop terminal without inventing a child or owner question', async () => {
     const reason = 'Critic input exceeds the configured run budget.'
     const { dispatcher } = readyDispatcher(() => Promise.resolve({ kind: 'blocked', problem: { kind: 'report', message: reason } }))
     const result = await drive({ ...analysisRun(), ownerSessionId: SessionId('owner-root') }, dispatcher)
     expect(result.kind).toBe('blocked')
-    const candidateHash = result.run.reportCandidates.at(-1)!.hash
+    if (result.kind !== 'blocked') throw new Error('test requires a budget blocker')
+    expect(result.ownerEscalation).toBeUndefined()
     expect(result.run.history.at(-1)).toMatchObject({ gate: 'C', decision: 'escalate', origin: 'critic-budget' })
-    const report = { kind: 'critic-budget', candidateHash, reason }
-    const parked = parkOwnerQuestion(result.run, 'critic-budget-question', {
+    expect(result.run.ownerLedger).toEqual([])
+    expect(parseRun(serializeRun(result.run))).toEqual(result.run)
+    expect(() => parkOwnerQuestion(result.run, 'forged-budget-question', {
       kind: 'recoverable', cause: 'rework-exhausted', reason,
-    }, { sourceKind: 'host', childId: null, attempt: null, report, reportHash: contentHash(JSON.stringify(report)) },
-    [{ id: 'budget', prompt: 'Provide a narrower evidence basis.', options: [] }])
-    expect(parseRun(serializeRun(parked))).toEqual(parked)
-    const entry = parked.ownerLedger[0]
-    if (entry?.kind !== 'question') throw new Error('test requires owner question')
-    expect(() => parseOwnerInteraction({ ...entry,
-      question: { ...entry.question, childId: SessionId('invalid-host-child') } })).toThrow()
-    const answered = applyScriptedOwnerAnswer(parked, { source: 'scripted-test-provider',
-      rootSessionId: SessionId('owner-root'), questionId: 'critic-budget-question', expectedRevision: 1,
-      action: 'answer_continue', answers: [{ itemId: 'budget', text: 'Use the cited material.' }] })
-    const resumed = consumeOwnerContinuation(answered, 'critic-budget-question')
-    expect(resumed.analysisMode).toBe('critic')
-    expect(resumed.executionAuthorization).toBeNull()
-    expect(parseRun(serializeRun(resumed))).toEqual(resumed)
-    const forged = structuredClone(parked)
-    if (forged.ownerLedger[0]?.kind !== 'question') throw new Error('test requires a question')
-    forged.ownerLedger[0].question.report = { ...report, candidateHash: '0'.repeat(64) }
-    forged.ownerLedger[0].question.reportHash = contentHash(JSON.stringify(forged.ownerLedger[0].question.report))
-    expect(() => parseRun(serializeRun(forged))).toThrow(/host owner question/)
-    const disguised = structuredClone(parked)
-    const disguisedQuestion = disguised.ownerLedger[0]
-    if (disguisedQuestion?.kind !== 'question') throw new Error('test requires owner question')
-    disguisedQuestion.question.sourceKind = 'child'
-    disguisedQuestion.question.childId = SessionId('forged-child')
-    disguisedQuestion.question.attempt = 1
-    expect(() => parseRun(serializeRun(disguised))).toThrow(/child owner question requires a real child source/)
+    }, { sourceKind: 'child', childId: SessionId('forged-child'), attempt: 1,
+      report: {}, reportHash: contentHash('{}') },
+    [{ id: 'budget', prompt: 'Continue.', options: [] }])).toThrow(/child owner question requires a real child source/)
 
     const altered = structuredClone(result.run)
     const budgetGate = altered.history.findLast(gate => gate.kind === 'evaluated')
@@ -369,17 +348,14 @@ describe('v5 analysis challenge routing and durable provenance', () => {
       ...dispatcher, dispatchArbiter: run => Promise.resolve({ ...acceptedReport(run), decision: 'revise' as const }),
     })
     expect(result).toMatchObject({ kind: 'blocked', run: { status: 'escalated' } })
+    if (result.kind !== 'blocked') throw new Error('test requires a budget blocker')
     expect(result.run.reportCandidates.map(candidate => candidate.candidate.version)).toEqual(['v1', 'v2'])
     expect(result.run.history.filter(gate => gate.kind === 'evaluated' && gate.stage === 'devils-advocate'
       && gate.decision === 'pass').map(gate => gate.kind === 'evaluated' ? gate.analysis?.mode : undefined))
       .toEqual(['producer', 'critic', 'producer'])
-    const candidateHash = result.run.reportCandidates.at(-1)!.hash
-    const report = { kind: 'critic-budget', candidateHash, reason }
-    const parked = parkOwnerQuestion(result.run, 'entry-c-budget', {
-      kind: 'recoverable', cause: 'rework-exhausted', reason,
-    }, { sourceKind: 'host', childId: null, attempt: null, report, reportHash: contentHash(JSON.stringify(report)) },
-    [{ id: 'budget', prompt: 'Provide a narrower evidence basis.', options: [] }])
-    expect(parseRun(serializeRun(parked))).toEqual(parked)
+    expect(result.ownerEscalation).toBeUndefined()
+    expect(result.run.ownerLedger).toEqual([])
+    expect(parseRun(serializeRun(result.run))).toEqual(result.run)
   })
 
   it('resumes an entry-C producer clarification in producer mode', async () => {
@@ -418,8 +394,9 @@ describe('v5 analysis challenge routing and durable provenance', () => {
   })
 
   it('resumes an exhausted substantive challenge at its producer and requires a fresh critique', async () => {
-    const { dispatcher } = readyDispatcher((run, attempt) => Promise.resolve(criticResult(run, attempt,
+    const critic = vi.fn((run: ConductorRun, attempt: number) => Promise.resolve(criticResult(run, attempt,
       attempt <= 2 ? 'major' : 'holds')))
+    const { dispatcher } = readyDispatcher(critic)
     const initial = analysisRun()
     const blocked = await drive({ ...initial, ownerSessionId: SessionId('owner-root'),
       budget: { ...initial.budget, maxReworkPerGate: 1 } }, dispatcher)
@@ -447,6 +424,7 @@ describe('v5 analysis challenge routing and durable provenance', () => {
     expect(parseRun(serializeRun(resumed))).toEqual(resumed)
     const completed = await drive(resumed, dispatcher)
     expect(completed.kind).toBe('report')
+    expect(critic.mock.calls.map(([, attempt]) => attempt)).toEqual([1, 2, 3])
     expect(completed.run.reportCandidates.map(candidate => candidate.candidate.version)).toEqual(['v1', 'v2', 'v3'])
     expect(completed.run.analysisChallenges.map(challenge => challenge.criticAttempt)).toEqual([1, 2, 3])
     expect(parseRun(serializeRun(completed.run))).toEqual(completed.run)

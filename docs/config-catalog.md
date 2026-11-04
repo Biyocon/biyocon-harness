@@ -2470,7 +2470,7 @@ export interface QualityCommandConfig {
 
 Depends on: [`QualityPolicyStage`](../packages/conductor/conductor/src/index.ts)
 
-Source: [`packages/conductor/tool-conductor/src/index.ts:87`](../packages/conductor/tool-conductor/src/index.ts)
+Source: [`packages/conductor/tool-conductor/src/index.ts:88`](../packages/conductor/tool-conductor/src/index.ts)
 
 <a id="deepseek-aidsh-tool-fs"></a>
 

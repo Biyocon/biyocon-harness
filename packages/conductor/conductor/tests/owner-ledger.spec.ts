@@ -65,7 +65,8 @@ describe('durable Conductor owner interactions', () => {
     }
     const explicit = createRun(run.runId, { admission: run.admission, objective: run.objective, authority: run.authority,
       budget: { maxReworkPerGate: 1, maxRalphRounds: 3, maxOwnerReassessmentsPerGate: 1 } })
-    expect(explicit.budget).toEqual({ maxReworkPerGate: 1, maxRalphRounds: 3, maxOwnerReassessmentsPerGate: 1 })
+    expect(explicit.budget).toEqual({ maxReworkPerGate: 1, maxRalphRounds: 3, maxOwnerReassessmentsPerGate: 1,
+      maxCriticInputTokensPerAttempt: 24_000, maxCriticOutputTokensPerAttempt: 16_000, maxCriticTokensPerRun: 120_000 })
   })
 
   it('parks without a provider and binds the question to one child and gate without changing history', () => {

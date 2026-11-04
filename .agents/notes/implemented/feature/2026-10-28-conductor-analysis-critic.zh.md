@@ -41,7 +41,7 @@ Status: implemented
 
 经过验证的实质性批评耗尽 Gate C 自动返工额度时，门禁记录保留类型化缺陷及目标，运行停放等待所有者问题。`answer_continue` 消费精确的所有者计划，继续该已验证目标，在 Auditor 之前生成新候选并重新批评，且不重置 Gate C 预算。批评者子会话启动后失败时，运行时保存终止性 Gate C 权限阻塞检查点，其中包含子会话 ID、运行级尝试编号及已知 token 用量；既不把失败当成格式错误的批评，也不提供所有者引导的修复。创建子会话之前启动失败，则不记录子会话或尝试。
 
-运行时复用 [#37 的所有者 ledger 与续行机制](2026-10-30-conductor-owner-escalation-resumption.md)：现有 question/answer/consumed/rejected ledger 保存精确的 run、候选/批评 hash、gate 历史索引、精确子会话尝试或宿主拥有的派发前批评预算来源，以及所需问题。`maxOwnerReassessmentsPerGate` 独立受限。它记录必需的 `conductor/owner-question-created`、`conductor/owner-response-recorded`、`conductor/owner-response-acknowledged`、`conductor/owner-continuation-consumed`、`conductor/owner-terminal-rejection` 事件及所有者卡片 `approve`、`reject`、`answer_continue`（Godkend / Afvis / Svar og fortsæt）。只有存在经 host 验证的具体方案时才提供 `approve`；分析的回答或获批准的澄清只能触发一次只读重新评估，绝非执行批准。所有者回答不能创建执行基线、批准实现、重置 Gate C 返工次数，或进入 Headsman、Ralph、Integrator、closeout。要实施建议，必须另开实现运行并取得相应批准。
+运行时复用 [#37 的所有者 ledger 与续行机制](2026-10-30-conductor-owner-escalation-resumption.md)：现有 question/answer/consumed/rejected ledger 保存精确的 run、候选/批评 hash、gate 历史索引、精确子会话尝试，以及所需问题。`maxOwnerReassessmentsPerGate` 独立受限。它记录必需的 `conductor/owner-question-created`、`conductor/owner-response-recorded`、`conductor/owner-response-acknowledged`、`conductor/owner-continuation-consumed`、`conductor/owner-terminal-rejection` 事件及所有者卡片 `approve`、`reject`、`answer_continue`（Godkend / Afvis / Svar og fortsæt）。只有存在经 host 验证的具体方案时才提供 `approve`；分析的回答或获批准的澄清只能触发一次只读重新评估，绝非执行批准。所有者回答不能创建执行基线、批准实现、重置 Gate C 返工次数，或进入 Headsman、Ralph、Integrator、closeout。要实施建议，必须另开实现运行并取得相应批准。
 
 ### 输入、费用与呈现
 
@@ -51,7 +51,7 @@ Status: implemented
 
 模型不可见的 `conductor/child` 事件携带角色、尝试及 gate；类型化派发/阶段数据增加生产/批评模式和精确子会话绑定，供 EN/DA 界面显示。[#56](https://github.com/Biyocon/biyocon-harness/issues/56) 负责浏览器标签和面包屑名称。新子会话不继承先前 gate 标记；界面以文字说明 `holds`/`does_not_hold` 或等待/升级状态，不只依赖颜色。
 
-所有者报告的两次运行在列出的四个角色上分别消耗 648K 和 738K token。一次受限批评预计另耗 20–40K token，约占这些总量的 3–6%；两次返工可产生三次批评（额外 60–120K token），尚不包含生产者重跑。经过验证、可在 `cordis.yml` 覆盖的 `tool-conductor` Config 字段包括`maxCriticInputTokensPerAttempt`（默认 24,000）、`maxCriticOutputTokensPerAttempt`（默认 16,000，包含服务商报告的推理输出）和 `maxCriticTokensPerRun`（默认 120,000，统计服务商报告的全部输入、输出及推理 token，避免重复计数）。校验为正安全整数，且运行总限不低于已配置的每次输入与输出上限之和；无效 preset 配置在加载时拒绝。派发前预留该总额，并要求服务商的输出上限包含推理 token（否则拒绝用该服务商派发批评）；逐次记录实际用量，在用量缺失或超限时阻塞，并在剩余额度不足以容纳下一次尝试时升级给所有者。派发逻辑不硬编码任何上限。批评是每次分析运行的必经步骤。未来如引入退出选项，必须按运行明确选择并记入日志，不能作为隐藏配置开关。[#58](https://github.com/Biyocon/biyocon-harness/issues/58) 负责降低 Detective 的消耗；本决策不扩大 Detective 输入，也不允许第二轮完整仓库探索。
+所有者报告的两次运行在列出的四个角色上分别消耗 648K 和 738K token。一次受限批评预计另耗 20–40K token，约占这些总量的 3–6%；两次返工可产生三次批评（额外 60–120K token），尚不包含生产者重跑。经过验证、可在 `cordis.yml` 覆盖的 `tool-conductor` Config 字段包括`maxCriticInputTokensPerAttempt`（默认 24,000）、`maxCriticOutputTokensPerAttempt`（默认 16,000，包含服务商报告的推理输出）和 `maxCriticTokensPerRun`（默认 120,000，统计服务商报告的全部输入、输出及推理 token，避免重复计数）。校验为正安全整数，且运行总限不低于已配置的每次输入与输出上限之和；无效 preset 配置在加载时拒绝。派发前预留该总额，并要求服务商的输出上限包含推理 token（否则拒绝用该服务商派发批评）；逐次记录实际用量，在用量缺失或超限时阻塞，并在剩余额度不足以容纳下一次尝试时以已消耗、预留和上限 token 数终止运行，不提出无法奏效的所有者问题。三个上限保存在准入时的运行记录中，部署 Config 变化不会改变该运行；缺失的用量按完整预留额度计费。派发逻辑不硬编码任何上限。批评是每次分析运行的必经步骤。未来如引入退出选项，必须按运行明确选择并记入日志，不能作为隐藏配置开关。[#58](https://github.com/Biyocon/biyocon-harness/issues/58) 负责降低 Detective 的消耗；本决策不扩大 Detective 输入，也不允许第二轮完整仓库探索。
 
 ## 考虑过的备选方案
 
