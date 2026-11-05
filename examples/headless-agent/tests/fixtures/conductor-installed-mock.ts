@@ -16,6 +16,7 @@ function* call(name: string, value: unknown, outputTokens?: number): Generator<S
 class InstalledConductorAdapter extends LlmAdapter {
   private gateCAttempts = 0
   private reportVersions = 0
+  private auditorAttempts = 0
 
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
     return Promise.resolve({ provider, id: model, name: model, enforcesMaxTokensIncludingReasoning: true as const })
@@ -169,7 +170,8 @@ class InstalledConductorAdapter extends LlmAdapter {
           critic_attempt: number
         } }
         const identity = prompt.identity
-        const rework = scenario === 'critic-rework' && identity.critic_attempt === 1
+        const rework = (scenario === 'critic-rework' && identity.critic_attempt === 1)
+          || (scenario === 'critic-owner-rework' && identity.critic_attempt <= 3)
         const malformed = scenario === 'critic-budget'
           || (scenario === 'critic-malformed' && identity.critic_attempt === 1)
         yield* call('structured_output', {
@@ -249,6 +251,7 @@ class InstalledConductorAdapter extends LlmAdapter {
       const producer = input.admission.entry === 'detective' && input.admission.deliverable === 'recommendations'
         ? 'strategist' : input.admission.entry
       const rework = scenario === 'rework' && input.stage === 'devils-advocate' && this.gateCAttempts++ === 0
+      const auditRework = scenario === 'critic-auditor-rework' && input.stage === 'auditor' && this.auditorAttempts++ === 0
       const blocked = scenario === 'authority' && input.stage === 'strategist'
       let criteria = input.acceptance_criteria
       if (scenario === 'criteria-rework' && input.stage === 'strategist') {
@@ -266,12 +269,15 @@ class InstalledConductorAdapter extends LlmAdapter {
       }
       yield* call('structured_output', {
         run_id: input.run_id, purpose: 'analysis', stage: input.stage, deliverable: input.admission.deliverable,
-        status: blocked ? 'blocked' : rework ? 'rework' : 'ready',
+        status: blocked ? 'blocked' : rework || auditRework ? 'rework' : 'ready',
         summary: blocked ? 'The analysis write was refused; no implementation or approval occurred.'
-          : rework ? 'The supplied plan needs a planning repair.' : `${input.stage} assessed the captured owner material.`,
+          : rework ? 'The supplied plan needs a planning repair.'
+            : auditRework ? 'The report candidate needs a fresh analysis and critique.'
+              : `${input.stage} assessed the captured owner material.`,
         material_ids: ids, blockers: blocked ? ['Read-only analysis cannot implement recommendations.'] : [],
         assumptions: [], limitations: ['Static analysis only; no commands were run.'],
         ...rework ? { defect: 'plan' } : {},
+        ...auditRework ? { defect: 'analysis' } : {},
         ...input.stage === 'auditor' ? { candidate_hash: input.current_report!.hash } : {},
         ...input.stage === producer && !rework && !blocked ? { candidate: {
           version: `report-${++this.reportVersions}`, deliverable: input.admission.deliverable,
@@ -295,7 +301,24 @@ class InstalledConductorAdapter extends LlmAdapter {
         })
         return
       }
-      const later = ['plan', 'rework', 'source-repair', 'critic-entry-c'].includes(scenario)
+      const continuation = options.messages.flatMap(message => message.content).findLast(block => block.type === 'text'
+        && block.text.startsWith('Continue only the stored Conductor run.'))
+      if (continuation?.type === 'text') {
+        const stored = JSON.parse(continuation.text.slice(continuation.text.indexOf('\n') + 1)) as {
+          runId: string
+          objective: string
+          admission: ConductorAdmission
+          authority: { owner: string }
+          allowedPaths: string[]
+          excludedPaths: string[]
+        }
+        yield* call('conductor', { runId: stored.runId, objective: stored.objective,
+          purpose: stored.admission.purpose, entry: stored.admission.entry,
+          ...stored.admission.purpose === 'analysis' ? { deliverable: stored.admission.deliverable } : {},
+          authority: stored.authority, allowedPaths: stored.allowedPaths, excludedPaths: stored.excludedPaths })
+        return
+      }
+      const later = ['plan', 'rework', 'source-repair', 'critic-entry-c', 'critic-entry-c-answer'].includes(scenario)
       const strategistEntry = scenario === 'critic-entry-b-answer' || scenario === 'critic-entry-b-recommendations'
       yield* call('conductor', {
         purpose: scenario === 'source-repair' ? 'implementation' : 'analysis',

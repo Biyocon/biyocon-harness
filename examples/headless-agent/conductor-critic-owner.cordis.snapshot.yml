@@ -1,0 +1,12 @@
+# The installed analysis route remains assembled; only owner answers use the
+# explicit scripted host after Gate C parks a real question.
+- id: installed
+  name: '@deepseek-ai/cordis-plugin-include'
+  config:
+    path: ./conductor-installed.cordis.snapshot.yml
+
+- id: owner-questions
+  name: '@deepseek-ai/dsh-user-questions'
+
+- id: owner-script
+  name: ./tests/fixtures/conductor-owner-script.ts

@@ -65,7 +65,7 @@ The owner's two reported runs used 648K and 738K tokens across the four listed r
 
 ## Verification
 
-- The real `conductor-installed` example exercises the existing analysis and owner paths plus `challenge-holds`, `challenge-rework`, `challenge-budget`, `entry-c`, `challenge-resume`, `stale-candidate`, `no-execution` and image rejection with expected parent/child JSONL. Browser projection checks role, attempt and gate identity with EN/DA text.
+- The real `conductor-installed` example checks all six routes, including entry-C `answer`; Gate C rework exhaustion followed by an owner `answer_continue`, a fresh candidate and fresh critique without resetting the gate budget; and Auditor `defect: analysis` followed by a fresh candidate, critique and audit. Expected parent/child JSONL also covers holding, rejected, malformed and stale challenges, token exhaustion, restart, read-only enforcement and image rejection. Each child starts without an inherited gate result.
 - Unit and property tests cover the six routes and skips, typed defect targets, same-gate entry-C producer/critic identity, Gate C and Gate E repair budgets, malformed critic retry without producer rerun, fresh critique after new candidates, token caps, hash-bound excerpt selection, stale identities, owner escalation, interrupted checkpoints and v4 rejection. Built and packaged paths retain their own checks.
 - The `conductor/child` payload carries typed mode and critic result. TypeScript `examples/jsonrpc-agent/tests/snapshots/` and Python `scripts/snapshots/python-sdk-single-exe/` projections verify that generic SDK output remains byte-identical unless it contains these Conductor events.
 
