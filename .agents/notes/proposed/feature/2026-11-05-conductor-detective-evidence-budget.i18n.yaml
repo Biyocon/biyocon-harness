@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-11-05-conductor-detective-evidence-budget.md
-2026-11-05-conductor-detective-evidence-budget.md: 00c1c3ca0d7977d09c54702e89e4e83aa7597305
-2026-11-05-conductor-detective-evidence-budget.zh.md: 395fdb50ff67bf0daae76f92be04df837cd3131b
+2026-11-05-conductor-detective-evidence-budget.md: c82bd5631a3dc63cb70b6d722b742a72895fcfb6
+2026-11-05-conductor-detective-evidence-budget.zh.md: c5fb2c4238213c4b4ad547255ea3c35c7848d459
