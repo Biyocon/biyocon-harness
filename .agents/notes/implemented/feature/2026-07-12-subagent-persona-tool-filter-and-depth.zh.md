@@ -34,7 +34,7 @@ subagent 启动有三个独立的组合控制：`persona`、`toolFilter` 和 `ma
 
 ### 工具过滤是一条作用于实时全局视图的规则
 
-工具过滤同时控制能力可见性和可执行查找。进程内提供方在发布前于子 agent 作用域中安装 `ToolRuntime.restrict()`，注册表的单一解析器对协议格式（wire format）的工具 schema、查找、执行和 Code Mode SDK 生成施加相同的结果。独立注册的系统提示词段落不在 `ToolRuntime` 内，因此过滤一个工具不会移除该插件的独立指导文本。
+工具过滤同时控制能力可见性和可执行查找。进程内提供方在发布前于子 agent 作用域中安装 `ToolRuntime.restrict()`，注册表的单一解析器对协议格式（wire format）的工具 schema、查找、执行和 Code Mode SDK 生成施加相同的结果。独立注册的系统提示词段落不在 `ToolRuntime` 内，因此过滤一个工具不会移除该插件的独立指导文本。[有证据约束的分析，阶段 1](../../proposed/feature/2026-11-05-conductor-analysis-claim-verification.md)提议仅把此指导规则替换为显式类型化工具关联；尚未实施。本文其余组合决策继续有效。
 
 解析遵循以下规则：
 
