@@ -430,6 +430,50 @@ describe('v5 analysis challenge routing and durable provenance', () => {
     expect(parseRun(serializeRun(completed.run))).toEqual(completed.run)
   })
 
+  it('immediately re-escalates a rejected owner-directed candidate without replenishing Gate C or owner budgets', async () => {
+    const critic = vi.fn((run: ConductorRun, attempt: number) => Promise.resolve(criticResult(run, attempt, 'major')))
+    const { dispatcher, producer } = readyDispatcher(critic)
+    const initial = analysisRun()
+    const blocked = await drive({ ...initial, ownerSessionId: SessionId('owner-root'),
+      budget: { ...initial.budget, maxReworkPerGate: 2, maxOwnerReassessmentsPerGate: 1 } }, dispatcher)
+    if (blocked.kind !== 'blocked' || blocked.ownerEscalation === undefined) throw new Error('test requires owner escalation')
+    expect(blocked.ownerEscalation.cause).toBe('rework-exhausted')
+    expect(blocked.run.history.filter(gate => gate.gate === 'C').map(gate => gate.decision))
+      .toEqual(['rework', 'rework', 'escalate'])
+    const source = blocked.run.history.at(-1)
+    if (source?.kind !== 'evaluated' || source.analysis?.mode !== 'critic') throw new Error('test requires failed challenge')
+    const report = blocked.run.analysisChallenges.at(-1)!.challenge
+    const parked = parkOwnerQuestion(blocked.run, 'exhausted-critic', blocked.ownerEscalation,
+      { sourceKind: 'child', childId: source.analysis.childId!, attempt: source.analysis.criticAttempt!,
+        report, reportHash: contentHash(JSON.stringify(report)) },
+      [{ id: 'scope', prompt: 'Clarify the report priority.', options: [] }])
+    const answered = applyScriptedOwnerAnswer(parked, { source: 'scripted-test-provider',
+      rootSessionId: SessionId('owner-root'), questionId: 'exhausted-critic', expectedRevision: 1,
+      action: 'answer_continue', answers: [{ itemId: 'scope', text: 'Reassess the cited alternatives.' }] })
+    producer.mockClear()
+    critic.mockClear()
+    const resumed = await drive(consumeOwnerContinuation(answered, 'exhausted-critic'), dispatcher)
+    expect(resumed).toMatchObject({ kind: 'blocked', ownerEscalation: { cause: 'rework-exhausted' },
+      run: { status: 'escalated' } })
+    expect(producer.mock.calls.map(([stage]) => stage)).toEqual(['detective'])
+    expect(critic.mock.calls.map(([, attempt]) => attempt)).toEqual([4])
+    expect(resumed.run.reportCandidates.map(candidate => candidate.candidate.version)).toEqual(['v1', 'v2', 'v3', 'v4'])
+    expect(resumed.run.history.filter(gate => gate.gate === 'C').map(gate => gate.decision))
+      .toEqual(['rework', 'rework', 'escalate', 'escalate'])
+    const last = resumed.run.history.at(-1)
+    if (resumed.kind !== 'blocked' || resumed.ownerEscalation === undefined
+      || last?.kind !== 'evaluated' || last.analysis?.mode !== 'critic') throw new Error('test requires repeated escalation')
+    const latest = resumed.run.analysisChallenges.at(-1)!.challenge
+    expect(latest).toMatchObject({ conclusion: 'does_not_hold', findings: [{ severity: 'major' }] })
+    expect(() => parkOwnerQuestion(resumed.run, 'exhausted-critic-again', resumed.ownerEscalation!,
+      { sourceKind: 'child', childId: last.analysis!.childId!, attempt: last.analysis!.criticAttempt!,
+        report: latest, reportHash: contentHash(JSON.stringify(latest)) },
+      [{ id: 'scope', prompt: 'Clarify the report priority again.', options: [] }]))
+      .toThrow('gate C: 1/1 owner reassessments consumed')
+    expect(resumed.run.ownerLedger.map(entry => entry.kind)).toEqual(['question', 'answer', 'consumed'])
+    expect(parseRun(serializeRun(resumed.run))).toEqual(resumed.run)
+  })
+
   it('reconstructs a prerequisite return when owner continuation follows a scope challenge', async () => {
     const { dispatcher } = readyDispatcher((run, attempt) => Promise.resolve(criticResult(run, attempt,
       attempt <= 2 ? 'major' : 'holds', 'scope')))
