@@ -1,0 +1,3 @@
+- tree "Underagentsessioner":
+  - 'treeitem "Detective · producent · forsøg 1 færdig · Gate A: bestået · {{uuid}} {{duration}}" [level=1]'
+  - treeitem "Devil’s Advocate · kritiker · forsøg 1 kører · kritik afventer · {{uuid}} {{duration}}" [level=1]

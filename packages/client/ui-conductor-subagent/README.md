@@ -6,6 +6,8 @@ This client plugin owns Conductor role names, attempt labels and lifecycle/gate 
 
 EN/DA text shows each attempt separately. Running children have no inherited gate; Ralph has no specialist gate. Exact child identifiers remain in secondary text. The catalog names the row through the rendered text and exact metrics using aria-labelledby, so status is accessible without color. Both slot registration and dictionaries are disposed with the plugin fiber. [The decision](../../../.agents/notes/implemented/bug-fix/2026-10-28-conductor-child-role-status.md) owns attribution and persistence.
 
+The catalog shows producer/critic mode and pending, holding, rejected or escalated critique with EN/DA text. Validated findings come from the exact child gate event; summary, claim and rationale remain literal text, and severity labels do not depend on color. The host binds these facts to the stored challenge before publication. Reload preserves the same findings.
+
 ## Model Experience
 
 ### Catalog text

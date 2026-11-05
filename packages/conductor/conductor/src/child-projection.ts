@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { ConductorChild } from './child-types.ts'
+import { ANALYSIS_CHALLENGE_SCHEMA } from './analysis-challenge.ts'
 
 const childSchema = z.object({
   childId: z.string(), runId: z.string(),
@@ -10,13 +11,19 @@ const childSchema = z.object({
   attempt: z.number().int().positive(), historyOffset: z.number().int().nonnegative(),
   criticAttempt: z.number().int().positive().optional(),
   status: z.enum(['running', 'completed', 'failed']),
-  gate: z.object({ id: z.enum(['A', 'B', 'C', 'D', 'E', 'F', 'G']), decision: z.enum(['pass', 'rework', 'escalate', 'abort']), reworks: z.number().int().nonnegative(), limit: z.number().int().positive(), challengeConclusion: z.enum(['holds', 'does_not_hold']).optional() }).optional(),
+  gate: z.object({ id: z.enum(['A', 'B', 'C', 'D', 'E', 'F', 'G']), decision: z.enum(['pass', 'rework', 'escalate', 'abort']), reworks: z.number().int().nonnegative(), limit: z.number().int().positive(),
+    challengeConclusion: z.enum(['holds', 'does_not_hold']).optional(),
+    challenge: ANALYSIS_CHALLENGE_SCHEMA.options[0].pick({ summary: true, findings: true }).optional(),
+  }).optional(),
 }).superRefine((child, issue) => {
   if ((child.mode === 'critic') !== (child.criticAttempt !== undefined)) {
     issue.addIssue({ code: 'custom', message: 'critic mode requires one run-wide attempt' })
   }
   if (child.gate?.challengeConclusion !== undefined && child.mode !== 'critic') {
     issue.addIssue({ code: 'custom', message: 'only a critic child can carry a challenge conclusion' })
+  }
+  if (child.gate?.challenge !== undefined && child.gate.challengeConclusion === undefined) {
+    issue.addIssue({ code: 'custom', message: 'challenge details require a validated conclusion' })
   }
 })
 
@@ -27,5 +34,5 @@ export const conductorChildrenProjection: ProjectionDefinition<'conductorChildre
   init: () => ({}),
   apply: (state, event) => event.type === 'session/end-seed' ? {} : event.type === 'conductor/child' ? { ...state, [event.data.childId]: event.data } : state,
   view: state => state,
-  stateVersion: 2,
+  stateVersion: 3,
 }

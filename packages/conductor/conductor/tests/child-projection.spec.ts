@@ -29,6 +29,12 @@ describe('durable Conductor child catalog', () => {
       mode: 'critic', criticAttempt: 1, status: 'completed', gate: { id: 'C', decision: 'pass', reworks: 0,
         limit: 2, challengeConclusion: 'holds' } }
     expect(projection.schema.safeParse({ critic }).success).toBe(true)
+    const details = { summary: 'A bounded review.', findings: [{ id: 'minor-1', severity: 'minor',
+      claim: '<script>literal</script>', rationale: '[literal](https://example.invalid)', material_ids: [] }] }
+    const withDetails = { ...critic, gate: { ...critic.gate, challenge: details } }
+    expect(projection.schema.parse({ critic: withDetails })).toEqual({ critic: withDetails })
+    expect(projection.schema.safeParse({ critic: { ...withDetails,
+      gate: { ...withDetails.gate, challengeConclusion: undefined } } }).success).toBe(false)
     expect(projection.schema.safeParse({ critic: { ...critic, criticAttempt: undefined } }).success).toBe(false)
     expect(projection.schema.safeParse({ critic: { ...critic, mode: 'producer' } }).success).toBe(false)
     const reset = { type: 'session/end-seed', data: {} } as Parameters<typeof projection.apply>[1]
