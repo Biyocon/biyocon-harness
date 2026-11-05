@@ -170,12 +170,12 @@ export class InstalledConductorAdapter extends LlmAdapter {
           critic_attempt: number
         } }
         const identity = prompt.identity
-        const web = scenario === 'critic-web-holds' || scenario === 'critic-web-escalated'
+        const web = scenario === 'critic-web-holds' || scenario === 'critic-web-escalated' || scenario === 'critic-web-invalid'
         const literal = '<script>alert("finding")</script> [external](https://example.invalid)'
         const rework = scenario === 'critic-web-escalated' || (scenario === 'critic-rework' && identity.critic_attempt === 1)
           || (scenario === 'critic-owner-rework' && identity.critic_attempt <= 3)
         const malformed = scenario === 'critic-budget'
-          || (scenario === 'critic-malformed' && identity.critic_attempt === 1)
+          || ((scenario === 'critic-malformed' || scenario === 'critic-web-invalid') && identity.critic_attempt === 1)
         yield* call('structured_output', {
           run_id: identity.run_id, purpose: 'analysis',
           candidate_hash: scenario === 'critic-stale' ? '0'.repeat(64) : identity.candidate_hash,
@@ -183,14 +183,14 @@ export class InstalledConductorAdapter extends LlmAdapter {
           material_ids: identity.material_ids,
           critic_child_id: identity.critic_child_id,
           critic_attempt: identity.critic_attempt,
-          findings: web ? [{ id: 'web-finding', severity: rework ? 'critical' : 'minor',
-            claim: literal, rationale: literal, material_ids: identity.material_ids }] : rework || malformed ? [{
+          findings: web ? [{ id: 'web-finding', severity: rework ? 'critical' : malformed ? 'major' : 'minor',
+            claim: `Claim: ${literal}`, rationale: `Rationale: ${literal}`, material_ids: identity.material_ids }] : rework || malformed ? [{
             id: 'reasoning-risk', severity: 'major', claim: 'The priority does not follow from the cited material.',
             rationale: 'The report does not compare the available alternatives.', material_ids: identity.material_ids,
           }] : [],
           conclusion: rework ? 'does_not_hold' : 'holds',
           ...rework ? { defect: 'report' } : {},
-          summary: web ? literal : rework ? 'The recommendation needs a new candidate.' : 'The reasoning follows the admitted material.',
+          summary: web ? `Summary: ${literal}` : rework ? 'The recommendation needs a new candidate.' : 'The reasoning follows the admitted material.',
         }, 5)
         return
       }

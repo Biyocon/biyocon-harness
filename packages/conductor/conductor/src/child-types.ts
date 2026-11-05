@@ -32,8 +32,8 @@ export interface ConductorChild {
     limit: number
     /** Validated challenge result for the exact critic child. */
     challengeConclusion?: 'holds' | 'does_not_hold'
-    /** Summary and findings copied only from the validated challenge bound to this child and gate. */
-    challenge?: Pick<AnalysisChallenge, 'summary' | 'findings'>
+    /** Complete validated challenge and its digest, retaining replayable candidate and critic identities. */
+    challenge?: { hash: string; result: AnalysisChallenge }
   }
 }
 

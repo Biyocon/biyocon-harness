@@ -1,9 +1,9 @@
 - tree "Underagentsessioner":
   - 'treeitem "Detective · producent · forsøg 1 færdig · Gate A: bestået · {{uuid}} {{duration}}" [level=1]'
-  - 'treeitem "Devil’s Advocate · kritiker · forsøg 1 færdig · Gate C: bestået · kritik holder · {{uuid}} 15 tok · {{duration}}" [level=1]':
-    - text: "Devil’s Advocate · kritiker · forsøg 1 færdig · Gate C: bestået · kritik holder · {{uuid}} Kritikkens resumé: <script>alert(\"finding\")</script> [external](https://example.invalid)"
-    - list "Kritikpunkter":
-      - listitem: "Mindre alvorlig <script>alert(\"finding\")</script> [external](https://example.invalid) Begrundelse: <script>alert(\"finding\")</script> [external](https://example.invalid) Materialer: material-000ef262d0523cfdccb2e6687a2c76ac675c6d0c82f815b04148f240a3c5fe62, material-433982e3ced214dee6374fae3c731d6a2d8109a3a6587fb976ba08b2b29c55f8"
+  - 'treeitem "Devil’s Advocate · kritiker · forsøg 1 færdig · Gate C: bestået · kritik holder · {{uuid}} Kritikkens resumé: Summary: <script>alert(\"finding\")</script> [external](https://example.invalid) Kritikpunkter Mindre alvorlig Claim: <script>alert(\"finding\")</script> [external](https://example.invalid) Begrundelse: Rationale: <script>alert(\"finding\")</script> [external](https://example.invalid) Materialer: material-000ef262d0523cfdccb2e6687a2c76ac675c6d0c82f815b04148f240a3c5fe62, material-433982e3ced214dee6374fae3c731d6a2d8109a3a6587fb976ba08b2b29c55f8 15 tok · {{duration}}" [level=1]':
+    - text: "Devil’s Advocate · kritiker · forsøg 1 færdig · Gate C: bestået · kritik holder · {{uuid}} Kritikkens resumé: Summary: <script>alert(\"finding\")</script> [external](https://example.invalid) Kritikpunkter"
+    - list:
+      - listitem: "Mindre alvorlig Claim: <script>alert(\"finding\")</script> [external](https://example.invalid) Begrundelse: Rationale: <script>alert(\"finding\")</script> [external](https://example.invalid) Materialer: material-000ef262d0523cfdccb2e6687a2c76ac675c6d0c82f815b04148f240a3c5fe62, material-433982e3ced214dee6374fae3c731d6a2d8109a3a6587fb976ba08b2b29c55f8"
     - text: 15 tok {{duration}}
   - 'treeitem "Auditor · forsøg 1 færdig · Gate E: bestået · {{uuid}} {{duration}}" [level=1]'
   - 'treeitem "The Arbiter · forsøg 1 færdig · Gate G: bestået · {{uuid}} {{duration}}" [level=1]'

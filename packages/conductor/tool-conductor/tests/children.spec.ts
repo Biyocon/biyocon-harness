@@ -36,9 +36,16 @@ describe('concrete Conductor child presentation', () => {
     const event = session.events.findLast(event => event.type === 'conductor/child')!
     if (event.type !== 'conductor/child') throw new Error('Missing child event')
     expect(event.data.gate?.challenge).toEqual(match === 'matching'
-      ? { summary: challenge.summary, findings: challenge.findings } : undefined)
+      ? { hash, result: challenge } : undefined)
+    if (match === 'child' || match === 'attempt') {
+      expect(session.events.filter(row => row.type === 'conductor/child')).toHaveLength(1)
+      expect(event.data.gate).toBeUndefined()
+    } else {
+      expect(session.events.filter(row => row.type === 'conductor/child')).toHaveLength(2)
+      expect(event.data.gate).toMatchObject({ id: 'C', decision: 'rework', reworks: 1, limit: 2 })
+    }
     if (match === 'matching') {
-      expect(event.data.gate?.challenge?.findings).not.toBe(challenge.findings)
+      expect(event.data.gate?.challenge?.result.findings).not.toBe(challenge.findings)
       let state = conductorChildrenProjection.init()
       for (const row of session.events) state = conductorChildrenProjection.apply(state, row)
       expect(conductorChildrenProjection.schema.parse(state)[childId]?.gate?.challenge).toEqual(event.data.gate?.challenge)

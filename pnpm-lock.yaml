@@ -1809,6 +1809,9 @@ importers:
 
   packages/client/ui-conductor-subagent:
     dependencies:
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
       react:
         specifier: ^18.2.0
         version: 18.3.1

@@ -20,6 +20,7 @@ const LITERAL = '<script>alert("finding")</script> [external](https://example.in
 it.each([
   { locale: 'en-US', conclusion: 'holds' }, { locale: 'da-DK', conclusion: 'holds' },
   { locale: 'en-US', conclusion: 'escalated' }, { locale: 'da-DK', conclusion: 'escalated' },
+  { locale: 'en-US', conclusion: 'invalid' }, { locale: 'da-DK', conclusion: 'invalid' },
 ])('Conductor critic: $locale $conclusion', async ({ locale, conclusion }) => {
   const priorScenario = process.env['DSH_CONDUCTOR_INTAKE_SCENARIO']
   process.env['DSH_CONDUCTOR_INTAKE_SCENARIO'] = `critic-web-${conclusion}`
@@ -53,7 +54,9 @@ it.each([
     await input.fill('Analyze plan.md and report findings without modifying files.')
     await input.press('Enter')
     await expect.poll(() => events.some(event => event.type === 'conductor/child' && event.data.mode === 'critic')).toBe(true)
-    await page.locator('button[aria-haspopup="tree"]').click()
+    const catalog = page.locator('button[aria-haspopup="tree"]')
+    await expect.poll(() => catalog.textContent()).toMatch(/^2 /)
+    await catalog.click()
     const tree = page.getByRole('tree', { name: locale === 'da-DK' ? 'Underagentsessioner' : 'Subagent sessions', exact: true })
     const pendingText = locale === 'da-DK' ? 'kritik afventer' : 'challenge pending'
     await expect.poll(() => tree.textContent()).toContain(pendingText)
@@ -67,20 +70,27 @@ it.each([
     await finding.waitFor()
     expect(await finding.locator('script, a').count()).toBe(0)
     expect((await finding.textContent())?.split(LITERAL)).toHaveLength(4)
-    expect(await finding.textContent()).toContain(conclusion === 'holds'
+    expect(await finding.getByText(`Claim: ${LITERAL}`, { exact: true }).count()).toBe(1)
+    expect(await finding.getByText(`${locale === 'da-DK' ? 'Begrundelse' : 'Rationale'}: Rationale: ${LITERAL}`, { exact: true }).count()).toBe(1)
+    expect(await tree.getByRole('treeitem', { name: new RegExp('Summary: <script>') }).count()).toBe(1)
+    expect(await finding.textContent()).toContain(conclusion !== 'escalated'
       ? locale === 'da-DK' ? 'Mindre alvorlig' : 'Minor' : locale === 'da-DK' ? 'Kritisk' : 'Critical')
     const finalText = conclusion === 'holds' ? locale === 'da-DK' ? 'kritik holder' : 'challenge holds'
-      : locale === 'da-DK' ? 'eskaleret' : 'escalated'
+      : conclusion === 'escalated' ? locale === 'da-DK' ? 'eskaleret' : 'escalated'
+        : locale === 'da-DK' ? 'kritik ikke valideret' : 'challenge not validated'
     await expect.poll(() => tree.textContent()).toContain(finalText)
     await expect.poll(() => events.filter(event => event.type === 'conductor/checkpoint' && event.data.record !== null)
       .map(event => event.type === 'conductor/checkpoint' ? JSON.parse(event.data.record!) as { status: string } : null)
-      .at(-1)?.status).toBe(conclusion === 'holds' ? 'reported' : 'escalated')
+      .at(-1)?.status).toBe(conclusion === 'escalated' ? 'escalated' : 'reported')
     await compareOrRefreshGolden(join(GOLDENS, `${locale}-${conclusion}-settled.expected.md`),
       await captureStableAria(page, selector, scaffold.workspaceCwd), MODE)
     await page.reload()
     await page.locator('button[aria-haspopup="tree"]').click()
     await finding.waitFor()
     expect((await finding.textContent())?.split(LITERAL)).toHaveLength(4)
+    expect(await finding.getByText(`Claim: ${LITERAL}`, { exact: true }).count()).toBe(1)
+    expect(await finding.getByText(`${locale === 'da-DK' ? 'Begrundelse' : 'Rationale'}: Rationale: ${LITERAL}`, { exact: true }).count()).toBe(1)
+    expect(await tree.getByRole('treeitem', { name: new RegExp('Summary: <script>') }).count()).toBe(1)
     expect(await finding.locator('script, a').count()).toBe(0)
     expect(errors.pageErrors).toEqual([])
   } finally {
