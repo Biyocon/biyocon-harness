@@ -311,10 +311,17 @@ describe('installed Conductor through the headless example', () => {
           const [header, ...events] = log.trim().split('\n')
           return { log, header: JSON.parse(header!) as SessionHeader, events: events.map(line => JSON.parse(line) as SessionEvent) }
         }))
-        decoded.sort((a, b) => a.header.createdAt - b.header.createdAt)
         expect(decoded).toHaveLength(names.length)
         expect(new Set(decoded.map(session => session.header.id)).size).toBe(decoded.length)
-        const parent = decoded[0]!
+        const parents = decoded.filter(session => session.header.parentSession === undefined)
+        expect(parents).toHaveLength(1)
+        const parent = parents[0]!
+        const childIds = [...new Set(parent.events.flatMap(event => event.type === 'conductor/child'
+          ? [event.data.childId] : []))]
+        expect(childIds).toHaveLength(decoded.length - 1)
+        const sessionOrder = new Map([parent.header.id, ...childIds].map((id, index) => [id, index]))
+        for (const session of decoded) expect(sessionOrder.has(session.header.id)).toBe(true)
+        decoded.sort((left, right) => sessionOrder.get(left.header.id)! - sessionOrder.get(right.header.id)!)
         const calls = parent.events.filter(row => row.type === 'tool/call').map(row => row.data.name)
         expect(calls).toEqual(scenario === 'answer' ? ['conductor', 'read', 'write', 'conductor']
           : ownerRework ? ['conductor', 'conductor'] : ['conductor'])
