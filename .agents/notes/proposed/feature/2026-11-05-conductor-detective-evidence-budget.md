@@ -1,4 +1,4 @@
-# Agent Note: Bounded Detective evidence and token use
+# Agent Note: Detective evidence and repeated-history cost
 
 Status: proposed
 
@@ -6,53 +6,93 @@ English | [中文](2026-11-05-conductor-detective-evidence-budget.zh.md)
 
 ## Problem
 
-[Issue #58](https://github.com/Biyocon/biyocon-harness/issues/58) records an owner-reported Detective cost of about 472,000 tokens for a large folder. The private run has not been replayed, so its distribution among prompt repetition, repository reads, model output, and rework is unknown. The cost must become predictable without presenting an uninspected source as reviewed or weakening the evidence available to the critic and Auditor.
+[Issue #58](https://github.com/Biyocon/biyocon-harness/issues/58) reports about 472,000 Detective tokens on a large folder. The approved local measurement below identifies repeated conversation and tool results as the main opportunity in that run. A limit alone would end the analysis sooner; useful savings require sending less redundant material while keeping every uninspected source visible and preserving the critic's and Auditor's evidence.
 
-On `b230cf38ac`, [intake capture](../../../../packages/conductor/tool-conductor/src/materials.ts) stores the complete current request and explicitly cited text files, bounded by 16 files, 65,536 bytes per input, and 262,144 serialized admission bytes by default. [Detective dispatch](../../../../packages/conductor/tool-conductor/src/index.ts) embeds the complete `admission`, including every captured file's `content`, in its JSON prompt. The child also receives the Detective and shared specialist skills, the structured output schema, and read/search tools (`read`, `read_image`, `grep`, `glob`); its later model requests can include logged read results. The current producer path has no Detective-specific input or cumulative token limit. The [critic](../../../../packages/conductor/tool-conductor/src/analysis-dispatch.ts) instead receives candidate-bound excerpts and has recorded per-attempt and per-run token limits.
+In the current [dispatch](../../../../packages/conductor/tool-conductor/src/index.ts), the Detective prompt includes the complete v5 `admission`, including captured file bodies. The child can also discover workspace files with `glob`, `grep`, and `read`. Each later model request derives the full model-visible conversation from its session; the existing [tool-result pruner](../../../../packages/compaction/compaction-tool-result-pruner/src/index.ts) runs only when context pressure or overflow triggers compaction. No prune event occurred in the measured child. The [critic](../../../../packages/conductor/tool-conductor/src/analysis-dispatch.ts) receives candidate-bound excerpts and has its own measured budget; this proposal does not reduce its input or the Auditor's access.
 
 ## Proposal
 
-Keep the full, hash-verified intake capture in the durable run. At Detective dispatch, include the complete current request and a deterministic index of every captured file: selector, material ID, hash, byte and line counts, and explicit `not inspected` status. Replace the repeated file bodies in the initial Detective prompt with a read-only, child-scoped tool that returns requested line ranges from that immutable capture. The tool verifies the admitted hash, records the exact requested range and returned text in the child session, rejects unknown IDs and over-budget requests, and never rereads a changed workspace file as if it were the admitted material. Its UI render intent is `generic` with `locations` for the exact source selector and line range, derived only from its arguments. The generic workspace read/search tools remain read-only for discovery; their returned text and token cost count against the same Detective budget. A discovered but uncaptured file cannot acquire an admitted material ID or citation by model assertion.
+### Phase A: reduce repeated input without changing the v5 run record
 
-Record a host-owned coverage ledger for each Detective attempt: every admitted material's inspection status (`read`, `summarized`, or `not inspected`), ranges actually read, selection reason, and omitted bytes/lines; record discovered workspace paths separately with their observed version or digest when available. A summary is a navigation aid, never evidence for an unobserved claim. Selection can prefer owner-cited sources and matches to the stated question, but the complete index stays visible and every exclusion is explicit. If a relevant source cannot be read within the remaining budget, Detective returns a bounded, incomplete result with the omitted selectors and affected conclusions; Conductor must not turn it into a comprehensive `ready` report or pass it to the critic as a complete candidate. Owner continuation may authorize a fresh run or narrower question, but cannot relabel unreviewed evidence as reviewed.
+Keep the complete, hash-verified [intake capture](../../../../packages/conductor/conductor/src/types.ts) in the v5 record. Derive an ordered index of captured files at Detective dispatch from existing `id`, `selector`, `sha256`, and `content`; calculate byte and line counts without adding record fields. Send the current request and index instead of captured file bodies. A child-scoped read-only tool returns bounded line ranges from that exact captured `content`, verifies its hash, and logs its arguments and returned text through the existing tool-call/result events. It never substitutes a changed workspace file. Its UI render intent is `generic`, with `locations` for the requested selector and lines, derived only from arguments. Unknown IDs and excessive ranges fail explicitly.
 
-Add validated deployment limits for estimated input per Detective model request, reasoning-inclusive output per child, and total provider-reported Detective tokens per run. Capture those limits at admission, reserve before each child and model request, and count input, cache read/write, output, and reasoning without double counting. The request preflight includes persona, tool schemas, system sections, the full logged history, and the next input; a byte or token estimate that excludes tools is insufficient. A provider route without a defensible preflight bound or an enforceable output ceiling fails before dispatch. Charge reported usage after each call; missing or invalid usage consumes the reserved allowance and blocks another call. An actual provider overrun stops the run and is disclosed; no preflight can retroactively prevent a provider from overspending one call. New child attempts after rework or owner resumption share the retained run budget. At a limit, persist consumed/reserved/limit, inspected and omitted material, and a terminal `incomplete` status, with no automatic rework loop that silently resets the allowance.
+Address the measured history cost separately in the same phase: after a completed Detective step, proactively replace selected large, older tool-result messages on the model-visible session surface with a small, explicit omission marker, using the existing logged `compaction/prune` and `tool/result` replacement protocol. Keep the original result in the append-only child log. A child-scoped read-only recall tool may return bounded ranges of that original result by stable event identity; the recall itself is logged and charged. Do not prune an unpaired tool call/result, the current step before the model has seen its results, or evidence whose only copy is the proposed shortened text. A deterministic retention rule, configured per deployment rather than hardcoded in a plugin, must identify the eligible age and size. Preserve source identity and any line references needed for citation. A summary or marker is only a navigation aid, never proof of an omitted passage.
 
-Detective remains read-only and retains scope clarification. The producer's cited `material_spans` continue to bind to complete admitted captures. The [critic's excerpt validation](../../../../packages/conductor/conductor/src/analysis-materials.ts) and mandatory challenge remain unchanged. Auditor keeps access to the same full admitted material and must reject unsupported or incomplete factual claims; this design does not save Auditor tokens by reducing its evidence. Gate C, implementation approval, and GO authority do not change. Image intake remains unsupported.
+Phase A uses existing session event types and unchanged v5 `ConductorRun` fields. The new tools are restricted to the Detective child and admitted run; ordinary workspace reads remain read-only. Workspace discoveries do not gain an admitted material ID or citation merely because a tool returned them. The complete captured material remains available to the critic's excerpt validation and to Auditor. The report must disclose material it did not inspect; Phase A does not claim a durable host-owned coverage ledger or a new terminal status.
 
-## Measurement and expected savings
+### Phase B: v6 accounting and explicit incomplete outcome
 
-The following is a source-level measurement on `b230cf38ac`, not a model run. An in-memory script used `captureIntakeMaterial`, `admitIntake`, `createRun`, and the exact `composeSpecialistPrompt` function transpiled from master. It supplied a short synthetic request and 0, 1, or 16 cited ASCII files of 12,000 characters each; the 16-file serialized capture was 199,854 bytes, below the default cap. It measured prompt and skill/schema string lengths using the same four-characters-per-token proxy used by the critic preflight. No private files or provider credentials were used.
+Add a host-owned coverage ledger for each Detective attempt: admitted material inspection and exact ranges, discovered workspace sources with observed version or digest when available, selection reasons, and omissions affecting conclusions. Only exact source spans count as inspected evidence. Persist validated per-request input, reasoning-inclusive output, and per-run total-token limits at admission. Preflight includes persona, system text, tool schemas, next input, and the logged model-visible history; charge provider-reported uncached input, cache read/write, and output as disjoint counts, with reasoning included in output. Missing or invalid usage consumes the reservation and prevents another call; a provider overrun stops the run and is disclosed. Rework and owner continuation share the retained run allowance.
 
-| Cited files | Detective prompt characters | Prompt token proxy | Captured-content contribution, including request | Initial prompt + Detective/shared skills + output schema proxy |
+If relevant evidence cannot be inspected within the remaining allowance, record consumed/reserved/limit and the omitted scope, and end in terminal `incomplete`. Do not pass it to the critic as a complete candidate, silently reset the allowance, or turn it into a comprehensive `ready` report. This is a bounded failure mode, not an efficiency saving.
+
+These new run fields and terminal semantics require a new record version. Coordinate one v6 owner and schema with [#30 phase 2](https://github.com/Biyocon/biyocon-harness/issues/30), which also plans Auditor entry, verification, dirty-file digests, and a manifest outside Git. If #30 ships v6 first, Phase B uses the next version. The #30 manifest can supply stable provenance for newly discovered files; before it exists, those discoveries remain provisional.
+
+Both phases preserve read-only analysis, the producer's `material_spans` against complete admitted captures, mandatory critic challenge, Auditor's full available evidence, and the existing Gate C/GO authorization rules. Image intake remains outside this proposal.
+
+## Local measurement and expected savings
+
+The owner-approved source is the locally stored `CON-2026-2783` Detective child, recorded on the v5 master baseline. The analysis read the five matching local session logs in place and selected the one child identified as Detective by the parent log. No session data, source names, source text, or excerpts enter this note or PR. Provider usage comes from each logged `assistant/message`; the cache-write field was absent in all nine reports, shown as “—” rather than assumed zero. Reasoning is a subset of output and must not be added to it.
+
+| Call | Uncached input | Cache read | Cache write | Output | Reasoning |
+| ---: | ---: | ---: | :---: | ---: | ---: |
+| 1 | 9,870 | 0 | — | 1,803 | 1,698 |
+| 2 | 15,479 | 11,648 | — | 1,335 | 936 |
+| 3 | 182 | 28,416 | — | 996 | 756 |
+| 4 | 19,989 | 29,568 | — | 1,514 | 1,329 |
+| 5 | 2,383 | 50,944 | — | 1,913 | 1,572 |
+| 6 | 5,652 | 55,168 | — | 933 | 702 |
+| 7 | 4,118 | 61,696 | — | 3,871 | 3,698 |
+| 8 | 7,405 | 69,632 | — | 736 | 592 |
+| 9 | 2,380 | 77,696 | — | 6,467 | 4,690 |
+| **Total** | **67,458** | **384,768** | **—** | **19,568** | **15,973** |
+
+Reported input was 452,226 tokens, including 384,768 cache-read tokens (85.1%); input plus output was 471,794. Cache hits still consume context tokens but may be billed at a different rate. A price comparison must use the provider's rates for uncached input, cache read, any reported cache write, and output separately; a smaller prompt can lose cache hits when an earlier prefix changes.
+
+The child made 22 `glob`, 4 `grep`, 17 `read`, and 1 `structured_output` call. The exact text length of every tool result was counted locally. Only grouped result statistics appear here (Unicode characters, including error text):
+
+| Tool | Results | Total chars | Min | Median | Max |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `glob` | 22 | 56,657 | 14 | 14 | 12,266 |
+| `grep` | 4 | 32,915 | 301 | 1,308.5 | 29,997 |
+| `read` | 17 | 37,499 | 64 | 1,710 | 9,470 |
+| `structured_output` | 1 | 27 | 27 | 27 | 27 |
+| **Total** | **44** | **127,098** | | | |
+
+The repeated-history column below reconstructs the serialized character length of previously logged, model-visible conversation messages that the DeepSeek adapter would send again at each call; it excludes the fixed system prompt and tool schemas. The first call has no repeated history. Tool-result text is a subset. The token share is only a four-characters-per-token proxy divided by reported total input for that call, not a provider allocation of tokens to message segments.
+
+| Call | Repeated history chars | Of which tool-result chars | History token proxy | Proxy share of input |
 | ---: | ---: | ---: | ---: | ---: |
-| 0 | 2,790 | 698 | 16 | 3,180 |
-| 1 × 12,000 | 15,406 | 3,852 | 3,079 | 6,334 |
-| 16 × 12,000 | 204,640 | 51,160 | 49,020 | 53,642 |
+| 1 | 0 | 0 | 0 | 0% |
+| 2 | 52,059 | 31,788 | 13,015 | 48.0% |
+| 3 | 58,662 | 31,956 | 14,666 | 51.3% |
+| 4 | 105,722 | 72,023 | 26,431 | 53.3% |
+| 5 | 118,781 | 78,187 | 29,695 | 55.7% |
+| 6 | 142,459 | 93,741 | 35,615 | 58.6% |
+| 7 | 158,353 | 105,311 | 39,588 | 60.2% |
+| 8 | 190,641 | 120,372 | 47,660 | 61.9% |
+| 9 | 200,777 | 127,071 | 50,194 | 62.7% |
 
-The proposed index for those 16 files is about 4,505 characters, or 1,127 proxy tokens. If Detective needs four complete files, their 48,000 characters add about 12,000 proxy tokens: the first-request material component falls from about 49,020 to about 13,127 proxy tokens, a gross reduction of about 35,900 (73%). If the child makes eight requests that retain all read text, the illustrative gross difference is about 287,000 proxy tokens; tool envelopes, history growth, provider tokenization, caching, and later reads change that figure. Reading all 16 files removes most of the saving. The owner-reported 472,000 tokens cannot be decomposed or used as a verified baseline from this synthetic test.
-
-## Durable format and coordination
-
-New retained budget fields, coverage status, and terminal incomplete semantics change the validated Conductor run record. `CONDUCTOR_RECORD_FORMAT_VERSION = 5` must not acquire that new meaning; implementation needs the next monotonic format version. [Issue #30 phase 2](https://github.com/Biyocon/biyocon-harness/issues/30) also requires v6 for Auditor entry, verification, dirty-file digests, and a file manifest outside Git. Agree on one v6 record and manifest owner before implementing either issue. If #30 publishes v6 first, #58 uses the next version instead of reusing v6. The phase-2 manifest should supply stable path/version provenance for newly discovered files; until then, workspace discoveries remain explicitly provisional and cannot silently become admitted material.
+Across calls 2–9, 660,449 tool-result characters were sent again, compared with 127,098 characters produced by the tools. The v5 capture contained one 99-character current request and **zero captured files**. Therefore the capture-index part of Phase A would save approximately **zero** tokens on this run. For the history part, a counterfactual pass after each completed step using the existing 8,192-character prune threshold, 4,096-character head, and 1,024-character tail would affect seven results and remove 338,328 repeated characters, about 84,582 gross proxy input tokens (18.7% of reported input), if none were recalled. This is not measured provider usage or a net price forecast: recall, new tool envelopes, tokenization, and lost cache hits can reduce or reverse the gain. Phase A acceptance must measure both total prompt tokens and billed cost on a comparable public real-model run. Phase B by itself has **zero expected token saving** for a completed analysis; a limit only stops later calls and must disclose incompleteness.
 
 ## Alternatives considered
 
-**Only lower `maxMaterialFiles` or `maxMaterialBytes`.** This would reject or omit source material before Detective can identify relevant evidence; it does not address repeated workspace reads. Keep the current intake limits as safety bounds, not as the cost design.
+**Leave pruning tied to context pressure.** No prune occurred in the measured child despite 660,449 repeated tool-result characters. Triggering a deterministic, evidence-preserving pass before later Detective requests addresses cost earlier, but must be checked against cache disruption and recall use.
 
-**Summarize every file before Detective.** Summaries can erase decisive counterevidence and create an unverified second analysis. The proposed index and exact on-demand ranges preserve original text and identify anything unread.
+**Compress or remove older tool results without recall.** This can discard adverse evidence. Logged surface replacement plus bounded recall preserves the original in the session log and makes omissions visible to the model; an incomplete answer is required when the needed passage cannot be recovered.
 
-**Cap only Detective output or trim its final report.** The measured initial input and repeated read history dominate this case; a short answer alone cannot bound input cost or establish coverage.
+**Rely on cache hits alone.** The measured 85.1% cache-read share may reduce price, not token consumption or context pressure. Rewriting an early prefix may convert hits to misses, so net price and latency must be measured separately from tokens.
 
-**Reuse the critic's excerpt-only prompt unchanged.** The critic evaluates a completed candidate with spans. Detective must discover scope and decide which evidence to inspect, so it needs a complete source index and controlled reads rather than only producer-selected excerpts.
+**Choose a cheaper Detective model.** [#35](https://github.com/Biyocon/biyocon-harness/issues/35) owns per-role provider/model choice after #30. A cheaper model may reduce currency cost without reducing tokens, and may weaken evidence selection or structured output quality. Compare it only after the role route and credentials are supported; do not hardcode a model in #58.
+
+**Only cap output, total tokens, or captured file count.** Limits can stop the run or reject evidence but do not make a completed answer cheaper. Keep safety caps and explicit incompleteness in Phase B, not as Phase A's savings claim.
 
 ## Acceptance criteria
 
-- On public synthetic small and large repositories, compare the current path and proposed path using provider-reported input, cache, output, and reasoning usage for initial calls, repeated reads, rework, and resume; publish source hashes, measurements, and caveats without private data. Include a case where all files matter and savings disappear.
-- Seed a relevant finding in a late indexed file and an adverse finding in a nonselected file. Either both remain traceable to exact material IDs and lines or the result is explicitly incomplete; no accepted full-scope report may hide an omitted source. The critic and Auditor must retain their current challenge and citation checks.
-- Unit and assembled keyless snapshot tests cover index ordering, immutable range reads, changed or unknown material rejection, zero/partial/full coverage, preflight refusal, missing usage, one-call overrun, total exhaustion across rework/resume, and terminal incomplete presentation. Both SDK projections update if the run/session events change.
-- Validate config at load and persisted limits/ledger on replay. Confirm that analysis remains read-only and cannot acquire execution approval or GO, including after owner answers.
+- Phase A preserves the v5 run record and existing session event formats. Keyless assembled snapshots and focused tests cover index ordering, hash-verified capture reads, bounded logged recall, deterministic proactive pruning, replay, and a late adverse finding that remains retrievable or makes the report qualify its scope. The critic and Auditor continue to receive their present full basis; analysis stays read-only.
+- On a public synthetic repository of comparable size with a real model and process-env credentials, compare baseline and Phase A provider-reported uncached/cache input, output/reasoning, total prompt tokens, billed price, latency, recall frequency, and accepted evidence coverage. Include a case where all sources matter and savings disappear. No private session data is published.
+- Phase B validates configuration at load, retained allowances and coverage on replay, missing usage, one-call overrun, rework/resume sharing, and terminal incomplete presentation. Add the required keyless transcript and both SDK projections if run/session events change. Coordinate the record version and manifest with #30 phase 2.
 
 ## Risks
 
-An index can still miss uncited workspace files; without the coordinated #30 manifest, the result must state that discovery is incomplete. Conservative preflight may stop a useful analysis early, while a provider can still overspend a single call; the report must show both cases. Snapshot reads add tool overhead and latency, and reading every source can consume as many or more tokens than the current path. A separate v6 introduced without #30 coordination would cause avoidable format churn.
+Proactive surface replacement can destroy a reusable cache prefix, and recall can add more text than pruning saved. A marker can hide decisive evidence unless exact original results remain accessible and the final claim is narrowed when inspection is incomplete. An index does not discover uncited workspace files; without #30's manifest, discovery coverage remains provisional. Conservative preflight can stop useful work, while a provider can still overspend one call. Avoid a separate v6 that conflicts with #30.
