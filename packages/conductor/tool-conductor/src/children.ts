@@ -50,7 +50,7 @@ export function observeConductorChildren(
 /**
  * Attach a new runtime verdict only to the child dispatched for that history position.
  * @param parent - owner session containing the child ledger.
- * @param run - checkpoint whose gate history was durably saved.
+ * @param run - validated checkpoint whose gate events share its subsequent durable flush.
  */
 export function publishChildGates(parent: Session, run: ConductorRun): void {
   const children = new Map<string, ConductorChild>()
@@ -68,8 +68,14 @@ export function publishChildGates(parent: Session, run: ConductorRun): void {
     if (record.analysis !== undefined && (record.analysis.mode !== child.mode
       || record.analysis.criticAttempt !== child.criticAttempt)) continue
     const reworks = run.history.slice(0, offset + 1).filter(gate => gate.kind === 'evaluated' && gate.gate === record.gate && gate.decision === 'rework').length
+    const captured = run.analysisChallenges.find(challenge => challenge.hash === record.analysis?.challengeHash
+      && challenge.candidateHash === record.analysis.candidateHash
+      && challenge.criticChildId === child.childId && challenge.criticAttempt === child.criticAttempt)
     parent.append('conductor/child', { ...child, gate: { id: record.gate, decision: record.decision,
       reworks, limit: run.budget.maxReworkPerGate,
-      ...record.analysis?.conclusion === undefined ? {} : { challengeConclusion: record.analysis.conclusion } } })
+      ...record.analysis?.conclusion === undefined ? {} : { challengeConclusion: record.analysis.conclusion },
+      ...captured === undefined ? {} : { challenge: {
+        hash: captured.hash, result: structuredClone(captured.challenge),
+      } } } })
   }
 }

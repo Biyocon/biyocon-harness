@@ -1,0 +1,28 @@
+span.identity {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.challenge {
+  display: block;
+  margin-top: 8px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.finding {
+  display: block;
+  margin-top: 8px;
+  padding-left: 8px;
+  border-left: 2px solid var(--dsw-alias-label-tertiary);
+}
+
+.text {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.severity {
+  display: block;
+  font-weight: 600;
+}

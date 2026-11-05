@@ -18,7 +18,9 @@ export function conductorChildPresentation(child: ConductorChild, t: TranslateNS
       ? t('gate.rework', { used: child.gate.reworks, limit: child.gate.limit })
       : t(`gate.${child.gate.decision}`),
   })
-  const challenge = child.gate?.challengeConclusion === undefined ? undefined
+  const challenge = child.gate?.challengeConclusion === undefined
+    ? child.mode !== 'critic' ? undefined : child.gate !== undefined ? t('challenge.invalid')
+      : child.status !== 'failed' ? t('challenge.pending') : undefined
     : t(`challenge.${child.gate.challengeConclusion}`)
   return { label, detail: [t(`status.${child.status}`), gate, challenge].filter(value => value !== undefined).join(' · ') }
 }

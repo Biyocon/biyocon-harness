@@ -49,7 +49,7 @@ Status: implemented
 
 规范的 [Devil's Advocate 角色指令](../../../conductor/roles/03-devils-advocate.md) 与 [conductor-specialist skill](../../../skills/conductor-specialist/SKILL.md) 在现有 `producer` 模式之外定义类型化分析 `critic` 模式。在批评模式下，角色返回 `AnalysisChallenge`：绑定候选的结论、可证伪的推理发现、备选方案、遗漏风险及材料 ID；不生产替代候选，也不审计引用。两份规范文件在可解析的元数据中声明支持的分析模式；preset 验证检查其中的 `critic`，不从散文推断。[source launch](../../../../apps/cli/scripts/source-launch.ts) 按 #25/#59 在每次启动时重新生成安装的 skills。[preset 验证](../../../../packages/conductor/conductor-presets/src/index.ts) 拒绝缺少批评模式的角色或 specialist skill，即使资产文件存在，也不能挂载过时的仅生产者指令。
 
-模型不可见的 `conductor/child` 事件携带角色、尝试及 gate；类型化派发/阶段数据增加生产/批评模式和精确子会话绑定，供 EN/DA 界面显示。[#56](https://github.com/Biyocon/biyocon-harness/issues/56) 负责浏览器标签和面包屑名称。新子会话不继承先前 gate 标记；界面以文字说明 `holds`/`does_not_hold` 或等待/升级状态，不只依赖颜色。
+模型不可见的 `conductor/child` 事件携带角色、尝试及 gate；类型化派发/阶段数据增加生产/批评模式和精确子会话绑定，供 EN/DA 界面显示。[#56](https://github.com/Biyocon/biyocon-harness/issues/56) 负责浏览器标签和面包屑名称。新子会话不继承先前 gate 标记；界面以文字说明 `holds`/`does_not_hold` 或等待/升级状态，不只依赖颜色。 宿主按批评哈希、候选哈希、子会话 ID 和运行级批评尝试匹配，将完整的已验证批评及其摘要哈希复制到精确子会话的 gate 事件中。该事件在检查点前追加，两者通过同一次 flush 持久化。投影在发布视图前验证摘要哈希、发现的语义以及运行/子会话/尝试/结论关联。目录将摘要、主张和理由显示为纯文本，包括看似 HTML 或 Markdown 的内容；严重程度和未验证结果状态使用英/丹本地化文字。摘要与发现既属于可见内容，也属于树行的无障碍名称。原始模型输出不能作为这些发现的来源。
 
 所有者报告的两次运行在列出的四个角色上分别消耗 648K 和 738K token。一次受限批评预计另耗 20–40K token，约占这些总量的 3–6%；两次返工可产生三次批评（额外 60–120K token），尚不包含生产者重跑。经过验证、可在 `cordis.yml` 覆盖的 `tool-conductor` Config 字段包括`maxCriticInputTokensPerAttempt`（默认 24,000）、`maxCriticOutputTokensPerAttempt`（默认 16,000，包含服务商报告的推理输出）和 `maxCriticTokensPerRun`（默认 120,000，统计服务商报告的全部输入、输出及推理 token，避免重复计数）。校验为正安全整数，且运行总限不低于已配置的每次输入与输出上限之和；无效 preset 配置在加载时拒绝。派发前预留该总额，并要求服务商的输出上限包含推理 token（否则拒绝用该服务商派发批评）；逐次记录实际用量，在用量缺失或超限时阻塞，并在剩余额度不足以容纳下一次尝试时以已消耗、预留和上限 token 数终止运行，不提出无法奏效的所有者问题。三个上限保存在准入时的运行记录中，部署 Config 变化不会改变该运行；缺失的用量按完整预留额度计费。派发逻辑不硬编码任何上限。批评是每次分析运行的必经步骤。未来如引入退出选项，必须按运行明确选择并记入日志，不能作为隐藏配置开关。[#58](https://github.com/Biyocon/biyocon-harness/issues/58) 负责降低 Detective 的消耗；本决策不扩大 Detective 输入，也不允许第二轮完整仓库探索。
 
@@ -65,9 +65,11 @@ Status: implemented
 
 ## 验证
 
-- 真实 `conductor-installed` 示例通过预期父/子 JSONL 检查全部六条路线，包括入口 C 的 `answer`；Gate C 返工预算耗尽、所有者以 `answer_continue` 回复后生成新候选并重新批评，且 gate 预算不重置；以及 Auditor 的 `defect: analysis` 导致新候选重新接受批评和审计。快照还覆盖批评成立、不成立、格式错误和过期结果、token 预算耗尽、重启、只读限制和图片拒绝。每个新子代理都不继承旧的 gate 结果。
-- 单元与属性测试覆盖六种路线和跳过的 gate、类型化错误目标、入口 C 同一 gate 的生产者/批评者身份、Gate C 与 Gate E 返工预算、格式错误批评不重跑生产者、新候选重新批评、token 上限、哈希绑定摘录、过时身份、所有者升级、检查点中断及 v4 拒绝。已构建与打包路径保留各自检查。
-- `conductor/child` payload 携带类型化模式和批评结果。TypeScript `examples/jsonrpc-agent/tests/snapshots/` 与 Python `scripts/snapshots/python-sdk-single-exe/` 投影验证：若通用 SDK 输出不含这些 Conductor 事件，则保持逐字节相同。
+接受报告必须绑定最新候选、已验证批评结果、精确批评子会话及尝试、独立审计和 Arbiter 决定。每个新候选都须重新批评和审计。持久回放保留此顺序、已消耗的 Gate C/E 与所有者预算，以及分析的只读权限；所有者回答不能重置预算或授权实现。
+
+组装后的应用在实时更新和重新加载时保留每个子会话的身份与判定。英/丹文字明确模式、待评估或升级状态、结论和发现的严重程度，不依赖颜色。摘要、主张和理由以纯文本显示，来自绑定该子会话的已验证批评结果；原始模型输出或较早尝试都不能提供这些内容。
+
+可运行示例记录和两种 SDK 投影保留相同的记录事实。显示变化不改变模型请求、权限或无关 SDK 记录。已构建和打包消费者与源码启动遵守相同的来源绑定和只读要求。
 
 ## 后果
 

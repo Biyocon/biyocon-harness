@@ -1,6 +1,7 @@
 /** Model-hidden presentation of one concrete Conductor workflow child. */
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ConductorRunId, ConductorStage, GateId, GateDecision } from './types.ts'
+import type { AnalysisChallenge } from './analysis-challenge.ts'
 
 /** Fixed specialist identities, including the internal Ralph worker. */
 export type ConductorChildRole = Extract<ConductorStage, 'detective' | 'strategist' | 'devils-advocate' | 'headsman' | 'auditor' | 'integrator' | 'arbiter' | 'ralph'>
@@ -30,7 +31,10 @@ export interface ConductorChild {
     reworks: number
     limit: number
     /** Validated challenge result for the exact critic child. */
-    challengeConclusion?: 'holds' | 'does_not_hold' }
+    challengeConclusion?: 'holds' | 'does_not_hold'
+    /** Complete validated challenge and its digest, retaining replayable candidate and critic identities. */
+    challenge?: { hash: string; result: AnalysisChallenge }
+  }
 }
 
 declare module '@deepseek-ai/dsh-session/types' {

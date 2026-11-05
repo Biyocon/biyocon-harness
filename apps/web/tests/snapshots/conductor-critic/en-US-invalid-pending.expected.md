@@ -1,0 +1,3 @@
+- tree "Subagent sessions":
+  - 'treeitem "Detective · producer · attempt 1 completed · Gate A: pass · {{uuid}} {{duration}}" [level=1]'
+  - treeitem "Devil’s Advocate · critic · attempt 1 running · challenge pending · {{uuid}} {{duration}}" [level=1]

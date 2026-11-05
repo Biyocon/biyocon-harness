@@ -4,7 +4,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import {
-  ConductorRunId, createRun, executionBaselineHash, executionEffectProfile,
+  ConductorRunId, createRun, executionBaselineHash, executionEffectProfile, conductorChildrenProjection,
   QualityCommandId, ownerMandateHash, recordGate, SessionConductorRunStore,
 } from '@deepseek-ai/dsh-conductor'
 import type { ConductorAdmission, ConductorRun, CapturedReport, QualityCommandBinding } from '@deepseek-ai/dsh-conductor'
@@ -386,6 +386,30 @@ describe('Conductor analysis tool admission and execution policy', () => {
     expect(JSON.stringify(result)).toContain('not constraints')
     expect(h.engine.requests).toEqual([])
     expect(h.parent.session.events.filter(event => event.type === 'conductor/checkpoint')).toEqual([])
+  })
+
+  it('flushes validated critic presentation with its checkpoint before another dispatch can start', async () => {
+    const h = await setup({ factory: analysisResult, flush: false })
+    let durable: typeof h.parent.session.events | undefined
+    h.ctx.on('session/flush', (session) => {
+      const checkpoint = session.events.findLast(event => event.type === 'conductor/checkpoint')
+      if (checkpoint?.type !== 'conductor/checkpoint' || checkpoint.data.record === null) return
+      const run = JSON.parse(checkpoint.data.record) as ConductorRun
+      if (run.analysisChallenges.length === 0) return
+      durable ??= structuredClone(session.events)
+      throw new Error('Simulated process loss immediately after checkpoint persistence')
+    })
+    const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }, h.parent)
+    expect(result.isError).toBe(true)
+    expect(h.engine.requests).toHaveLength(2)
+    expect(durable).toBeDefined()
+    let state = conductorChildrenProjection.init()
+    for (const event of durable!) state = conductorChildrenProjection.apply(state, event)
+    const restored = conductorChildrenProjection.schema.parse(conductorChildrenProjection.view(state))
+    expect(Object.values(restored).find(child => child.mode === 'critic')?.gate).toMatchObject({
+      id: 'C', decision: 'pass', challengeConclusion: 'holds', challenge: { result: { conclusion: 'holds' } },
+    })
+    await h.ctx.fiber.dispose()
   })
 
   it('runs fresh report sessions with no execution tools, contribution, Ralph or approval', async () => {

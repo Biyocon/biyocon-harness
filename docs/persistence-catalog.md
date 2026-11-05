@@ -414,7 +414,7 @@ Source: [`packages/conductor/conductor/src/persistence.ts:55`](../packages/condu
 'conductor/child': ConductorChild
 ```
 
-Source: [`packages/conductor/conductor/src/child-types.ts:39`](../packages/conductor/conductor/src/child-types.ts)
+Source: [`packages/conductor/conductor/src/child-types.ts:43`](../packages/conductor/conductor/src/child-types.ts)
 
 <a id="conductorowner-continuation-consumed--log-only"></a>
 

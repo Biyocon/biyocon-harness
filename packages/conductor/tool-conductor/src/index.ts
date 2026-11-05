@@ -1188,8 +1188,8 @@ export function apply(ctx: Context, config: Config): void {
         }
 
         const saveCheckpoint = async (checkpoint: ConductorRun): Promise<void> => {
-          await store.save(checkpoint)
           publishChildGates(parent.session, checkpoint)
+          await store.save(checkpoint)
           activeRun = checkpoint
         }
         const driven = await drive(run, dispatcher, saveCheckpoint)

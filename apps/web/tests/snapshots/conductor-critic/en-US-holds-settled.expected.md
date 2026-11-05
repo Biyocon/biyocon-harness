@@ -1,0 +1,9 @@
+- tree "Subagent sessions":
+  - 'treeitem "Detective · producer · attempt 1 completed · Gate A: pass · {{uuid}} {{duration}}" [level=1]'
+  - 'treeitem "Devil’s Advocate · critic · attempt 1 completed · Gate C: pass · challenge holds · {{uuid}} Challenge summary: Summary: <script>alert(\"finding\")</script> [external](https://example.invalid) Findings Minor Claim: <script>alert(\"finding\")</script> [external](https://example.invalid) Rationale: Rationale: <script>alert(\"finding\")</script> [external](https://example.invalid) Materials: material-000ef262d0523cfdccb2e6687a2c76ac675c6d0c82f815b04148f240a3c5fe62, material-433982e3ced214dee6374fae3c731d6a2d8109a3a6587fb976ba08b2b29c55f8 15 tok · {{duration}}" [level=1]':
+    - text: "Devil’s Advocate · critic · attempt 1 completed · Gate C: pass · challenge holds · {{uuid}} Challenge summary: Summary: <script>alert(\"finding\")</script> [external](https://example.invalid) Findings"
+    - list:
+      - listitem: "Minor Claim: <script>alert(\"finding\")</script> [external](https://example.invalid) Rationale: Rationale: <script>alert(\"finding\")</script> [external](https://example.invalid) Materials: material-000ef262d0523cfdccb2e6687a2c76ac675c6d0c82f815b04148f240a3c5fe62, material-433982e3ced214dee6374fae3c731d6a2d8109a3a6587fb976ba08b2b29c55f8"
+    - text: 15 tok {{duration}}
+  - 'treeitem "Auditor · attempt 1 completed · Gate E: pass · {{uuid}} {{duration}}" [level=1]'
+  - 'treeitem "The Arbiter · attempt 1 completed · Gate G: pass · {{uuid}} {{duration}}" [level=1]'

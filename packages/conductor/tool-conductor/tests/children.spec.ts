@@ -3,11 +3,56 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { WorkflowRunId } from '@deepseek-ai/dsh-workflow'
 import type { WorkflowRun } from '@deepseek-ai/dsh-workflow'
 import { conductorChildrenProjection } from '@deepseek-ai/dsh-conductor'
+import { ANALYSIS_CHALLENGE_SCHEMA, analysisChallengeHash } from '../../conductor/src/analysis-challenge.ts'
 import { analysisRun } from '../../conductor/tests/intake-fixtures.ts'
 import { observeConductorChildren, publishChildGates } from '../src/children.ts'
 import { describe, expect, it } from 'vitest'
 
 describe('concrete Conductor child presentation', () => {
+  it.each(['matching', 'hash', 'candidate', 'child', 'attempt'] as const)('publishes only the exact validated challenge: %s', async (match) => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const session = ctx.sessions.create(SessionId('findings-parent'))
+    session.append('turn/start', { turn: 1 })
+    const run = analysisRun()
+    const childId = SessionId('critic')
+    const materialId = run.admission.materials[0].id
+    const challenge = ANALYSIS_CHALLENGE_SCHEMA.parse({ run_id: run.runId, purpose: 'analysis',
+      candidate_hash: 'a'.repeat(64), candidate_version: 'v1', material_ids: [materialId],
+      critic_child_id: childId, critic_attempt: 1, conclusion: 'does_not_hold', defect: 'report',
+      summary: 'The alternatives are incomplete.', findings: [{ id: 'alternative', severity: 'major',
+        claim: 'A simpler alternative is missing.', rationale: 'The captured material includes it.', material_ids: [materialId] }] })
+    const hash = analysisChallengeHash(challenge)
+    session.append('conductor/child', { childId, runId: run.runId, role: 'devils-advocate', mode: 'critic',
+      attempt: 1, criticAttempt: 1, historyOffset: 0, status: 'completed' })
+    publishChildGates(session, { ...run, analysisChallenges: [{ challenge, hash,
+      candidateHash: challenge.candidate_hash, criticChildId: childId, criticAttempt: 1, inputTokens: 10, outputTokens: 10 }],
+    history: [{ kind: 'evaluated', gate: 'C', stage: 'devils-advocate', decision: 'rework',
+      basis: ['Revise the report.'], evidenceReviewed: [], stateUpdate: 'Return to producer.',
+      analysis: { mode: 'critic', childId: match === 'child' ? SessionId('other') : childId,
+        criticAttempt: match === 'attempt' ? 2 : 1,
+        candidateHash: match === 'candidate' ? 'b'.repeat(64) : challenge.candidate_hash,
+        challengeHash: match === 'hash' ? 'c'.repeat(64) : hash, conclusion: 'does_not_hold' } }] })
+    const event = session.events.findLast(event => event.type === 'conductor/child')!
+    if (event.type !== 'conductor/child') throw new Error('Missing child event')
+    expect(event.data.gate?.challenge).toEqual(match === 'matching'
+      ? { hash, result: challenge } : undefined)
+    if (match === 'child' || match === 'attempt') {
+      expect(session.events.filter(row => row.type === 'conductor/child')).toHaveLength(1)
+      expect(event.data.gate).toBeUndefined()
+    } else {
+      expect(session.events.filter(row => row.type === 'conductor/child')).toHaveLength(2)
+      expect(event.data.gate).toMatchObject({ id: 'C', decision: 'rework', reworks: 1, limit: 2 })
+    }
+    if (match === 'matching') {
+      expect(event.data.gate?.challenge?.result.findings).not.toBe(challenge.findings)
+      let state = conductorChildrenProjection.init()
+      for (const row of session.events) state = conductorChildrenProjection.apply(state, row)
+      expect(conductorChildrenProjection.schema.parse(state)[childId]?.gate?.challenge).toEqual(event.data.gate?.challenge)
+    }
+    await ctx.fiber.dispose()
+  })
+
   it('does not assign a resumed dispatch verdict to an earlier child without a gate', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
