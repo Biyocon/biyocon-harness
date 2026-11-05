@@ -65,7 +65,7 @@ Status: implemented
 
 ## 验证
 
-- 真实 `conductor-installed` 示例覆盖既有分析与所有者路线，以及 `challenge-holds`、`challenge-rework`、`challenge-budget`、`entry-c`、`challenge-resume`、`stale-candidate`、`no-execution` 和图片拒绝，并检查预期父/子 JSONL。浏览器投影检查精确角色、尝试、gate 及 EN/DA 文本。
+- 真实 `conductor-installed` 示例通过预期父/子 JSONL 检查全部六条路线，包括入口 C 的 `answer`；Gate C 返工预算耗尽、所有者以 `answer_continue` 回复后生成新候选并重新批评，且 gate 预算不重置；以及 Auditor 的 `defect: analysis` 导致新候选重新接受批评和审计。快照还覆盖批评成立、不成立、格式错误和过期结果、token 预算耗尽、重启、只读限制和图片拒绝。每个新子代理都不继承旧的 gate 结果。
 - 单元与属性测试覆盖六种路线和跳过的 gate、类型化错误目标、入口 C 同一 gate 的生产者/批评者身份、Gate C 与 Gate E 返工预算、格式错误批评不重跑生产者、新候选重新批评、token 上限、哈希绑定摘录、过时身份、所有者升级、检查点中断及 v4 拒绝。已构建与打包路径保留各自检查。
 - `conductor/child` payload 携带类型化模式和批评结果。TypeScript `examples/jsonrpc-agent/tests/snapshots/` 与 Python `scripts/snapshots/python-sdk-single-exe/` 投影验证：若通用 SDK 输出不含这些 Conductor 事件，则保持逐字节相同。
 

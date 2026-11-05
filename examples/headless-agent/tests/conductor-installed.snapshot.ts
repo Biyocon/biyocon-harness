@@ -14,6 +14,7 @@ import { analysisChallengeHash } from '../../../packages/conductor/conductor/src
 
 const root = fileURLToPath(new URL('../../../', import.meta.url))
 const configPath = join(root, 'examples/headless-agent/conductor-installed.cordis.snapshot.yml')
+const criticOwnerConfigPath = join(root, 'examples/headless-agent/conductor-critic-owner.cordis.snapshot.yml')
 const driver = join(root, 'examples/headless-agent/tests/fixtures/conductor-installed-driver.ts')
 const shipped = join(root, 'apps/cli/config/agent-presets/conductor')
 const expectedDirectory = fileURLToPath(new URL('./snapshots/conductor-installed/', import.meta.url))
@@ -35,6 +36,11 @@ const analysisStages = {
   'critic-entry-b-answer': ['strategist', 'devils-advocate', 'auditor', 'arbiter'],
   'critic-entry-b-recommendations': ['strategist', 'devils-advocate', 'auditor', 'arbiter'],
   'critic-entry-c': ['devils-advocate', 'devils-advocate', 'auditor', 'arbiter'],
+  'critic-entry-c-answer': ['devils-advocate', 'devils-advocate', 'auditor', 'arbiter'],
+  'critic-owner-rework': ['detective', 'devils-advocate', 'detective', 'devils-advocate',
+    'detective', 'devils-advocate', 'detective', 'devils-advocate', 'auditor', 'arbiter'],
+  'critic-auditor-rework': ['detective', 'devils-advocate', 'auditor', 'detective',
+    'devils-advocate', 'auditor', 'arbiter'],
   'critic-image': [],
 } as const
 
@@ -276,12 +282,15 @@ describe('installed Conductor through the headless example', () => {
   it.each(Object.keys(analysisStages) as Array<keyof typeof analysisStages>)('%s has the admitted read-only route and truthful outcome', async (scenario) => {
     const stages = analysisStages[scenario]
     const names = ['parent', ...stages.map((stage, i) => `${i + 1}-${stage}`)]
+    const ownerRework = scenario === 'critic-owner-rework'
     const result = await runLoaderSmoke({
       label: `Conductor intake ${scenario}`, tempDirPrefix: 'conductor-intake-snapshot-',
-      binScript: driver, libBinScript: driver, configPath,
-      binArgs: [configPath, 'Analyze the supplied plan.md and report the findings without modifying files.'],
+      binScript: driver, libBinScript: driver, configPath: ownerRework ? criticOwnerConfigPath : configPath,
+      binArgs: [ownerRework ? criticOwnerConfigPath : configPath,
+        'Analyze the supplied plan.md and report the findings without modifying files.'],
       tsconfigPath: join(root, 'tsconfig.json'),
-      env: { DSH_SNAPSHOT: 'replay', DSH_TELEMETRY_DISABLED: '1', DSH_CONDUCTOR_INTAKE_SCENARIO: scenario },
+      env: { DSH_SNAPSHOT: 'replay', DSH_TELEMETRY_DISABLED: '1', DSH_CONDUCTOR_INTAKE_SCENARIO: scenario,
+        ...ownerRework ? { DSH_CONDUCTOR_OWNER_SCENARIO: 'analysis-critic' } : {} },
       prepare: async (cwd) => {
         expect(relative(root, cwd)).toMatch(/^\.\./)
         await mkdir(join(cwd, '.git'))
@@ -302,11 +311,20 @@ describe('installed Conductor through the headless example', () => {
           const [header, ...events] = log.trim().split('\n')
           return { log, header: JSON.parse(header!) as SessionHeader, events: events.map(line => JSON.parse(line) as SessionEvent) }
         }))
-        decoded.sort((a, b) => a.header.createdAt - b.header.createdAt)
         expect(decoded).toHaveLength(names.length)
-        const parent = decoded[0]!
+        expect(new Set(decoded.map(session => session.header.id)).size).toBe(decoded.length)
+        const parents = decoded.filter(session => session.header.parentSession === undefined)
+        expect(parents).toHaveLength(1)
+        const parent = parents[0]!
+        const childIds = [...new Set(parent.events.flatMap(event => event.type === 'conductor/child'
+          ? [event.data.childId] : []))]
+        expect(childIds).toHaveLength(decoded.length - 1)
+        const sessionOrder = new Map([parent.header.id, ...childIds].map((id, index) => [id, index]))
+        for (const session of decoded) expect(sessionOrder.has(session.header.id)).toBe(true)
+        decoded.sort((left, right) => sessionOrder.get(left.header.id)! - sessionOrder.get(right.header.id)!)
         const calls = parent.events.filter(row => row.type === 'tool/call').map(row => row.data.name)
-        expect(calls).toEqual(scenario === 'answer' ? ['conductor', 'read', 'write', 'conductor'] : ['conductor'])
+        expect(calls).toEqual(scenario === 'answer' ? ['conductor', 'read', 'write', 'conductor']
+          : ownerRework ? ['conductor', 'conductor'] : ['conductor'])
         expect(parent.events.filter(row => row.type === 'approval/asked')).toEqual([])
         const checkpoints = parent.events.filter(row => row.type === 'conductor/checkpoint')
         let challengeHashes: string[] = []
@@ -353,6 +371,42 @@ describe('installed Conductor through the headless example', () => {
               .toEqual([[1, 'does_not_hold'], [2, 'holds']])
             expect(run.analysisChallenges[0]?.candidateHash).not.toBe(run.analysisChallenges[1]?.candidateHash)
           }
+          if (ownerRework) {
+            expect(run.budget.maxReworkPerGate).toBe(2)
+            expect(run.history.filter(gate => gate.kind === 'evaluated' && gate.gate === 'C'
+              && gate.analysis?.mode === 'critic')
+              .map(gate => gate.decision)).toEqual(['rework', 'rework', 'escalate', 'pass'])
+            expect(run.analysisChallenges.map(captured => [captured.criticAttempt, captured.challenge.conclusion]))
+              .toEqual([[1, 'does_not_hold'], [2, 'does_not_hold'], [3, 'does_not_hold'], [4, 'holds']])
+            expect(new Set(run.analysisChallenges.map(captured => captured.candidateHash)).size).toBe(4)
+            expect(run.ownerLedger.map(entry => entry.kind)).toEqual(['question', 'answer', 'consumed'])
+            const ownerQuestion = run.ownerLedger[0]
+            expect(ownerQuestion?.kind).toBe('question')
+            if (ownerQuestion?.kind !== 'question') throw new Error('Gate C owner question is missing')
+            expect(ownerQuestion.question).toMatchObject({ cause: 'rework-exhausted', sourceKind: 'child' })
+            expect(ownerQuestion.question.gateIndex).toBeGreaterThanOrEqual(0)
+            expect(run.ownerLedger[1]).toMatchObject({ kind: 'answer', action: 'answer_continue',
+              plan: { gate: 'C', stage: 'detective' } })
+            const consumed = checkpoints.map(checkpoint => JSON.parse(checkpoint.data.record!) as ConductorRun)
+              .find(record => record.status === 'running' && record.ownerLedger.at(-1)?.kind === 'consumed')
+            expect(consumed).toBeDefined()
+            expect(consumed?.budget.maxReworkPerGate).toBe(2)
+            expect(consumed?.history.filter(gate => gate.kind === 'evaluated' && gate.gate === 'C'
+              && gate.analysis?.mode === 'critic').map(gate => gate.decision))
+              .toEqual(['rework', 'rework', 'escalate'])
+            expect(consumed?.analysisChallenges.map(captured => captured.criticAttempt)).toEqual([1, 2, 3])
+            expect(parent.events.filter(event => event.type === 'conductor/owner-question-created')).toHaveLength(1)
+            expect(parent.events.filter(event => event.type === 'conductor/owner-response-recorded')).toHaveLength(1)
+            expect(parent.events.filter(event => event.type === 'conductor/owner-response-acknowledged')).toHaveLength(1)
+            expect(parent.events.filter(event => event.type === 'conductor/owner-continuation-consumed')).toHaveLength(1)
+          }
+          if (scenario === 'critic-auditor-rework') {
+            expect(run.history.filter(gate => gate.gate === 'E').map(gate => gate.decision)).toEqual(['rework', 'pass'])
+            expect(run.history.find(gate => gate.gate === 'E' && gate.decision === 'rework'))
+              .toMatchObject({ defectClass: 'analysis', nextStage: 'detective' })
+            expect(run.analysisChallenges.map(captured => captured.criticAttempt)).toEqual([1, 2])
+            expect(run.analysisChallenges[0]?.candidateHash).not.toBe(run.analysisChallenges[1]?.candidateHash)
+          }
           if (scenario === 'critic-malformed') {
             expect(run.analysisChallenges.map(captured => captured.criticAttempt)).toEqual([2])
             expect(run.reportCandidates).toHaveLength(1)
@@ -380,6 +434,9 @@ describe('installed Conductor through the headless example', () => {
           if (scenario === 'critic-entry-c') {
             expect(run.admission).toMatchObject({ entry: 'devils-advocate', deliverable: 'recommendations' })
           }
+          if (scenario === 'critic-entry-c-answer') {
+            expect(run.admission).toMatchObject({ entry: 'devils-advocate', deliverable: 'answer' })
+          }
           if (scenario === 'source-repair') {
             expect(run.sourceBaseline).toBeNull()
             expect(run.history[2]).toMatchObject({ origin: 'intake-validation', gate: 'C', decision: 'rework', nextStage: 'detective' })
@@ -389,6 +446,23 @@ describe('installed Conductor through the headless example', () => {
           const presentation = new Map(parent.events.flatMap(event => event.type === 'conductor/child'
             ? [[event.data.childId, event.data] as const] : []))
           expect([...presentation.values()].map(child => child.role)).toEqual(stages)
+          expect(decoded.slice(1).map(session => presentation.has(session.header.id))).toEqual(stages.map(() => true))
+          const childEvents = parent.events.filter(event => event.type === 'conductor/child')
+          for (const child of presentation.values()) {
+            const first = childEvents.find(event => event.data.childId === child.childId)!
+            expect(first.data).toMatchObject({ status: 'running', role: child.role,
+              attempt: child.attempt, historyOffset: child.historyOffset })
+            expect(first.data.gate).toBeUndefined()
+          }
+          for (const role of new Set(stages)) {
+            expect([...presentation.values()].filter(child => child.role === role).map(child => child.attempt))
+              .toEqual(stages.filter(stage => stage === role).map((_, index) => index + 1))
+          }
+          if (scenario === 'critic-entry-c-answer') {
+            expect([...presentation.values()].filter(child => child.role === 'devils-advocate')
+              .map(child => [child.mode, child.criticAttempt, child.gate?.challengeConclusion]))
+              .toEqual([['producer', undefined, undefined], ['critic', 1, 'holds']])
+          }
           for (const child of presentation.values()) {
             expect(child.status).not.toBe('running')
             expect(child.gate).toBeDefined()
@@ -435,7 +509,7 @@ describe('installed Conductor through the headless example', () => {
       },
     })
     expect(result.stderr).toBe('')
-    if (scenario === 'critic-image') expect(result.stdout).toContain('"output":""')
+    if (scenario === 'critic-image' || ownerRework) expect(result.stdout).toContain('"output":""')
     else expect(result.stdout).toContain('no implementation was performed')
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
