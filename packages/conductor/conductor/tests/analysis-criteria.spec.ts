@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createRun, drive, parseRun, serializeRun } from '../src/index.ts'
 import { candidateProblem } from '../src/analysis.ts'
-import { acceptedReport, analysisReply, analysisRun } from './intake-fixtures.ts'
+import { acceptedReport, analysisReply, analysisRun, withAnalysisDispatch } from './intake-fixtures.ts'
 
 describe('analysis acceptance criteria', () => {
   it.each([{ criteria: undefined }, { criteria: [] }])('rejects missing criteria before creating an analysis run: $criteria', ({ criteria }) => {
@@ -60,7 +60,7 @@ describe('analysis acceptance criteria', () => {
     const original = analysisRun('detective', 'recommendations')
     const run = { ...original, acceptanceCriteria: ['Describe the structure.', 'Justify three recommendations.'] }
     let strategistCalls = 0
-    const result = await drive(run, {
+    const result = await drive(run, withAnalysisDispatch({
       authorizeExecution: () => { throw new Error('An analysis must not ask for approval') },
       dispatchSpecialist(stage, current) {
         const reply = analysisReply(current, stage, `report-${strategistCalls}`)
@@ -73,7 +73,7 @@ describe('analysis acceptance criteria', () => {
         return Promise.resolve(reply)
       },
       dispatchArbiter: current => Promise.resolve(acceptedReport(current)),
-    })
+    }))
     expect(result.kind).toBe('report')
     expect(strategistCalls).toBe(2)
     expect(result.run.history.filter(gate => gate.gate === 'B').map(gate => gate.decision)).toEqual(['rework', 'pass'])

@@ -15,7 +15,9 @@ export const ANALYSIS_SCHEMA = {
     deliverable: { type: 'string', enum: ['answer', 'recommendations'] },
     status: { type: 'string', enum: ['ready', 'rework', 'blocked', 'failed'] },
     summary: { type: 'string' }, material_ids: strings, blockers: strings, assumptions: strings, limitations: strings,
-    defect: { type: 'string', enum: ['scope', 'plan', 'report'] }, candidate_hash: { type: 'string' },
+    defect: { type: 'string', enum: ['scope', 'plan', 'report', 'analysis'],
+      description: 'analysis is valid only for Auditor rework of the candidate; report retries Auditor against the unchanged candidate.' },
+    candidate_hash: { type: 'string' },
     clarifications: {
       type: 'array', description: 'Read-only questions requiring owner input. Only valid with status blocked; never request paths, commands or execution authority.',
       items: { type: 'object', additionalProperties: false,
@@ -27,12 +29,16 @@ export const ANALYSIS_SCHEMA = {
       properties: {
         version: { type: 'string' }, deliverable: { type: 'string', enum: ['answer', 'recommendations'] },
         content: { type: 'string' }, material_ids: strings, assumptions: strings, limitations: strings,
+        material_spans: { type: 'array', description: 'Inclusive one-based line ranges from hash-verified admitted materials. Cite only material_ids in this candidate.',
+          items: { type: 'object', additionalProperties: false,
+            properties: { material_id: { type: 'string' }, start_line: { type: 'integer' }, end_line: { type: 'integer' } },
+            required: ['material_id', 'start_line', 'end_line'] } },
         criteria: { type: 'array', description: ANALYSIS_CRITERIA_INSTRUCTION, items: {
           type: 'object', additionalProperties: false,
           properties: { criterion: { type: 'string' }, outcome: { type: 'string' } }, required: ['criterion', 'outcome'],
         } },
       },
-      required: ['version', 'deliverable', 'content', 'criteria', 'material_ids', 'assumptions', 'limitations'],
+      required: ['version', 'deliverable', 'content', 'criteria', 'material_ids', 'material_spans', 'assumptions', 'limitations'],
     },
   },
   required: ['run_id', 'purpose', 'stage', 'deliverable', 'status', 'summary', 'material_ids', 'blockers', 'assumptions', 'limitations'],
@@ -63,9 +69,9 @@ export const REPORT_DECISION_SCHEMA = {
   type: 'object', additionalProperties: false,
   properties: {
     run_id: { type: 'string' }, purpose: { type: 'string', enum: ['analysis'] },
-    candidate_hash: { type: 'string' }, audit_hash: { type: 'string' },
+    candidate_hash: { type: 'string' }, challenge_hash: { type: 'string' }, audit_hash: { type: 'string' },
     decision: { type: 'string', enum: ['accept', 'revise', 'blocked'] },
     basis: strings, evidence_reviewed: strings, open_risks: strings,
   },
-  required: ['run_id', 'purpose', 'candidate_hash', 'audit_hash', 'decision', 'basis', 'evidence_reviewed', 'open_risks'],
+  required: ['run_id', 'purpose', 'candidate_hash', 'challenge_hash', 'audit_hash', 'decision', 'basis', 'evidence_reviewed', 'open_risks'],
 } satisfies ObjectJsonSchema

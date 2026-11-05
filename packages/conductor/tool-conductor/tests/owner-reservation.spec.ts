@@ -15,7 +15,7 @@ function parked() {
     admission: admitIntake({ purpose: 'analysis', entry: 'detective', deliverable: 'answer', rationale: 'New question.' }, [material]),
   }), { decision: 'escalate', basis: ['Clarification needed.'], evidenceReviewed: [], stateUpdate: 'Await owner.' })
   return parkOwnerQuestion(run, 'owner-question', { kind: 'recoverable', cause: 'clarification', reason: 'Which evidence?' },
-    { childId: SessionId('owner-reservation-child'), attempt: 1, report: {}, reportHash: contentHash('{}') },
+    { sourceKind: 'child', childId: SessionId('owner-reservation-child'), attempt: 1, report: {}, reportHash: contentHash('{}') },
     [{ id: 'evidence', prompt: 'Which evidence?', options: [] }])
 }
 

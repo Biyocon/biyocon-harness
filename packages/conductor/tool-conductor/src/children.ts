@@ -5,6 +5,9 @@ import type { WorkflowRun } from '@deepseek-ai/dsh-workflow'
 import type { ConductorRun } from '@deepseek-ai/dsh-conductor'
 import type { ConductorChild, ConductorChildRole } from '@deepseek-ai/dsh-conductor/child-types'
 
+/** Analysis dispatch identity logged beside the runtime-selected role. */
+type AnalysisDispatchIdentity = { mode: 'producer'; criticAttempt?: never } | { mode: 'critic'; criticAttempt: number }
+
 /**
  * Observe only children from one exact workflow dispatch.
  * @param ctx - workflow event context.
@@ -12,10 +15,12 @@ import type { ConductorChild, ConductorChildRole } from '@deepseek-ai/dsh-conduc
  * @param workflow - concrete runtime workflow handle.
  * @param run - admitted Conductor run at dispatch.
  * @param role - runtime-selected specialist or internal worker.
+ * @param dispatch - analysis producer or critic identity, if applicable.
  * @returns lifecycle observer cleanup.
  */
 export function observeConductorChildren(
   ctx: Context, parent: Session, workflow: WorkflowRun, run: ConductorRun, role: ConductorChildRole,
+  dispatch?: AnalysisDispatchIdentity,
 ): () => void {
   const children = new Map<string, ConductorChild>()
   const publish = (child: ConductorChild): void => {
@@ -27,7 +32,9 @@ export function observeConductorChildren(
     const attempts = new Set<string>()
     for (const event of parent.events) if (event.type === 'conductor/child'
       && event.data.runId === run.runId && event.data.role === role) attempts.add(event.data.childId)
-    publish({ childId: child.childId, runId: run.runId, role, attempt: attempts.size + 1, historyOffset: run.history.length, status: 'running' })
+    publish({ childId: child.childId, runId: run.runId, role,
+      ...dispatch === undefined ? {} : dispatch, attempt: attempts.size + 1,
+      historyOffset: run.history.length, status: 'running' })
   })
   const end = ctx.on('workflow/agent-end', (info, child) => {
     if (info.id !== workflow.id) return
@@ -50,11 +57,19 @@ export function publishChildGates(parent: Session, run: ConductorRun): void {
   for (const event of parent.events) if (event.type === 'conductor/child') children.set(event.data.childId, event.data)
   const latestDispatch = new Map<string, ConductorChild>()
   for (const child of children.values()) latestDispatch.set(`${child.runId}/${child.role}/${child.historyOffset}`, child)
-  for (const child of latestDispatch.values()) {
-    if (child.runId !== run.runId || child.role === 'ralph' || child.gate !== undefined || child.status === 'running') continue
-    const record = run.history[child.historyOffset]
-    if (record?.kind !== 'evaluated' || record.origin !== undefined || record.stage !== child.role) continue
-    const reworks = run.history.slice(0, child.historyOffset + 1).filter(gate => gate.kind === 'evaluated' && gate.gate === record.gate && gate.decision === 'rework').length
-    parent.append('conductor/child', { ...child, gate: { id: record.gate, decision: record.decision, reworks, limit: run.budget.maxReworkPerGate } })
+  for (const [offset, record] of run.history.entries()) {
+    if (record.kind !== 'evaluated' || record.origin !== undefined) continue
+    const child = record.analysis === undefined
+      ? latestDispatch.get(`${run.runId}/${record.stage}/${offset}`)
+      : record.analysis.childId === undefined ? undefined : children.get(record.analysis.childId)
+    if (child === undefined || child.runId !== run.runId || child.role === 'ralph'
+      || child.role !== record.stage || child.historyOffset !== offset
+      || child.gate !== undefined || child.status === 'running') continue
+    if (record.analysis !== undefined && (record.analysis.mode !== child.mode
+      || record.analysis.criticAttempt !== child.criticAttempt)) continue
+    const reworks = run.history.slice(0, offset + 1).filter(gate => gate.kind === 'evaluated' && gate.gate === record.gate && gate.decision === 'rework').length
+    parent.append('conductor/child', { ...child, gate: { id: record.gate, decision: record.decision,
+      reworks, limit: run.budget.maxReworkPerGate,
+      ...record.analysis?.conclusion === undefined ? {} : { challengeConclusion: record.analysis.conclusion } } })
   }
 }

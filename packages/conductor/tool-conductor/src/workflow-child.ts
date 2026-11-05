@@ -25,13 +25,20 @@ return await agent(args.prompt, {
 })
 `
 
-/** Host-only policies for a critic child; omitted for current producer dispatches. */
-export interface WorkflowChildOptions {
+/** Host-only policies for one child dispatch. */
+interface WorkflowChildPolicy {
   composeChildPrompt?: (sessionId: SessionId, prompt: string) => ContentBlock[]
   maxOutputTokensPerChild?: number
   childToolFilter?: ToolRestriction
   childToolGuard?: ToolGuard
 }
+
+/** Analysis mode is bound to the child event; critic attempts are run-wide. */
+export type WorkflowChildOptions = WorkflowChildPolicy & (
+  | { analysisMode?: undefined; criticAttempt?: never }
+  | { analysisMode: 'producer'; criticAttempt?: never }
+  | { analysisMode: 'critic'; criticAttempt: number }
+)
 
 /**
  * Run one fresh structured child and reject failed workflow execution.
@@ -76,7 +83,11 @@ export async function runWorkflowChild(
     ...options?.composeChildPrompt === undefined ? {} : { composeChildPrompt: options.composeChildPrompt },
     ...options?.maxOutputTokensPerChild === undefined ? {} : { maxOutputTokensPerChild: options.maxOutputTokensPerChild },
   })
-  const stopChildPresentation = observeConductorChildren(ctx, parent.session, workflow, run, stage as Exclude<ConductorStage, 'intake' | 'closeout' | 'report-complete'>)
+  const dispatch = options?.analysisMode === 'critic'
+    ? { mode: 'critic' as const, criticAttempt: options.criticAttempt }
+    : options?.analysisMode === 'producer' ? { mode: 'producer' as const } : undefined
+  const stopChildPresentation = observeConductorChildren(ctx, parent.session, workflow, run,
+    stage as Exclude<ConductorStage, 'intake' | 'closeout' | 'report-complete'>, dispatch)
   let childFailure: string | undefined
   let childStarted = false
   const completedTurns = new Set<SessionId>()

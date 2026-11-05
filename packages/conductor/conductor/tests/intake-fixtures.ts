@@ -1,6 +1,6 @@
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { admitIntake, captureIntakeMaterial, ConductorRunId, createRun, currentAuditHash } from '../src/index.ts'
-import type { AnalysisEnvelope, ConductorEntry, ConductorRun, ReportDeliverable } from '../src/index.ts'
+import { admitIntake, captureIntakeMaterial, ConductorRunId, createRun, currentAuditHash, validateAnalysisChallenge } from '../src/index.ts'
+import type { AnalysisEnvelope, ConductorDispatcher, ConductorEntry, ConductorRun, ReportDeliverable } from '../src/index.ts'
 
 export function implementationAdmission() {
   return admitIntake({ purpose: 'implementation', entry: 'detective', rationale: 'New owner task.' }, [
@@ -29,7 +29,9 @@ export function analysisReply(run: ConductorRun, stage: string, version = 'repor
     ...stage === producer ? { candidate: { version, deliverable: run.admission.deliverable,
       content: 'The analysis finds a documentation gap; no implementation or verification was performed.',
       criteria: run.acceptanceCriteria.map(criterion => ({ criterion, outcome: 'Assessed from cited material.' })),
-      material_ids: run.admission.materials.map(material => material.id), assumptions: [], limitations: ['Static analysis only.'],
+      material_ids: run.admission.materials.map(material => material.id),
+      material_spans: run.admission.materials.map(material => ({ material_id: material.id, start_line: 1, end_line: 1 })),
+      assumptions: [], limitations: ['Static analysis only.'],
     } } : {},
   }
 }
@@ -37,7 +39,39 @@ export function analysisReply(run: ConductorRun, stage: string, version = 'repor
 export function acceptedReport(run: ConductorRun) {
   return { run_id: run.runId, purpose: 'analysis' as const, decision: 'accept' as const,
     candidate_hash: run.reportCandidates.at(-1)!.hash, audit_hash: currentAuditHash(run)!,
+    challenge_hash: run.analysisChallenges.at(-1)!.hash,
     basis: ['The report and independent audit address the owner question.'],
     evidence_reviewed: [run.reportCandidates.at(-1)!.hash, currentAuditHash(run)!], open_risks: [],
+  }
+}
+
+/** Supply real typed producer/critic dispatch results to focused core tests. */
+export function withAnalysisDispatch(dispatcher: ConductorDispatcher, onCritic?: () => void): ConductorDispatcher {
+  return {
+    ...dispatcher,
+    dispatchAnalysisProducer: async (stage, run) => ({
+      value: await dispatcher.dispatchSpecialist(stage, run),
+      childId: SessionId(`producer-${run.history.filter(gate => gate.kind === 'evaluated' && gate.analysis?.mode === 'producer').length + 1}`),
+    }),
+    dispatchCritic: (run, criticAttempt) => {
+      onCritic?.()
+      const candidate = run.reportCandidates.at(-1)!
+      const childId = SessionId(`critic-${criticAttempt}`)
+      const challenge = { run_id: run.runId, purpose: 'analysis' as const,
+        candidate_hash: candidate.hash, candidate_version: candidate.candidate.version,
+        material_ids: run.admission.materials.filter(material => candidate.candidate.material_ids.includes(material.id))
+          .map(material => material.id), critic_child_id: childId, critic_attempt: criticAttempt,
+        findings: [], conclusion: 'holds' as const, summary: 'Reasoning and alternatives hold for the cited evidence.' }
+      return Promise.resolve({ kind: 'attempt' as const, childId, inputTokens: 10, outputTokens: 10,
+        validation: validateAnalysisChallenge(challenge, {
+          runId: run.runId, candidateHash: candidate.hash, candidateVersion: candidate.candidate.version,
+          materialIds: challenge.material_ids, criticChildId: childId, producerChildId: candidate.producerChildId,
+          criticAttempt, dispatchMode: 'critic', entry: run.admission.entry,
+          deliverable: run.admission.purpose === 'analysis' ? run.admission.deliverable : 'answer',
+          producer: candidate.producer, maxSummaryCharacters: 1000,
+          previous: run.analysisChallenges.map(previous => ({ challenge: previous.challenge, hash: previous.hash })),
+        }),
+      })
+    },
   }
 }

@@ -22,4 +22,19 @@ describe('exact-child locale presentation',()=>{
     expect(conductorChildPresentation(next,t).detail).not.toContain('Gate')
     expect(conductorChildPresentation(next,t).label).toContain('2')
   })
+  it.each([
+    [da, 'producent', 'kritiker', 'kritik holder ikke'],
+    [en, 'producer', 'critic', 'challenge does not hold'],
+  ] as const)('presents analysis dispatch mode and exact critic result', (dictionary, producer, critic, conclusion) => {
+    const original: ConductorChild = { childId: CHILD, runId: ConductorRunId('CON-2026-0028'),
+      role: 'devils-advocate', mode: 'producer', attempt: 1, historyOffset: 0, status: 'completed' }
+    const challenged: ConductorChild = { ...original, childId: 'critic-child' as SessionId, mode: 'critic',
+      criticAttempt: 1, attempt: 2, historyOffset: 1,
+      gate: { id: 'C', decision: 'rework', reworks: 1, limit: 2, challengeConclusion: 'does_not_hold' } }
+    const t = makeTranslate(dictionary)
+    expect(conductorChildPresentation(original, t).label).toContain(producer)
+    const presented = conductorChildPresentation(challenged, t)
+    expect(presented.label).toContain(critic)
+    expect(presented.detail).toContain(conclusion)
+  })
 })

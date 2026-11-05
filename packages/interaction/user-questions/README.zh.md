@@ -28,7 +28,7 @@
 
 `intent` 声明某个问题本身就是一种已知决策，因此认识该标签的 UI 可以照此呈现——`plan-review` 表示 `detail` 是一份待审阅的计划，`dsh-plan-mode` 会在 `exit_plan_mode` 的问题上设置它。意图只改变呈现：遵循它的 UI 回答的仍是通用 UI 会发送的那些选项标签，不认识该标签的 UI 渲染通用选项列表，因此调用方两种情况下读到的回答字段相同。`approve` 指名表示批准的标签，而不依赖选项顺序。有两项断言无法通过类型表达，`ask()` 会以 `BAD_INTENT` 拒绝它们：`approve` 未命中该问题自身的任一选项，以及意图落在没有 `detail` 的问题上——而 `detail` 正是它自称在审阅的东西。
 
-`conductor-owner` 是类型化所有者交互，不是计划审阅的选项标签批准。宿主投影数据包含运行/问题身份、修订号、门禁、角色/尝试、原因、必答项，以及可选的精确变更前后授权及提案哈希。`ConductorOwnerAnswer` 使用 `approve | reject | answer_continue`、完整条目答案和明确提案确认；本地化标签不选择动作。Conductor 控制器验证精确活动会话及当前持久化问题，因此单独一个意图不授予权限。`mode: continuation` 只读展示已接受但未消费的答案；仅允许空答案且无提案哈希的 `answer_continue` 消费现有宿主绑定计划，不重复记录回答或扣减预算。
+`conductor-owner` 是类型化所有者交互，不是计划审阅的选项标签批准。宿主投影数据包含运行/问题身份、修订号、门禁、角色、可为 null 的尝试编号、原因、必答项，以及可选的精确变更前后授权及提案哈希。宿主拥有的批评预算停止没有子会话尝试，因此明确使用 `attempt: null`，不伪造子会话身份。`ConductorOwnerAnswer` 使用 `approve | reject | answer_continue`、完整条目答案和明确提案确认；本地化标签不选择动作。Conductor 控制器验证精确活动会话及当前持久化问题，因此单独一个意图不授予权限。`mode: continuation` 只读展示已接受但未消费的答案；仅允许空答案且无提案哈希的 `answer_continue` 消费现有宿主绑定计划，不重复记录回答或扣减预算。
 
 `accept(answer)` 允许持久化消费方在传输确认前验证并提交回答。Web 提供者等待该回调；回调失败会拒绝回执并保留待答问题。Conductor 将其用于[所有者交互决策](../../../.agents/notes/implemented/feature/2026-10-30-conductor-owner-escalation-resumption.md)中定义的无模型回答回合及 flush 屏障。控制器还在宿主回合内记录必读的 flush 后确认；UI 在展示接受/拒绝历史前要求该匹配标记。传输取消或关闭对话框绝不构成所有者批准。
 

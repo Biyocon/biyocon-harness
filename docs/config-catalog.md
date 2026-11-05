@@ -2429,6 +2429,12 @@ export interface Config {
   maxReworkPerGate?: number
   /** Maximum owner-directed reassessments per gate, independent of rework (default 2). */
   maxOwnerReassessmentsPerGate?: number
+  /** Maximum estimated critic input tokens in one attempt (default 24000). */
+  maxCriticInputTokensPerAttempt?: number
+  /** Maximum reasoning-inclusive critic output tokens in one attempt (default 16000). */
+  maxCriticOutputTokensPerAttempt?: number
+  /** Maximum provider-reported critic tokens across an analysis run (default 120000). */
+  maxCriticTokensPerRun?: number
   /** Default Ralph round budget; 0 disables the Headsman sub-phase (default 0). */
   maxRalphRounds?: number
   /** Maximum serialized characters in one Ralph handoff (default 16384). */
@@ -2464,7 +2470,7 @@ export interface QualityCommandConfig {
 
 Depends on: [`QualityPolicyStage`](../packages/conductor/conductor/src/index.ts)
 
-Source: [`packages/conductor/tool-conductor/src/index.ts:85`](../packages/conductor/tool-conductor/src/index.ts)
+Source: [`packages/conductor/tool-conductor/src/index.ts:88`](../packages/conductor/tool-conductor/src/index.ts)
 
 <a id="deepseek-aidsh-tool-fs"></a>
 

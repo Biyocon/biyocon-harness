@@ -171,6 +171,15 @@ describe('P1 owner parking and the explicit scripted provider', () => {
     expect(result.outcome.run.ownerLedger[0]).toMatchObject({ kind: 'question', question: { stage: 'detective' } })
   })
 
+  it('does not park a terminal critic budget stop', async () => {
+    const run = initial(true)
+    const outcome: ConductorOutcome = { kind: 'blocked', blocker: 'critic token budget exhausted', run }
+    const settled = await settleOwnerEscalation(new Context(), outcome, observed(run), process.cwd(),
+      () => Promise.resolve())
+    expect(settled.outcome).toBe(outcome)
+    expect(settled.outcome.run.ownerLedger).toEqual([])
+  })
+
   it('refuses multiple proposals, workspace escapes and a non-test provider', async () => {
     const run = initial()
     const ctx = new Context()

@@ -2833,7 +2833,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ConductorOwnerIntent',
-    declaration: 'export interface ConductorOwnerIntent {\n    kind: \'conductor-owner\';\n    mode?: \'continuation\';\n    runId: string;\n    questionId: string;\n    revision: number;\n    gate: \'A\' | \'B\' | \'C\' | \'D\' | \'E\' | \'F\' | \'G\';\n    role: \'detective\' | \'strategist\' | \'devils-advocate\' | \'headsman\' | \'auditor\' | \'integrator\' | \'arbiter\';\n    attempt: number;\n    reason: string;\n    items: {\n        id: string;\n        prompt: string;\n        options: string[];\n    }[];\n    proposal?: {\n        before: ConductorOwnerMandate;\n        after: ConductorOwnerMandate;\n        hash: string;\n    };\n}',
+    declaration: 'export interface ConductorOwnerIntent {\n    kind: \'conductor-owner\';\n    mode?: \'continuation\';\n    runId: string;\n    questionId: string;\n    revision: number;\n    gate: \'A\' | \'B\' | \'C\' | \'D\' | \'E\' | \'F\' | \'G\';\n    role: \'detective\' | \'strategist\' | \'devils-advocate\' | \'headsman\' | \'auditor\' | \'integrator\' | \'arbiter\';\n    attempt: number | null;\n    reason: string;\n    items: {\n        id: string;\n        prompt: string;\n        options: string[];\n    }[];\n    proposal?: {\n        before: ConductorOwnerMandate;\n        after: ConductorOwnerMandate;\n        hash: string;\n    };\n}',
   },
   {
     name: 'ConductorOwnerMandate',

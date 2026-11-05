@@ -1,24 +1,24 @@
 import { describe, expect, it, vi } from 'vitest'
 import { admitIntake, createRun, drive, parseRun, serializeRun, validateResumable } from '../src/index.ts'
 import type { ConductorStage } from '../src/index.ts'
-import { acceptedReport, analysisReply, analysisRun, implementationAdmission } from './intake-fixtures.ts'
+import { acceptedReport, analysisReply, analysisRun, implementationAdmission, withAnalysisDispatch } from './intake-fixtures.ts'
 
 describe('Conductor phase-one intake and report completion', () => {
   it.each([
-    ['detective', 'answer', ['detective', 'auditor', 'arbiter']],
-    ['detective', 'recommendations', ['detective', 'strategist', 'auditor', 'arbiter']],
-    ['strategist', 'answer', ['strategist', 'auditor', 'arbiter']],
-    ['strategist', 'recommendations', ['strategist', 'auditor', 'arbiter']],
-    ['devils-advocate', 'answer', ['devils-advocate', 'auditor', 'arbiter']],
-    ['devils-advocate', 'recommendations', ['devils-advocate', 'auditor', 'arbiter']],
+    ['detective', 'answer', ['detective', 'devils-advocate', 'auditor', 'arbiter']],
+    ['detective', 'recommendations', ['detective', 'strategist', 'devils-advocate', 'auditor', 'arbiter']],
+    ['strategist', 'answer', ['strategist', 'devils-advocate', 'auditor', 'arbiter']],
+    ['strategist', 'recommendations', ['strategist', 'devils-advocate', 'auditor', 'arbiter']],
+    ['devils-advocate', 'answer', ['devils-advocate', 'devils-advocate', 'auditor', 'arbiter']],
+    ['devils-advocate', 'recommendations', ['devils-advocate', 'devils-advocate', 'auditor', 'arbiter']],
   ] as const)('reports %s/%s without execution or approval', async (entry, deliverable, expected) => {
     const called: string[] = []
     const approval = vi.fn(() => { throw new Error('Analysis must never request approval') })
-    const result = await drive(analysisRun(entry, deliverable), {
+    const result = await drive(analysisRun(entry, deliverable), withAnalysisDispatch({
       authorizeExecution: approval,
       dispatchSpecialist(stage, run) { called.push(stage); return Promise.resolve(analysisReply(run, stage)) },
       dispatchArbiter(run) { called.push('arbiter'); return Promise.resolve(acceptedReport(run)) },
-    }, (run) => { expect(parseRun(serializeRun(run))).toEqual(run); return Promise.resolve() })
+    }, () => called.push('devils-advocate')), (run) => { expect(parseRun(serializeRun(run))).toEqual(run); return Promise.resolve() })
     expect(called).toEqual(expected)
     expect(approval).not.toHaveBeenCalled()
     expect(result.kind).toBe('report')
@@ -34,7 +34,7 @@ describe('Conductor phase-one intake and report completion', () => {
     const calls: ConductorStage[] = []
     let c = 0
     let b = 0
-    const result = await drive(analysisRun('devils-advocate'), {
+    const result = await drive(analysisRun('devils-advocate'), withAnalysisDispatch({
       authorizeExecution: () => { throw new Error('No analysis approval') },
       dispatchSpecialist(stage, run) {
         calls.push(stage)
@@ -47,8 +47,8 @@ describe('Conductor phase-one intake and report completion', () => {
         return Promise.resolve(reply)
       },
       dispatchArbiter: run => Promise.resolve(acceptedReport(run)),
-    }, (run) => { expect(parseRun(serializeRun(run))).toEqual(run); return Promise.resolve() })
-    expect(calls).toEqual(['devils-advocate', 'strategist', 'detective', 'strategist', 'devils-advocate', 'auditor'])
+    }, () => calls.push('devils-advocate')), (run) => { expect(parseRun(serializeRun(run))).toEqual(run); return Promise.resolve() })
+    expect(calls).toEqual(['devils-advocate', 'strategist', 'detective', 'strategist', 'devils-advocate', 'devils-advocate', 'auditor'])
     expect(result.run.status).toBe('reported')
   })
 
@@ -57,7 +57,7 @@ describe('Conductor phase-one intake and report completion', () => {
     let audited = 0
     let arbitrated = 0
     const calls: string[] = []
-    const result = await drive(analysisRun('strategist'), {
+    const result = await drive(analysisRun('strategist'), withAnalysisDispatch({
       authorizeExecution: () => { throw new Error('No analysis approval') },
       dispatchSpecialist(stage, run) {
         calls.push(stage)
@@ -66,18 +66,18 @@ describe('Conductor phase-one intake and report completion', () => {
         return Promise.resolve(reply)
       },
       dispatchArbiter(run) { calls.push('arbiter'); return Promise.resolve({ ...acceptedReport(run), decision: arbitrated++ === 0 ? 'revise' : 'accept' }) },
-    }, (run) => { expect(parseRun(serializeRun(run))).toEqual(run); return Promise.resolve() })
-    expect(calls).toEqual(['strategist', 'auditor', 'strategist', 'auditor', 'arbiter', 'strategist', 'auditor', 'arbiter'])
+    }, () => calls.push('devils-advocate')), (run) => { expect(parseRun(serializeRun(run))).toEqual(run); return Promise.resolve() })
+    expect(calls).toEqual(['strategist', 'devils-advocate', 'auditor', 'strategist', 'devils-advocate', 'auditor', 'arbiter', 'strategist', 'devils-advocate', 'auditor', 'arbiter'])
     expect(result.run.reportCandidates).toHaveLength(3)
     expect(result.run.status).toBe('reported')
   })
 
   it('escalates the third malformed report at the same gate', async () => {
     const dispatch = vi.fn(() => Promise.resolve({}))
-    const result = await drive(analysisRun(), { dispatchSpecialist: dispatch,
+    const result = await drive(analysisRun(), withAnalysisDispatch({ dispatchSpecialist: dispatch,
       dispatchArbiter: () => { throw new Error('Cannot reach Arbiter') },
       authorizeExecution: () => { throw new Error('Cannot request approval') },
-    })
+    }))
     expect(dispatch).toHaveBeenCalledTimes(3)
     expect(result.run.status).toBe('escalated')
     expect(result.run.history.map(gate => gate.decision)).toEqual(['rework', 'rework', 'escalate'])
@@ -86,11 +86,11 @@ describe('Conductor phase-one intake and report completion', () => {
 
   it('escalates a Strategist request for authority immediately without approval', async () => {
     const approval = vi.fn()
-    const result = await drive(analysisRun('strategist'), {
+    const result = await drive(analysisRun('strategist'), withAnalysisDispatch({
       authorizeExecution: approval,
       dispatchSpecialist: (stage, run) => Promise.resolve({ ...analysisReply(run, stage), change_requests: [{ target: 'authority', reason: 'Let me write files' }] }),
       dispatchArbiter: () => { throw new Error('Cannot reach Arbiter') },
-    })
+    }))
     expect(result.kind).toBe('blocked')
     expect(approval).not.toHaveBeenCalled()
     expect(result.run.history.at(-1)?.decision).toBe('escalate')
@@ -110,10 +110,10 @@ describe('Conductor phase-one intake and report completion', () => {
     expect(() => admitIntake({ ...selection, rationale: 'Assess the owner task.' }, analysisRun().admission.materials)).toThrow(/purpose|deliverable/)
   })
 
-  it('uses record format 4 and rejects format 3 without migration', () => {
+  it('uses record format 5 and rejects format 4 without migration', () => {
     const run = analysisRun()
-    expect(run.recordFormatVersion).toBe(4)
-    expect(() => parseRun(JSON.stringify({ ...run, recordFormatVersion: 3 }))).toThrow(/format 3.*expected 4/)
+    expect(run.recordFormatVersion).toBe(5)
+    expect(() => parseRun(JSON.stringify({ ...run, recordFormatVersion: 4 }))).toThrow(/format 4.*expected 5/)
   })
 
   it('retains the full implementation authorization path while recording supplied-work skips', () => {

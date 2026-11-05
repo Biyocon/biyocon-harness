@@ -65,9 +65,10 @@ async function setup(
     ownerSessionId: agent.id, ownerCapabilities: { allowedPaths: ['.'], excludedPaths: [], qualityCommandIds: [] },
     objective: 'Assess the evidence.', authority: { owner: 'owner' }, acceptanceCriteria: ['Assess cited evidence.'],
     admission: admitIntake({ purpose: 'analysis', entry: 'detective', deliverable: 'answer', rationale: 'New owner question.' }, [material]),
-  }), { decision: 'escalate', basis: ['Which evidence?'], evidenceReviewed: [], stateUpdate: 'Await owner.' })
+  }), { decision: 'escalate', basis: ['Which evidence?'], evidenceReviewed: [], stateUpdate: 'Await owner.',
+    analysis: { mode: 'producer', childId: SessionId('controller-child') } })
   const run = parkOwnerQuestion(initial, 'controller-question', { kind: 'recoverable', cause: 'clarification', reason: 'Which evidence?' },
-    { childId: SessionId('controller-child'), attempt: 1, report: {}, reportHash: contentHash('{}') },
+    { sourceKind: 'child', childId: SessionId('controller-child'), attempt: 1, report: {}, reportHash: contentHash('{}') },
     [{ id: 'evidence', prompt: 'Which evidence?', options: [] }])
   if (seed === undefined) await store.save(run)
   let dispatches = 0
@@ -358,10 +359,11 @@ describe('Conductor-owned host answer turns', () => {
     })
     h.onConsumed(async (run) => {
       if (h.dispatches() !== 1) return
-      const escalated = recordGate(run, { decision: 'escalate', basis: ['A second question.'], evidenceReviewed: [], stateUpdate: 'Await owner.' })
+      const escalated = recordGate(run, { decision: 'escalate', basis: ['A second question.'], evidenceReviewed: [],
+        stateUpdate: 'Await owner.', analysis: { mode: 'producer', childId: SessionId('controller-child-2') } })
       const again = parkOwnerQuestion(escalated, 'controller-question-2',
         { kind: 'recoverable', cause: 'clarification', reason: 'Which further evidence?' },
-        { childId: SessionId('controller-child-2'), attempt: 2, report: {}, reportHash: contentHash('{}') },
+        { sourceKind: 'child', childId: SessionId('controller-child-2'), attempt: 2, report: {}, reportHash: contentHash('{}') },
         [{ id: 'evidence', prompt: 'Which further evidence?', options: [] }])
       await h.store.save(again)
       h.controller.offer(h.agent, run.runId)

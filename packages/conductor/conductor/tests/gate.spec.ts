@@ -12,9 +12,10 @@ import type {
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
-    recordFormatVersion: 4,
+    recordFormatVersion: 5,
     ownerSessionId: null, ownerCapabilities: null, ownerRevision: 0, ownerLedger: [],
-    admission: implementationAdmission(), repairReturns: [], analysisReports: [], reportCandidates: [],
+    admission: implementationAdmission(), repairReturns: [], analysisMode: null,
+    analysisReports: [], reportCandidates: [], analysisChallenges: [],
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -25,7 +26,8 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: ['feature works'],
-    budget: { maxReworkPerGate: 3, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 },
+    budget: { maxReworkPerGate: 3, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2,
+      maxCriticInputTokensPerAttempt: 24_000, maxCriticOutputTokensPerAttempt: 16_000, maxCriticTokensPerRun: 120_000 },
     baselineHistory: [],
     baseline: null,
     executionAuthorization: null,

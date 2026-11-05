@@ -1,5 +1,6 @@
 import { implementationAdmission } from './intake-fixtures.ts'
 import { describe, expect, it } from 'vitest'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import {
   ConductorRunId,
   closeRun,
@@ -10,14 +11,18 @@ import {
   reworkCycles,
   stageOfGate,
   executionBaselineHash,
+  reportHash,
+  validateAnalysisChallenge,
 } from '../src/index.ts'
 import type { ConductorRun, ConductorStage, GateId, EvaluatedGateRecord as GateRecord, GateVerdict } from '../src/index.ts'
+import { analysisReply, analysisRun } from './intake-fixtures.ts'
 
 function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
   return {
-    recordFormatVersion: 4,
+    recordFormatVersion: 5,
     ownerSessionId: null, ownerCapabilities: null, ownerRevision: 0, ownerLedger: [],
-    admission: implementationAdmission(), repairReturns: [], analysisReports: [], reportCandidates: [],
+    admission: implementationAdmission(), repairReturns: [], analysisMode: null,
+    analysisReports: [], reportCandidates: [], analysisChallenges: [],
     runId: ConductorRunId('CON-2026-0001'),
     objective: 'ship the feature',
     scope: [],
@@ -28,7 +33,8 @@ function makeRun(overrides: Partial<ConductorRun> = {}): ConductorRun {
     authority: { owner: 'user' },
     constraints: [],
     acceptanceCriteria: [],
-    budget: { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 },
+    budget: { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2,
+      maxCriticInputTokensPerAttempt: 24_000, maxCriticOutputTokensPerAttempt: 16_000, maxCriticTokensPerRun: 120_000 },
     baselineHistory: [],
     baseline: null,
     executionAuthorization: null,
@@ -53,6 +59,66 @@ const PASS: GateVerdict = {
 }
 
 describe('dsh-conductor gate engine', () => {
+  it('rejects Gate C decisions without the exact producer or critic dispatch identity', () => {
+    const initial = analysisRun('devils-advocate')
+    const candidate = analysisReply(initial, 'devils-advocate').candidate!
+    const candidateHash = reportHash(candidate)
+    const producerChildId = SessionId('producer-child')
+    const retained = { producer: 'devils-advocate' as const, candidate, hash: candidateHash, producerChildId }
+    const critic = { ...initial, currentStage: 'devils-advocate' as const, analysisMode: 'critic' as const,
+      reportCandidates: [retained] }
+    const producer = { ...critic, analysisMode: 'producer' as const }
+    const rework: GateVerdict = { decision: 'rework', defectClass: 'report', nextStage: 'devils-advocate',
+      basis: ['Malformed critic result.'], evidenceReviewed: candidate.material_ids, stateUpdate: 'critic retry' }
+    const criticIdentity = { mode: 'critic' as const, candidateHash, childId: SessionId('critic-child'), criticAttempt: 1 }
+    const rejects: Array<{ run: ConductorRun; verdict: GateVerdict; message: RegExp }> = [
+      { run: producer, verdict: { ...rework, origin: 'critic-budget' }, message: /critic budget can escalate only/ },
+      { run: producer, verdict: { ...rework, analysis: { mode: 'producer' } }, message: /producer gate requires/ },
+      { run: producer, verdict: { ...rework, decision: 'pass',
+        analysis: { mode: 'producer', childId: producerChildId, candidateHash: 'stale' } },
+      message: /producer pass requires/ },
+      { run: critic, verdict: rework, message: /must name the active producer or critic mode/ },
+      { run: critic, verdict: { ...rework, decision: 'pass',
+        analysis: { ...criticIdentity, candidateHash: 'stale' } }, message: /pass requires the exact candidate/ },
+      { run: critic, verdict: { ...rework, analysis: { ...criticIdentity, criticAttempt: 0, inputTokens: 1, outputTokens: 1 } },
+        message: /positive attempt and measured token usage/ },
+      { run: critic, verdict: { ...rework, analysis: criticIdentity }, message: /retry requires measured token usage/ },
+      { run: critic, verdict: { ...rework, nextStage: 'detective',
+        analysis: { ...criticIdentity, inputTokens: 1, outputTokens: 1 } }, message: /rework only the critic/ },
+      { run: critic, verdict: { ...rework, decision: 'pass',
+        analysis: { ...criticIdentity, inputTokens: 1, outputTokens: 1 } }, message: /pass requires a holding challenge/ },
+    ]
+    for (const { run, verdict, message } of rejects) {
+      expect(() => recordGate(run, verdict)).toThrow(message)
+    }
+
+    const criticChildId = criticIdentity.childId
+    const challenge = validateAnalysisChallenge({
+      run_id: initial.runId, purpose: 'analysis', candidate_hash: candidateHash,
+      candidate_version: candidate.version, material_ids: candidate.material_ids,
+      critic_child_id: criticChildId, critic_attempt: 1, conclusion: 'holds', findings: [],
+      summary: 'The recommendation follows from the cited material.',
+    }, {
+      runId: initial.runId, candidateHash, candidateVersion: candidate.version,
+      materialIds: initial.admission.materials.map(material => material.id),
+      criticChildId, producerChildId, criticAttempt: 1, dispatchMode: 'critic',
+      entry: 'devils-advocate', deliverable: 'answer', producer: 'devils-advocate',
+      maxSummaryCharacters: 1000, previous: [],
+    })
+    if ('problem' in challenge) throw new Error(challenge.problem.message)
+    const assessed = { ...critic, analysisChallenges: [{
+      challenge: challenge.challenge, hash: challenge.hash, candidateHash, criticChildId,
+      criticAttempt: 1, inputTokens: 1, outputTokens: 1,
+    }] }
+    const passing: GateVerdict = { ...rework, decision: 'pass',
+      analysis: { ...criticIdentity, inputTokens: 1, outputTokens: 1,
+        challengeHash: challenge.hash, conclusion: 'holds' } }
+    expect(() => recordGate(assessed, { ...passing,
+      analysis: { ...passing.analysis!, challengeHash: 'stale' } })).toThrow(/validated critic attempt/)
+    expect(() => recordGate(assessed, { ...passing,
+      analysis: { ...passing.analysis!, conclusion: 'does_not_hold' } })).toThrow(/conflicts with its validated challenge/)
+  })
+
   it('creates runs without aliasing caller-owned input or shared defaults', () => {
     const scope = ['packages/conductor']
     const inputArtifacts = ['report.json']
@@ -117,7 +183,23 @@ describe('dsh-conductor gate engine', () => {
       authority: { owner: 'user' },
     })
     expect(secondDefaulted.scope).toEqual([])
-    expect(secondDefaulted.budget).toEqual({ maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 })
+    expect(secondDefaulted.budget).toEqual({ maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2,
+      maxCriticInputTokensPerAttempt: 24_000, maxCriticOutputTokensPerAttempt: 16_000, maxCriticTokensPerRun: 120_000 })
+  })
+
+  it('rejects invalid critic limits at admission', () => {
+    const base = { maxReworkPerGate: 2, maxRalphRounds: 0 }
+    for (const field of ['maxCriticInputTokensPerAttempt', 'maxCriticOutputTokensPerAttempt',
+      'maxCriticTokensPerRun'] as const) {
+      for (const value of [0, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+        expect(() => createRun(ConductorRunId('CON-2026-0005'), { admission: implementationAdmission(),
+          objective: 'validate budget', authority: { owner: 'user' }, budget: { ...base, [field]: value } }))
+          .toThrow(/positive safe integer/)
+      }
+    }
+    expect(() => createRun(ConductorRunId('CON-2026-0005'), { admission: implementationAdmission(),
+      objective: 'validate budget', authority: { owner: 'user' }, budget: { ...base,
+        maxCriticTokensPerRun: 39_999 } })).toThrow(/cover one maximum critic attempt/)
   })
 
   it('maps each gated stage to its gate letter and back', () => {
@@ -248,7 +330,8 @@ describe('dsh-conductor gate engine', () => {
   it('escalates a rework once the rework budget is exhausted', () => {
     const run = makeRun({
       currentStage: 'auditor',
-      budget: { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 },
+      budget: { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2,
+        maxCriticInputTokensPerAttempt: 24_000, maxCriticOutputTokensPerAttempt: 16_000, maxCriticTokensPerRun: 120_000 },
       history: [
         gateRecord({ kind: 'evaluated', gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
         gateRecord({ kind: 'evaluated', gate: 'E', stage: 'auditor', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
@@ -275,7 +358,8 @@ describe('dsh-conductor gate engine', () => {
     })).toThrow(/report rework must return to its reporting stage/)
     const run = makeRun({
       currentStage: 'auditor',
-      budget: { maxReworkPerGate: 2, maxRalphRounds: 4, maxOwnerReassessmentsPerGate: 2 },
+      budget: { maxReworkPerGate: 2, maxRalphRounds: 4, maxOwnerReassessmentsPerGate: 2,
+        maxCriticInputTokensPerAttempt: 24_000, maxCriticOutputTokensPerAttempt: 16_000, maxCriticTokensPerRun: 120_000 },
       history: [
         gateRecord({ kind: 'evaluated', gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),
         gateRecord({ kind: 'evaluated', gate: 'D', stage: 'headsman', decision: 'rework', defectClass: 'implementation', nextStage: 'headsman' }),

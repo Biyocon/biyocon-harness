@@ -1,4 +1,4 @@
-/** Park child-bound owner questions; domain tests can settle scripted answers inline. */
+/** Park child- or host-bound owner questions; domain tests can settle scripted answers inline. */
 import type { Context } from '@deepseek-ai/cordis'
 import {
   applyScriptedOwnerAnswer, consumeOwnerContinuation, contentHash, parkOwnerQuestion,
@@ -27,6 +27,7 @@ declare module '@deepseek-ai/cordis' {
 export interface OwnerDispatchObservation {
   historyOffset: number
   childId: SessionId
+  /** Run-wide for analysis critic dispatches; otherwise the role-local child attempt. */
   attempt: number
   report: unknown
 }
@@ -56,7 +57,7 @@ function questionMaterial(
  * the run stays parked and no authorization or subsequent dispatch is possible.
  * @param ctx - optional scripted test-provider context.
  * @param outcome - driver result with an explicit runtime classification.
- * @param observation - host-captured child and raw report for the last gate.
+ * @param observation - host-captured child and raw report.
  * @param cwd - admitted workspace for canonical proposal validation.
  * @param save - authoritative flushed checkpoint writer.
  * @param parkOnly - production tool parking; answers belong to the scoped host controller.
@@ -67,16 +68,16 @@ export async function settleOwnerEscalation(
   ctx: Context, outcome: ConductorOutcome, observation: OwnerDispatchObservation | undefined,
   cwd: string, save: (run: ConductorRun) => Promise<void>, parkOnly = false, answeringAvailable = false,
 ): Promise<{ outcome: ConductorOutcome; continuation?: ConductorRun }> {
-  if (outcome.kind !== 'blocked' || outcome.ownerEscalation?.kind !== 'recoverable'
-    || observation === undefined || observation.historyOffset !== outcome.run.history.length - 1) return { outcome }
+  if (outcome.kind !== 'blocked' || outcome.ownerEscalation?.kind !== 'recoverable') return { outcome }
+  if (observation === undefined || observation.historyOffset !== outcome.run.history.length - 1) return { outcome }
+  const source: OwnerQuestionSource = { sourceKind: 'child', childId: observation.childId, attempt: observation.attempt,
+    report: observation.report, reportHash: contentHash(JSON.stringify(observation.report)) }
   const gate = outcome.run.history.at(-1)?.gate
   if (gate === undefined) throw new Error('Conductor owner escalation requires a recorded gate')
   const count = ownerReassessments(outcome.run, gate)
   const limit = outcome.run.budget.maxOwnerReassessmentsPerGate
   if (count >= limit) return { outcome: { kind: 'blocked', run: outcome.run,
     blocker: `Conductor ${outcome.run.runId} gate ${gate} exhausted ${count}/${limit} owner reassessments: ${outcome.ownerEscalation.reason}` } }
-  const source: OwnerQuestionSource = { childId: observation.childId, attempt: observation.attempt,
-    report: observation.report, reportHash: contentHash(JSON.stringify(observation.report)) }
   const material = questionMaterial(outcome.run, source, outcome.ownerEscalation.cause === 'rework-exhausted')
   if (material.proposal !== undefined) {
     const workspace = canonicalAbsolute(cwd, cwd)

@@ -10,12 +10,15 @@ import type { NS } from './locales.ts'
  * @returns localized title and lifecycle/verdict text.
  */
 export function conductorChildPresentation(child: ConductorChild, t: TranslateNS<typeof NS>): { label: string; detail: string } {
-  const label = `${t(`role.${child.role}`)} · ${t('attempt', { attempt: child.attempt })}`
+  const label = [t(`role.${child.role}`), child.mode === undefined ? undefined : t(`mode.${child.mode}`),
+    t('attempt', { attempt: child.attempt })].filter(value => value !== undefined).join(' · ')
   const gate = child.gate === undefined ? undefined : t('gate', {
     gate: child.gate.id,
     decision: child.gate.decision === 'rework'
       ? t('gate.rework', { used: child.gate.reworks, limit: child.gate.limit })
       : t(`gate.${child.gate.decision}`),
   })
-  return { label, detail: [t(`status.${child.status}`), gate].filter(value => value !== undefined).join(' · ') }
+  const challenge = child.gate?.challengeConclusion === undefined ? undefined
+    : t(`challenge.${child.gate.challengeConclusion}`)
+  return { label, detail: [t(`status.${child.status}`), gate, challenge].filter(value => value !== undefined).join(' · ') }
 }

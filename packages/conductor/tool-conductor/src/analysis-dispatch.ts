@@ -26,7 +26,7 @@ interface ProducerDispatch extends CommonDispatch {
   persona: string
 }
 
-/** Host-owned facts for one prepared critic attempt. P2b-B2 supplies validated limits. */
+/** Host-owned facts and validated limits for one prepared critic attempt. */
 interface CriticDispatch extends CommonDispatch {
   mode: 'critic'
   candidate: ReportCandidate
@@ -38,6 +38,9 @@ interface CriticDispatch extends CommonDispatch {
   maxOutputTokens: number
   maxSummaryCharacters: number
   countTokens: (prompt: string) => number
+  onReservedChildId?: (id: SessionId) => void
+  onPromptTokens?: (tokens: number) => void
+  onRawResult?: (value: unknown) => void
 }
 
 type AnalysisDispatch = ProducerDispatch | CriticDispatch
@@ -58,8 +61,8 @@ function criticInstructions(skill: { metadata?: Readonly<Record<string, unknown>
 
 /**
  * Dispatch an analysis producer or a prepared critic over the same workflow stack.
- * The critic branch is unselected by v4 routes; it binds its prompt to the reserved child id
- * and classifies the returned challenge before any later gate can consume it.
+ * The critic binds its prompt to the reserved child id and classifies the returned challenge
+ * before any later gate can consume it.
  * @param request - selected typed mode, admitted run and host-owned dispatch facts.
  * @returns producer envelope or classified, candidate-bound critic result.
  */
@@ -68,7 +71,8 @@ export async function dispatchAnalysisChild(request: AnalysisDispatch): Promise<
   if (run.admission.purpose !== 'analysis') throw new Error('Conductor analysis dispatch requires an analysis run')
   if (request.mode === 'producer') {
     return await runWorkflowChild(ctx, providerName, parent, signal, request.stage, run,
-      request.prompt, ANALYSIS_SCHEMA, request.persona)
+      request.prompt, ANALYSIS_SCHEMA, request.persona, undefined,
+      request.stage === reportProducer(run.admission) ? { analysisMode: 'producer' } : undefined)
   }
   const criticRoleName = ROLE_SKILL['devils-advocate']
   /* v8 ignore next -- the preset's fixed ROLE_SKILL mapping declares the critic role. */
@@ -85,8 +89,11 @@ export async function dispatchAnalysisChild(request: AnalysisDispatch): Promise<
       childToolFilter: { allow: [] },
       childToolGuard: exec => exec.name === 'structured_output' ? undefined : 'Conductor critic uses only admitted excerpts.',
       maxOutputTokensPerChild: request.maxOutputTokens,
+      analysisMode: 'critic',
+      criticAttempt: request.criticAttempt,
       composeChildPrompt: (id) => {
         criticChildId = id
+        request.onReservedChildId?.(id)
         const input = buildCriticInput({
           candidate: request.candidate,
           identity: {
@@ -104,10 +111,12 @@ export async function dispatchAnalysisChild(request: AnalysisDispatch): Promise<
           maxTokens: request.maxInputTokens,
           countTokens: prompt => request.countTokens(`${persona}\n\n${prompt}`),
         })
+        request.onPromptTokens?.(input.tokenCount)
         return [{ type: 'text', text: input.prompt }]
       },
     })
   if (criticChildId === undefined) throw new Error('Conductor critic workflow completed without a reserved child id')
+  request.onRawResult?.(value)
   const context: AnalysisChallengeContext = {
     runId: run.runId,
     candidateHash,

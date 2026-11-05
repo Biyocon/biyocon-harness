@@ -26,8 +26,11 @@ import type {
   SpecialistProblem,
   SpecialistStatus,
   CapturedReport,
+  ConductorEntry,
   ReportDecision,
 } from './types.ts'
+import type { validateAnalysisChallenge } from './analysis-challenge.ts'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { driveAnalysis } from './analysis.ts'
 import type { OwnerEscalation } from './owner-types.ts'
 import { effectiveOwnerMandate, ownerCommandAllowed, ownerEscalationForProblem } from './owner-ledger.ts'
@@ -87,6 +90,10 @@ export interface ConductorDispatcher {
     stage: ConductorStage,
     run: ConductorRun,
   ): Promise<unknown>
+  /** Run the admitted report producer and retain its fresh child identity. */
+  dispatchAnalysisProducer?(stage: ConductorEntry, run: ConductorRun): Promise<{ value: unknown; childId: SessionId }>
+  /** Run one bounded critic attempt, or report why no attempt can start. */
+  dispatchCritic?(run: ConductorRun, criticAttempt: number): Promise<CriticDispatchResult>
   /**
    * Ask the host to authorize the exact Gate-C baseline and effect profile.
    * A null result is an explicit rejection; a rejection or thrown infrastructure
@@ -106,6 +113,24 @@ export interface ConductorDispatcher {
    */
   dispatchArbiter(run: ConductorRun): Promise<unknown>
 }
+
+/** Host-measured critic attempt, including malformed structured output. */
+export type CriticDispatchResult =
+  | {
+    kind: 'attempt'
+    childId: SessionId
+    inputTokens: number
+    outputTokens: number
+    validation: ReturnType<typeof validateAnalysisChallenge>
+  }
+  | {
+    kind: 'blocked'
+    problem: SpecialistProblem
+    childId?: SessionId
+    criticAttempt?: number
+    inputTokens?: number
+    outputTokens?: number
+  }
 
 /** Durable checkpoint writer called after every gate transition. */
 export type ConductorCheckpoint = (run: ConductorRun) => Promise<void>

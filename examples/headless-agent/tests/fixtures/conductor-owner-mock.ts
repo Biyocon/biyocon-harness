@@ -1,6 +1,6 @@
 /** Deterministic model responses for the installed preset's P1 owner ledger. */
 import type { Context } from '@deepseek-ai/cordis'
-import { CallId, LlmAdapter, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { CallId, LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { CapturedReport, ConductorAdmission, OwnerInteraction } from '@deepseek-ai/dsh-conductor'
 
 interface Dispatch {
@@ -11,15 +11,17 @@ interface Dispatch {
   current_report: CapturedReport | null
   report: CapturedReport
   audit_hash: string
+  current_challenge_hash: string
   owner_ledger: OwnerInteraction[]
 }
 
-function* call(name: string, value: unknown, invocation = 0): Generator<StreamChunk> {
+function* call(name: string, value: unknown, invocation = 0, outputTokens?: number): Generator<StreamChunk> {
   const id = CallId(`owner-${name}${invocation === 0 ? '' : `-${invocation + 1}`}`)
   const args = JSON.stringify(value)
   yield { type: 'block-start', index: 0, blockType: 'tool-call' }
   yield { type: 'tool-call-delta', index: 0, id, name, argumentsDelta: args }
   yield { type: 'block-end', index: 0, block: { type: 'tool-call', id, name, arguments: args } }
+  if (outputTokens !== undefined) yield { type: 'usage', usage: { inputTokens: 10, outputTokens } }
   yield { type: 'finish', reason: { kind: 'tool-calls' } }
 }
 
@@ -33,6 +35,10 @@ function* text(value: string): Generator<StreamChunk> {
 export class OwnerConductorAdapter extends LlmAdapter {
   private producerAttempts = 0
   private parentCalls = 0
+
+  override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
+    return Promise.resolve({ provider, id: model, name: model, enforcesMaxTokensIncludingReasoning: true as const })
+  }
 
   private conductor(value: unknown): Generator<StreamChunk> {
     return call('conductor', value, this.parentCalls++)
@@ -82,6 +88,25 @@ export class OwnerConductorAdapter extends LlmAdapter {
       yield* text('The specialist returned its structured report to Conductor.')
       return
     }
+    const criticPrompt = options.messages.flatMap(message => message.content).find(block => block.type === 'text'
+      && block.text.startsWith('{"identity":'))
+    if (criticPrompt?.type === 'text') {
+      const input = JSON.parse(criticPrompt.text) as { identity: {
+        run_id: string
+        candidate_hash: string
+        candidate_version: string
+        material_ids: string[]
+        critic_child_id: string
+        critic_attempt: number
+      } }
+      yield* call('structured_output', {
+        run_id: input.identity.run_id, purpose: 'analysis', candidate_hash: input.identity.candidate_hash,
+        candidate_version: input.identity.candidate_version, material_ids: input.identity.material_ids,
+        critic_child_id: input.identity.critic_child_id, critic_attempt: input.identity.critic_attempt,
+        findings: [], conclusion: 'holds', summary: 'The owner-grounded report reasoning holds.',
+      }, 0, 5)
+      return
+    }
     const source = options.messages.flatMap(message => message.content).find(block => block.type === 'text'
       && (block.text.includes('Dispatch package:\n') || block.text.includes('Analysis record:\n')))
     if (source?.type !== 'text') throw new Error('Owner fixture requires the real typed dispatch package')
@@ -91,7 +116,8 @@ export class OwnerConductorAdapter extends LlmAdapter {
     const input = JSON.parse(json) as Dispatch
     if (arbiter) {
       yield* call('structured_output', {
-        run_id: input.run_id, purpose: 'analysis', candidate_hash: input.report.hash, audit_hash: input.audit_hash,
+        run_id: input.run_id, purpose: 'analysis', candidate_hash: input.report.hash,
+        challenge_hash: input.current_challenge_hash, audit_hash: input.audit_hash,
         decision: 'accept', basis: ['The report incorporates the owner clarification.'],
         evidence_reviewed: [input.report.hash, input.audit_hash], open_risks: [],
       })
@@ -113,7 +139,8 @@ export class OwnerConductorAdapter extends LlmAdapter {
         ...input.stage === 'detective' && !first ? { candidate: {
           version: 'answer-1', deliverable: 'answer', content: 'The owner selected Documented scope. No implementation is authorized.',
           criteria: input.acceptance_criteria.map(criterion => ({ criterion, outcome: 'Answered using the explicit owner clarification.' })),
-          material_ids: ids, assumptions: [], limitations: ['No commands or writes.'],
+          material_ids: ids, material_spans: ids.map(id => ({ material_id: id, start_line: 1, end_line: 1 })),
+          assumptions: [], limitations: ['No commands or writes.'],
         } } : {},
       })
       return

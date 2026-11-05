@@ -26,7 +26,8 @@ const material = captureIntakeMaterial('current-request', 'First admitted line.\
 const candidate: ReportCandidate = {
   version: 'candidate-1', deliverable: 'answer', content: 'The recommendation follows.',
   criteria: [{ criterion: 'Explain the choice.', outcome: 'The choice follows the cited evidence.' }],
-  material_ids: [material.id], assumptions: [], limitations: [],
+  material_ids: [material.id], material_spans: [{ material_id: material.id, start_line: 2, end_line: 2 }],
+  assumptions: [], limitations: [],
 }
 
 function modelPrompt(options: GenerateOptions): {
@@ -83,6 +84,7 @@ describe('prepared analysis critic over the real workflow and spawn stack', () =
       let observedChild: Agent | undefined
       let observedPrompt: ReturnType<typeof modelPrompt> | undefined
       let measuredText: string | undefined
+      let observedRaw: unknown
       const adapter = new MockAdapter([(options) => {
         const prompt = modelPrompt(options)
         observedPrompt = prompt
@@ -132,7 +134,10 @@ describe('prepared analysis critic over the real workflow and spawn stack', () =
           measuredText = prompt
           return Math.ceil(prompt.length / 4)
         },
+        onRawResult: (value) => { observedRaw = value },
       })
+      expect(observedRaw).toMatchObject({ critic_child_id: observedId,
+        candidate_version: selectedCandidate.version })
       expect(adapter.requests).toHaveLength(1)
       const modelRequest = adapter.requests[0]
       if (modelRequest === undefined) throw new Error('critic model request is missing')

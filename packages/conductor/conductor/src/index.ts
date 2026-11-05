@@ -51,6 +51,7 @@ export type {
   SpecialistStatus,
   AnalysisEnvelope,
   CapturedReport,
+  CapturedAnalysisChallenge,
   ConductorAdmission,
   ConductorEntry,
   ConductorMaterialId,
@@ -67,7 +68,8 @@ export { admitIntake, admittedRoute, captureIntakeMaterial, CONDUCTOR_ENTRIES, c
 export { currentAuditHash, reportHash } from './analysis.ts'
 export { buildCriticInput } from './analysis-materials.ts'
 export { validateAnalysisChallenge } from './analysis-challenge.ts'
-export type { AnalysisChallengeContext, CapturedChallengeIdentity } from './analysis-challenge.ts'
+export type { AnalysisChallenge, AnalysisChallengeContext, CapturedChallengeIdentity } from './analysis-challenge.ts'
+export type { AnalysisMaterialSpan } from './analysis-materials.ts'
 export {
   closeRun,
   CONDUCTOR_RECORD_FORMAT_VERSION,
@@ -91,7 +93,7 @@ export type { ConductorCheckpointData, ConductorRunStore } from './persistence.t
 export { decisionForStatus, reworkTarget, routeGate } from './routing.ts'
 export type { RoutedGate } from './routing.ts'
 export { drive, SpecialistExecutionFailure } from './drive.ts'
-export type { ConductorCheckpoint, ConductorDispatcher, ConductorOutcome, SpecialistDispatchResult } from './drive.ts'
+export type { ConductorCheckpoint, ConductorDispatcher, ConductorOutcome, CriticDispatchResult, SpecialistDispatchResult } from './drive.ts'
 export { executionBaselineHash, executionEffectProfile, nextQualityCycle, snapshotQualityBindings } from './quality.ts'
 export { isValidRunId, mintRunId } from './run-id.ts'
 

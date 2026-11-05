@@ -4,6 +4,7 @@ import type { ConductorCheckpoint, ConductorDispatcher, ConductorOutcome } from 
 import { contentHash, reportProducer } from './intake.ts'
 import { recordGate } from './state.ts'
 import { ownerEscalationForProblem } from './owner-ledger.ts'
+import { validateAnalysisMaterialSpans } from './analysis-materials.ts'
 
 import { reportObject as object, reportTexts as texts } from './report-json.ts'
 
@@ -20,7 +21,7 @@ function text(value: unknown): value is string {
 export function reportHash(candidate: ReportCandidate): string {
   return contentHash(JSON.stringify({ version: candidate.version, deliverable: candidate.deliverable,
     content: candidate.content, criteria: candidate.criteria.map(item => ({ criterion: item.criterion, outcome: item.outcome })),
-    material_ids: candidate.material_ids,
+    material_ids: candidate.material_ids, material_spans: candidate.material_spans,
     assumptions: candidate.assumptions, limitations: candidate.limitations }))
 }
 
@@ -62,10 +63,11 @@ function unmatchedCriteria(left: readonly string[], right: readonly string[]): s
  * @returns a diagnostic, or undefined for valid report content fields.
  */
 export function candidateProblem(value: unknown, run: ConductorRun): string | undefined {
-  if (!object(value) || Object.keys(value).some(key => !['version', 'deliverable', 'content', 'criteria', 'material_ids', 'assumptions', 'limitations'].includes(key))
+  if (!object(value) || Object.keys(value).some(key => !['version', 'deliverable', 'content', 'criteria', 'material_ids', 'material_spans', 'assumptions', 'limitations'].includes(key))
     || !text(value.version) || !text(value.content) || run.admission.purpose !== 'analysis'
     || value.deliverable !== run.admission.deliverable || !materialReferences(value.material_ids, run)
-    || !texts(value.assumptions) || !texts(value.limitations) || !Array.isArray(value.criteria)) return 'invalid analysis ReportCandidate'
+    || !texts(value.assumptions) || !texts(value.limitations) || !Array.isArray(value.criteria)
+    || !Array.isArray(value.material_spans)) return 'invalid analysis ReportCandidate'
   const expected = run.acceptanceCriteria
   const malformed = value.criteria.flatMap((item, index) => !object(item)
     || Object.keys(item).some(key => key !== 'criterion' && key !== 'outcome')
@@ -79,6 +81,11 @@ export function candidateProblem(value: unknown, run: ConductorRun): string | un
   if (received.length !== expected.length || changed.length > 0) {
     const differences = { missing: unmatchedCriteria(expected, received), extra: unmatchedCriteria(received, expected), changed }
     return `report must assess the exact acceptance criteria verbatim and in order. Expected acceptance_criteria: ${JSON.stringify(expected)}. Differences: ${JSON.stringify(differences)}`
+  }
+  try {
+    validateAnalysisMaterialSpans(value as unknown as ReportCandidate, run.admission.materials)
+  } catch (cause) {
+    return (cause as Error).message
   }
   return undefined
 }
@@ -105,7 +112,12 @@ export function analysisEnvelopeProblem(value: unknown, stage: ConductorStage, r
     || !['ready', 'rework', 'blocked', 'failed'].includes(String(value.status))
     || !text(value.summary) || !materialReferences(value.material_ids, run)
     || !texts(value.blockers) || !texts(value.assumptions) || !texts(value.limitations)
-    || (value.defect !== undefined && (!text(value.defect) || !['scope', 'plan', 'report'].includes(value.defect)))) return report('malformed analysis specialist envelope')
+    || (value.defect !== undefined && (!text(value.defect) || !['scope', 'plan', 'report', 'analysis'].includes(value.defect)))) {
+    return report('malformed analysis specialist envelope')
+  }
+  if (value.defect === 'analysis' && (stage !== 'auditor' || value.status !== 'rework')) {
+    return report('analysis defect is valid only for Auditor rework')
+  }
   if (value.status === 'ready' && value.blockers.length > 0) return report('ready analysis report cannot carry blockers')
   if (value.clarifications !== undefined && (value.status !== 'blocked' || !Array.isArray(value.clarifications)
     || value.clarifications.length === 0 || value.clarifications.length > 16
@@ -118,6 +130,10 @@ export function analysisEnvelopeProblem(value: unknown, stage: ConductorStage, r
   const prerequisite = stage === 'auditor' ? reportProducer(run.admission) : stage
   if (value.defect === 'plan' && prerequisite === 'detective') return report('Detective analysis has no earlier planning prerequisite')
   if (stage === 'auditor') {
+    if (run.analysisChallenges.at(-1)?.candidateHash !== run.reportCandidates.at(-1)?.hash
+      || run.analysisChallenges.at(-1)?.challenge.conclusion !== 'holds') {
+      return report('analysis audit requires a holding challenge of the latest report candidate')
+    }
     if (value.candidate !== undefined || value.candidate_hash !== run.reportCandidates.at(-1)?.hash
       || value.candidate_hash === undefined) return report('analysis audit must reference the exact current report candidate')
   } else if (value.status === 'ready' && stage === reportProducer(run.admission)) {
@@ -142,12 +158,15 @@ export function reportDecisionProblem(value: unknown, run: ConductorRun): Specia
     return { kind: 'authority', message: 'report decision must belong to this run and purpose' }
   }
   if (!object(value) || value.run_id !== run.runId || value.purpose !== 'analysis'
-    || Object.keys(value).some(key => !['run_id', 'purpose', 'candidate_hash', 'audit_hash', 'decision', 'basis', 'evidence_reviewed', 'open_risks'].includes(key))
+    || Object.keys(value).some(key => !['run_id', 'purpose', 'candidate_hash', 'challenge_hash', 'audit_hash', 'decision', 'basis', 'evidence_reviewed', 'open_risks'].includes(key))
     || !['accept', 'revise', 'blocked'].includes(String(value.decision))
     || value.candidate_hash !== run.reportCandidates.at(-1)?.hash || value.candidate_hash === undefined
+    || value.challenge_hash !== run.analysisChallenges.at(-1)?.hash || value.challenge_hash === undefined
+    || run.analysisChallenges.at(-1)?.candidateHash !== value.candidate_hash
+    || run.analysisChallenges.at(-1)?.challenge.conclusion !== 'holds'
     || value.audit_hash !== currentAuditHash(run) || value.audit_hash === undefined
     || !texts(value.basis) || value.basis.length === 0 || !texts(value.evidence_reviewed) || value.evidence_reviewed.length === 0
-    || !texts(value.open_risks)) return { kind: 'report', message: 'report decision requires accept/revise/blocked and the exact current candidate and audit' }
+    || !texts(value.open_risks)) return { kind: 'report', message: 'report decision requires accept/revise/blocked and the exact current candidate, challenge and audit' }
   return undefined
 }
 
@@ -167,11 +186,87 @@ export async function driveAnalysis(
     if (current.admission.purpose !== 'analysis' || !['detective', 'strategist', 'devils-advocate', 'auditor', 'arbiter'].includes(stage)
       || current.baseline !== null || current.executionAuthorization !== null || current.baselineHistory.length
       || current.qualityExecutions.length) throw new Error('Conductor analysis cannot dispatch execution, approval or command work')
-    const raw = stage === 'arbiter' ? await dispatcher.dispatchArbiter(current) : await dispatcher.dispatchSpecialist(stage, current)
+    if (stage === 'devils-advocate' && current.analysisMode === 'critic') {
+      if (dispatcher.dispatchCritic === undefined) throw new Error('Conductor analysis critic dispatcher is unavailable')
+      const candidate = current.reportCandidates.at(-1)
+      if (candidate === undefined) throw new Error('Conductor critic requires a retained report candidate')
+      const criticAttempt = current.history.reduce((last, gate) => gate.kind === 'evaluated'
+        && gate.analysis?.mode === 'critic' && gate.analysis.criticAttempt !== undefined
+        ? Math.max(last, gate.analysis.criticAttempt) : last, 0) + 1
+      const dispatched = await dispatcher.dispatchCritic(current, criticAttempt)
+      if (dispatched.kind === 'blocked') {
+        if (dispatched.childId === undefined
+          ? dispatched.criticAttempt !== undefined || dispatched.inputTokens !== undefined || dispatched.outputTokens !== undefined
+          : dispatched.criticAttempt !== undefined && dispatched.criticAttempt !== criticAttempt) {
+          throw new Error('Conductor critic budget result contradicts its reserved attempt')
+        }
+        const attempted = dispatched.childId === undefined ? undefined : {
+          mode: 'critic' as const, candidateHash: candidate.hash, childId: dispatched.childId,
+          criticAttempt,
+          ...dispatched.inputTokens === undefined ? {} : { inputTokens: dispatched.inputTokens },
+          ...dispatched.outputTokens === undefined ? {} : { outputTokens: dispatched.outputTokens },
+        }
+        current = recordGate(current, {
+          ...attempted === undefined ? { origin: 'critic-budget' as const } : { analysis: attempted },
+          decision: 'escalate', basis: [dispatched.problem.message], evidenceReviewed: candidate.candidate.material_ids,
+          stateUpdate: `critic blocked: ${dispatched.problem.message}`,
+        })
+        await checkpoint(current)
+        return { kind: 'blocked', blocker: dispatched.problem.message, run: current,
+          ...attempted === undefined ? {} : { ownerEscalation: ownerEscalationForProblem(dispatched.problem) } }
+      }
+      const analysis = { mode: 'critic' as const, candidateHash: candidate.hash, childId: dispatched.childId,
+        criticAttempt, inputTokens: dispatched.inputTokens, outputTokens: dispatched.outputTokens }
+      if (dispatched.validation.problem !== undefined) {
+        const problem = dispatched.validation.problem
+        current = recordGate(current, {
+          analysis, decision: problem.kind === 'authority' ? 'escalate' : 'rework',
+          defectClass: 'report', nextStage: 'devils-advocate', basis: [problem.message],
+          evidenceReviewed: candidate.candidate.material_ids, stateUpdate: `reject critic ${problem.kind} problem`,
+        })
+        await checkpoint(current)
+        if (current.status === 'rework') continue
+        return { kind: 'blocked', blocker: problem.message, run: current,
+          ownerEscalation: ownerEscalationForProblem(problem) }
+      }
+      const { challenge, hash, reworkTarget } = dispatched.validation
+      const critical = challenge.findings.some(finding => finding.severity === 'critical')
+      const captured = { challenge: structuredClone(challenge), hash, candidateHash: candidate.hash,
+        criticChildId: dispatched.childId, criticAttempt,
+        inputTokens: dispatched.inputTokens, outputTokens: dispatched.outputTokens }
+      const assessed: ConductorRun = { ...current, analysisChallenges: [...current.analysisChallenges, captured] }
+      const holds = challenge.conclusion === 'holds'
+      current = recordGate(assessed, {
+        analysis: { ...analysis, challengeHash: hash, conclusion: challenge.conclusion },
+        decision: holds ? 'pass' : critical ? 'escalate' : 'rework',
+        ...!holds && !critical ? { defectClass: challenge.defect, nextStage: reworkTarget as ConductorStage } : {},
+        basis: [challenge.summary], evidenceReviewed: challenge.material_ids,
+        stateUpdate: `critic ${challenge.conclusion}`,
+      })
+      await checkpoint(current)
+      if (current.status === 'running' || current.status === 'rework') continue
+      return { kind: 'blocked', blocker: critical ? `critical analysis challenge: ${challenge.summary}`
+        : 'analysis critic rework budget exhausted', run: current,
+      ...critical ? {} : { ownerEscalation: { kind: 'recoverable', cause: 'rework-exhausted', reason: challenge.summary } as const } }
+    }
+    const producer = stage === reportProducer(current.admission)
+    if (stage === 'devils-advocate' && current.analysisMode !== 'producer') {
+      throw new Error('Conductor analysis Gate C requires a typed producer or critic dispatch mode')
+    }
+    let produced: Awaited<ReturnType<NonNullable<ConductorDispatcher['dispatchAnalysisProducer']>>> | undefined
+    if (producer) {
+      if (dispatcher.dispatchAnalysisProducer === undefined) {
+        throw new Error('Conductor analysis producer dispatcher is unavailable')
+      }
+      produced = await dispatcher.dispatchAnalysisProducer(stage, current)
+    }
+    const raw = stage === 'arbiter' ? await dispatcher.dispatchArbiter(current)
+      : produced === undefined ? await dispatcher.dispatchSpecialist(stage, current) : produced.value
     const problem = stage === 'arbiter' ? reportDecisionProblem(raw, current) : analysisEnvelopeProblem(raw, stage, current)
     if (problem !== undefined) {
       current = recordGate(current, {
         decision: problem.kind === 'authority' ? 'escalate' : 'rework', defectClass: 'report', nextStage: stage,
+        ...produced === undefined ? {} : { analysis: { mode: 'producer' as const, childId: produced.childId } },
         basis: [problem.message], evidenceReviewed: [], stateUpdate: `reject analysis ${problem.kind} problem`,
       })
       await checkpoint(current)
@@ -197,6 +292,7 @@ export async function driveAnalysis(
     if (envelope.status === 'ready' && envelope.candidate !== undefined) {
       const captured: CapturedReport = {
         producer: reportProducer(current.admission), candidate: envelope.candidate, hash: reportHash(envelope.candidate),
+        producerChildId: (produced as NonNullable<typeof produced>).childId,
       }
       reportCandidates = [...reportCandidates, captured]
     }
@@ -208,6 +304,9 @@ export async function driveAnalysis(
     delete assessed.reportDecision
     current = recordGate(assessed, {
       decision: envelope.status === 'ready' ? 'pass' : repair ? 'rework' : 'escalate',
+      ...!producer ? {} : { analysis: { mode: 'producer' as const,
+        ...envelope.candidate === undefined ? {} : { candidateHash: reportHash(envelope.candidate) },
+        childId: (produced as NonNullable<typeof produced>).childId } },
       ...repair ? { defectClass: defect, nextStage: target } : {},
       basis: [envelope.summary], evidenceReviewed: envelope.material_ids, stateUpdate: envelope.summary,
     })

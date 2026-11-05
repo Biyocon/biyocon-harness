@@ -27,12 +27,12 @@ import type {
   EvaluatedGateRecord,
 } from './types.ts'
 import { executionBaselineHash, executionEffectProfile } from './quality.ts'
-import { admittedRoute, GATED_STAGES, requireAnalysisCriteria, transitionRoute } from './intake.ts'
+import { admittedRoute, GATED_STAGES, reportProducer, requireAnalysisCriteria, transitionRoute } from './intake.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { OwnerMandate } from './owner-types.ts'
 
 /** Current pre-release durable Conductor record format. */
-export const CONDUCTOR_RECORD_FORMAT_VERSION = 4
+export const CONDUCTOR_RECORD_FORMAT_VERSION = 5
 
 /**
  * The initial, dispatch-ready run state. The run starts at its admitted A/B/C entry with
@@ -63,8 +63,9 @@ export interface CreateRunInput {
   constraints?: string[]
   /** Measurable deliverable requirements; at least one is required for analysis. */
   acceptanceCriteria?: string[]
-  /** Rework and Ralph round limits; defaults to `{ maxReworkPerGate: 2, maxRalphRounds: 0 }`. */
-  budget?: Omit<ConductorBudget, 'maxOwnerReassessmentsPerGate'> & { maxOwnerReassessmentsPerGate?: number }
+  /** Limits retained at admission; omitted critic limits use the shipped Config defaults. */
+  budget?: Pick<ConductorBudget, 'maxReworkPerGate' | 'maxRalphRounds'>
+    & Partial<Omit<ConductorBudget, 'maxReworkPerGate' | 'maxRalphRounds'>>
 }
 
 /**
@@ -78,6 +79,18 @@ export function createRun(runId: ConductorRunId, input: CreateRunInput): Conduct
     && (!Number.isSafeInteger(input.budget.maxOwnerReassessmentsPerGate) || input.budget.maxOwnerReassessmentsPerGate < 1)) {
     throw new Error('Conductor maxOwnerReassessmentsPerGate must be a positive safe integer')
   }
+  const criticBudget = {
+    maxCriticInputTokensPerAttempt: input.budget?.maxCriticInputTokensPerAttempt ?? 24_000,
+    maxCriticOutputTokensPerAttempt: input.budget?.maxCriticOutputTokensPerAttempt ?? 16_000,
+    maxCriticTokensPerRun: input.budget?.maxCriticTokensPerRun ?? 120_000,
+  }
+  for (const [field, value] of Object.entries(criticBudget)) {
+    if (!Number.isSafeInteger(value) || value < 1) throw new Error(`Conductor ${field} must be a positive safe integer`)
+  }
+  if (criticBudget.maxCriticTokensPerRun
+    < criticBudget.maxCriticInputTokensPerAttempt + criticBudget.maxCriticOutputTokensPerAttempt) {
+    throw new Error('Conductor maxCriticTokensPerRun must cover one maximum critic attempt')
+  }
   const acceptanceCriteria = [...(input.acceptanceCriteria ?? [])]
   requireAnalysisCriteria(input.admission, acceptanceCriteria)
   const run: ConductorRun = {
@@ -88,8 +101,11 @@ export function createRun(runId: ConductorRunId, input: CreateRunInput): Conduct
     ownerLedger: [],
     admission: structuredClone(input.admission),
     repairReturns: [],
+    analysisMode: input.admission.purpose === 'analysis' && input.admission.entry === reportProducer(input.admission)
+      ? 'producer' : null,
     analysisReports: [],
     reportCandidates: [],
+    analysisChallenges: [],
     runId,
     objective: input.objective,
     scope: [...(input.scope ?? [])],
@@ -102,8 +118,9 @@ export function createRun(runId: ConductorRunId, input: CreateRunInput): Conduct
     acceptanceCriteria,
     budget:
       input.budget === undefined
-        ? { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2 }
-        : { ...input.budget, maxOwnerReassessmentsPerGate: input.budget.maxOwnerReassessmentsPerGate ?? 2 },
+        ? { maxReworkPerGate: 2, maxRalphRounds: 0, maxOwnerReassessmentsPerGate: 2, ...criticBudget }
+        : { ...input.budget, maxOwnerReassessmentsPerGate: input.budget.maxOwnerReassessmentsPerGate ?? 2,
+          ...criticBudget },
     baselineHistory: [],
     baseline: null,
     executionAuthorization: null,
@@ -202,7 +219,7 @@ export function reworkCycles(run: ConductorRun, gate: GateId): number {
  */
 export interface GateVerdict {
   /** Runtime admission repair before a specialist has started. */
-  origin?: 'intake-validation'
+  origin?: 'intake-validation' | 'critic-budget'
   /** Conductor's decision. */
   decision: GateDecision
   /** The concrete evidence and reasoning behind the decision. */
@@ -217,6 +234,8 @@ export interface GateVerdict {
   stateUpdate: string
   /** Exact baseline hash for Gate C pass and later attempts under an active baseline. */
   executionBaselineHash?: string
+  /** Host-owned analysis dispatch identity and measured cost at Gate C. */
+  analysis?: EvaluatedGateRecord['analysis']
 }
 
 /**
@@ -249,6 +268,68 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
   if (run.admission.purpose === 'analysis' && (run.baseline !== null || run.executionAuthorization !== null
     || run.baselineHistory.length > 0 || run.qualityExecutions.length > 0)) {
     throw new Error('Conductor analysis cannot carry execution authority or command evidence')
+  }
+  if (verdict.origin === 'critic-budget' && (run.admission.purpose !== 'analysis' || gate !== 'C'
+    || run.analysisMode !== 'critic' || verdict.decision !== 'escalate' || verdict.analysis !== undefined)) {
+    throw new Error('Conductor critic budget can escalate only before a Gate C child dispatch')
+  }
+  if (run.admission.purpose === 'analysis' && verdict.analysis?.mode === 'producer') {
+    if (run.currentStage !== reportProducer(run.admission) || run.analysisMode !== 'producer'
+      || !verdict.analysis.childId) throw new Error('Conductor producer gate requires its admitted child and mode')
+    if (verdict.decision === 'pass' && (verdict.analysis.candidateHash !== run.reportCandidates.at(-1)?.hash
+      || verdict.analysis.childId !== run.reportCandidates.at(-1)?.producerChildId)) {
+      throw new Error('Conductor producer pass requires its exact candidate and child identity')
+    }
+  }
+  if (run.admission.purpose === 'analysis' && gate === 'C' && verdict.origin === undefined) {
+    if (verdict.analysis?.mode !== run.analysisMode) {
+      throw new Error('Conductor analysis Gate C decision must name the active producer or critic mode')
+    }
+    if (verdict.decision === 'pass' && (verdict.analysis.candidateHash !== run.reportCandidates.at(-1)?.hash
+      || !verdict.analysis.childId)) {
+      throw new Error('Conductor analysis Gate C pass requires the exact candidate and child')
+    }
+    if (verdict.analysis.mode === 'critic' && verdict.analysis.childId !== undefined
+      && (!Number.isSafeInteger(verdict.analysis.criticAttempt) || Number(verdict.analysis.criticAttempt) < 1
+        || (verdict.analysis.inputTokens === undefined) !== (verdict.analysis.outputTokens === undefined)
+        || verdict.analysis.inputTokens !== undefined
+          && (!Number.isSafeInteger(verdict.analysis.inputTokens) || verdict.analysis.inputTokens < 0)
+        || verdict.analysis.outputTokens !== undefined
+          && (!Number.isSafeInteger(verdict.analysis.outputTokens) || verdict.analysis.outputTokens < 0))) {
+      throw new Error('Conductor analysis critic attempt requires a positive attempt and measured token usage')
+    }
+    if (verdict.analysis.mode === 'critic' && verdict.analysis.childId !== undefined
+      && verdict.decision === 'rework' && verdict.analysis.inputTokens === undefined) {
+      throw new Error('Conductor critic retry requires measured token usage')
+    }
+    if (verdict.analysis.mode === 'critic' && verdict.analysis.challengeHash !== undefined) {
+      const captured = run.analysisChallenges.at(-1)
+      if (captured?.hash !== verdict.analysis.challengeHash
+        || captured.candidateHash !== verdict.analysis.candidateHash
+        || captured.criticChildId !== verdict.analysis.childId
+        || captured.criticAttempt !== verdict.analysis.criticAttempt) {
+        throw new Error('Conductor analysis Gate C challenge does not match its validated critic attempt')
+      }
+      const critical = captured.challenge.findings.some(finding => finding.severity === 'critical')
+      const target = captured.challenge.conclusion === 'does_not_hold'
+        ? captured.challenge.defect === 'scope' ? 'detective' : captured.challenge.defect === 'plan' ? 'strategist'
+          : reportProducer(run.admission) : undefined
+      if ((captured.challenge.conclusion === 'holds') !== (verdict.decision === 'pass')
+        || captured.challenge.conclusion !== verdict.analysis.conclusion
+        || captured.challenge.conclusion === 'does_not_hold' && verdict.decision === 'rework'
+          && verdict.defectClass !== captured.challenge.defect
+        || captured.challenge.conclusion === 'does_not_hold' && !critical && verdict.nextStage !== target
+        || critical && verdict.decision !== 'escalate') {
+        throw new Error('Conductor analysis Gate C decision conflicts with its validated challenge')
+      }
+    } else if (verdict.analysis.mode === 'critic' && verdict.decision === 'rework'
+      && (verdict.defectClass !== 'report' || verdict.nextStage !== 'devils-advocate')) {
+      throw new Error('Malformed critic output may rework only the critic at Gate C')
+    }
+    if (verdict.decision === 'pass' && verdict.analysis.mode === 'critic'
+      && (verdict.analysis.challengeHash === undefined || verdict.analysis.conclusion !== 'holds')) {
+      throw new Error('Conductor analysis Gate C critic pass requires a holding challenge')
+    }
   }
   if (run.admission.purpose === 'implementation' && gate === 'C' && verdict.decision === 'pass') {
     if (activeBaselineHash === undefined || run.executionAuthorization === null) {
@@ -284,7 +365,10 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
       if (verdict.nextStage === undefined) {
         throw new Error(`Conductor gate ${gate} rework requires a rework target stage`)
       }
-      if (verdict.defectClass === 'report' && verdict.nextStage !== run.currentStage) {
+      if (verdict.defectClass === 'report' && verdict.nextStage !== run.currentStage
+        && !(run.admission.purpose === 'analysis' && run.currentStage === 'devils-advocate'
+          && verdict.analysis?.mode === 'critic' && verdict.analysis.challengeHash !== undefined
+          && verdict.nextStage === reportProducer(run.admission))) {
         throw new Error(`Conductor gate ${gate} report rework must return to its reporting stage`)
       }
       nextStage = verdict.nextStage
@@ -305,7 +389,11 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
     /* v8 ignore stop */
   }
 
-  const transition = transitionRoute(run, decision, verdict.defectClass, nextStage)
+  const producerPassedAtC = run.admission.purpose === 'analysis' && gate === 'C'
+    && verdict.analysis?.mode === 'producer' && decision === 'pass'
+  const transition = producerPassedAtC
+    ? { nextStage: 'devils-advocate' as const, repairReturns: [...run.repairReturns] }
+    : transitionRoute(run, decision, verdict.defectClass, nextStage)
   const destination = transition.nextStage
   const fromIndex = (GATED_STAGES as readonly string[]).indexOf(run.currentStage)
   const toIndex = (GATED_STAGES as readonly string[]).indexOf(destination ?? '')
@@ -342,6 +430,7 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
       : verdict.basis,
     evidenceReviewed: verdict.evidenceReviewed,
     stateUpdate: verdict.stateUpdate,
+    ...verdict.analysis === undefined ? {} : { analysis: verdict.analysis },
   }
   const requiredBaselineHash = run.admission.purpose === 'analysis' ? undefined : gate === 'C' && decision === 'pass'
     ? verdict.executionBaselineHash
@@ -362,6 +451,15 @@ export function recordGate(run: ConductorRun, verdict: GateVerdict): ConductorRu
       ? { baseline: null, executionAuthorization: null }
       : {},
     currentStage: nextStage ?? run.currentStage,
+    analysisMode: run.admission.purpose !== 'analysis' || decision === 'abort' ? null
+      : decision === 'escalate' ? run.analysisMode
+        : producerPassedAtC ? 'critic'
+          : decision === 'rework' && verdict.analysis?.mode === 'critic' && verdict.analysis.challengeHash === undefined
+            ? 'critic'
+            : destination === reportProducer(run.admission)
+              ? 'producer'
+              : decision === 'pass' && destination === 'devils-advocate' && run.reportCandidates.length > 0
+                ? 'critic' : null,
     status,
     history: [...run.history, record],
     repairReturns: transition.repairReturns,
