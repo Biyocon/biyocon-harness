@@ -14,17 +14,17 @@ Status: proposed
 
 ### 阶段 A：在来源处限制结果，不改变 v5 运行记录
 
-以缩小 `glob` 和 `grep` 的结果作为主要价格措施。新增经过验证、仅用于 Detective 的 Config 字段（`detectiveGlobMaxResultChars` 和 `detectiveGrepMaxResultChars`），各以 4,000 字符作为初拟默认值。除已有的条目数和单行上限外，该上限覆盖含标题和继续标记的完整模型可见结果。返回有界页面，明确标出 `truncated`、显示数/总数、稳定的继续游标及准确后续读取所需的路径/行身份。获取下一页是显式只读操作；每页及其快照摘要均作为普通工具结果记录。分页须基于完整、不可变的搜索快照；若快照无法保留则明确失败。也可以缩小查询。达到上限的结果绝不能表现为完整，模型不能声称检查了未返回的条目。对宽泛的 `glob` 页面，优先评估现有的顶层采样选项，以免第一页无声隐藏其他子树。较小的 `read` 窗口单独评估；它已有明确的 `offset` 继续机制。
+主要通过限制 `glob` 和 `grep` 结果降低价格。验证仅用于 Detective 的 Config 字段（`detectiveGlobMaxResultChars`、`detectiveGrepMaxResultChars`），各初设 4,000 字符，覆盖含标题及继续标记的完整结果，并保留已有条目/单行上限。每页报告 `truncated`、显示数/总数、稳定继续游标及路径/行身份。每个只读页面及快照摘要均记录为工具结果。分页保留完整、不可变的搜索快照，否则明确失败。仍可缩小查询；未返回条目不能算作已检查。宽泛的 `glob` 页面优先采用现有顶层采样以显示其他子树。较小的 `read` 窗口单独评估；`offset` 已提供继续机制。
 
-当前的[搜索 Config](../../../../packages/fs/tool-fs-search/src/index.ts)验证 `globMaxResults`（默认 100 个路径）、`grepMaxMatches`（250 个匹配）、`grepMaxLineBytes`（每个匹配 2,000 字节）、`searchMetaMaxBytes`（65,536 字节）及原始输出上限。[读取 Config](../../../../packages/fs/tool-fs/src/index.ts)验证 `readLimit`（2,000 行）、`readMaxLineLength`（2,000 字符）及 `readMaxBytes`（51,200 字节）；read 已报告截断并接受 `offset`。当条目数超限时，搜索工具目前会保存完整格式化结果，但没有完整结果的字符上限或游标分页。现有的[通用 spill 策略](../../../../packages/spill/spill-policy/src/index.ts)以经验证的 `maxInlineBytes` 限制纯文本结果，但它按字节计数、尽力保存，且跳过面向模型的 `read` 结果；它也不提供稳定的搜索分页。这些 Config 值属于全局挂载的工具插件，不能只给 Detective 调低而不影响其他角色。现有的 child-scoped 工具贡献与分层注册表可注册仅用于 Detective 的搜索定义，并遮蔽继承的工具；实现字符上限与游标需要工具/Conductor 代码，但无需改 agent-loop。新上限须验证为正安全整数，并足以容纳固定的页面标题及继续标记。完整结果与游标须留在子会话拥有的会话证据中，以免冷恢复后对已变化文件重新解释某页。
+[搜索 Config](../../../../packages/fs/tool-fs-search/src/index.ts)验证 `globMaxResults`（100 个路径）、`grepMaxMatches`（250 个匹配）、`grepMaxLineBytes`（2,000 字节）、`searchMetaMaxBytes`（65,536 字节）及原始输出上限。[读取 Config](../../../../packages/fs/tool-fs/src/index.ts)验证 `readLimit`（2,000 行）、`readMaxLineLength`（2,000 字符）及 `readMaxBytes`（51,200 字节），并报告截断、支持 `offset`。搜索在条目超限时保存完整格式化结果，但缺少字符上限与游标分页。[通用 spill 策略](../../../../packages/spill/spill-policy/src/index.ts)验证 `maxInlineBytes`，但仅尽力保存、跳过面向模型的 `read`，且没有稳定分页。这些全局插件设置会影响其他角色。将可信的 `childToolContribution` 从 `runSpecialist` 经 `dispatchAnalysisChild` 的 producer 分支传入 `runWorkflowChild`，注册限定于 Detective 的搜索定义并遮蔽继承工具。不支持 `toolContribution` 的 provider 必须拒绝。字符上限与游标需要工具/Conductor 代码，但无需改 agent-loop。新上限须验证为正安全整数，并足以容纳固定的页面标题及继续标记。完整结果与游标须留在子会话拥有的会话证据中，以免冷恢复后对已变化文件重新解释某页。
 
-在 v5 记录中保留完整且经哈希验证的[准入捕获](../../../../packages/conductor/conductor/src/types.ts)。作为较小的独立改进，从已有的 `id`、`selector`、`sha256` 和 `content` 派生已捕获文件的有序索引；字节数和行数现算，不增加记录字段。初始提示发送当前请求和索引，不发送文件正文。限定于该子会话的只读工具从准确的捕获 `content` 返回有界行范围，验证哈希，并通过现有工具调用/结果事件记录参数及返回文本；它绝不以变化后的工作区文件代替准入内容。未知 ID 或过大的范围明确报错。UI 渲染意图为 `generic`，`locations` 仅由请求的 selector 和行号决定。
+在 v5 记录中保留完整且经哈希验证的[准入捕获](../../../../packages/conductor/conductor/src/types.ts)。作为较小的独立改进，从已有的 `id`、`selector`、`sha256` 和 `content` 派生已捕获文件的有序索引；字节数和行数现算，不增加记录字段。初始提示发送当前请求和索引，不发送文件正文。限定于该子会话的捕获读取工具使用独立、可信的工具名称，同时由 Detective producer 的 `childToolFilter` 和 analysis guard 允许，不扩展其他角色的 `READ_TOOLS`。它从捕获 `content` 返回有界行范围，验证哈希，并通过现有工具调用/结果事件记录参数及文本；它绝不以变化后的工作区文件代替准入内容。未知 ID 或过大的范围明确报错。UI 渲染意图为 `generic`，`locations` 仅由请求的 selector 和行号决定。
 
 在来源处限制结果会追加较短的工具结果，不重写先前模型可见消息，因此保留缓存前缀的复用机会。阶段 A 沿用现有会话事件类型，v5 `ConductorRun` 字段不变。工具返回的工作区发现项不会因此获得准入 material ID 或引用资格。完整捕获继续供批评者验证摘录及 Auditor 检查。报告须披露未检查材料；阶段 A 不声称已有宿主拥有的持久覆盖台账或新终态。
 
 ### 阶段 B：v6 用量核算与明确的不完整终态
 
-为每次 Detective 尝试增加宿主拥有的覆盖台账：准入材料的检查情况及准确范围、已发现工作区来源及可取得的版本或摘要、选择原因，以及影响结论的遗漏。只有准确的来源片段算作已检查证据。准入时保存经验证的每请求输入、包含推理的输出以及每运行总 token 上限。预检包含 persona、系统文本、工具 schema、下一份输入及已记录的模型可见历史；把 provider 报告的非缓存输入、缓存读取/写入和输出作为互不重叠的计数，推理包含在输出中。用量缺失或无效时消耗预留额度并阻止下一次调用；provider 超额则终止运行并披露。返工和所有者继续执行共用保留的运行额度。
+为每次 Detective 尝试增加宿主拥有的覆盖台账：准入材料的检查情况及准确范围、已发现工作区来源及可取得的版本或摘要、选择原因，以及影响结论的遗漏。只有准确的来源片段算作已检查证据。准入时保存经验证的每请求输入、包含推理的输出以及每运行总 token 上限。预检包含 persona、系统文本、工具 schema、下一份输入及已记录的模型可见历史；把 provider 报告的非缓存输入、缓存读取/写入和输出作为互不重叠的计数，推理包含在输出中。dispatch 前须针对共享运行额度原子持久化每次模型调用的唯一预留，避免并发调用重复预留同一剩余额度。恢复时，须在下一次调用前幂等核对每笔预留；用量未知或无效时消耗该预留，并以 `incomplete` 结束运行；provider 超额则终止运行并披露。返工和所有者继续执行共用保留的运行额度。与[子智能体累计输出上限](../../implemented/architecture/2026-11-02-reserved-child-identity-and-output-token-limit.md)组合：有效输出上限取每请求上限、子智能体剩余累计输出额度和预留输入后运行剩余额度三者中的最小值。输出含推理，只对运行预算记账一次。
 
 如果剩余额度不足以检查相关证据，记录已消耗/已预留/上限和遗漏范围，以终态 `incomplete` 结束。不得把它作为完整候选交给批评者、暗中重置额度，或转换成全面的 `ready` 报告。这是有界的失败状态，不是效率收益。
 
