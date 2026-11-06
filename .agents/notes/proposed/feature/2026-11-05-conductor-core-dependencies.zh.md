@@ -29,6 +29,25 @@ Biyocon Harness 保持 rc.7 基础；所有者已取消 [#68](https://github.com
 
 历史上的 `packages/extensions/tool-cordis/src/api-catalog.ts`、`packages/extensions/cordis-client-runner/src/client/slot-catalog.ts` 和 `packages/core/session/src/known-event-types.ts` 容易混淆：前两者是生成的投影，session 文件则直接登记 Conductor 事件名称。#64 的通用实现规模较大，但批评者依赖其身份与预算保证，因此仍属依赖；语义以其 Agent Note 为准。现有 `ui-user-questions` 中的所有者 UI 并非独立的 Conductor UI 插件；移植应搬走领域呈现，而非把耦合复制到新宿主。
 
+### App-level coupling
+
+对 `apps/` 的扫描涵盖可执行接线、打包、文档和测试证据。这些是应用装配，而非核心包导入；提取时须搬走或替换，不能让宿主依赖 Conductor。
+
+| 应用路径 | 当前耦合 | 插件化后的替代方式 |
+|---|---|---|
+| `apps/cli/scripts/source-launch.ts` | CLI 启动前调用 `generateConductorSkills()`。 | 由 Conductor bundle 安装资源；通用源码启动器不感知 Conductor。 |
+| `apps/cli/scripts/generate-conductor-skills.ts` | 将 `.agents/conductor/{README.md,roles/,templates/}` 和 `.agents/skills/conductor-*/` 复制到 `apps/cli/config/agent-presets/conductor/skills/`。 | 从 Conductor 包经技能注册或 bundle 自有资源步骤发布。 |
+| `apps/cli/tsdown.config.ts` | CLI 构建后调用同一生成器。 | 将资源步骤移入 Conductor 包构建或 bundle。 |
+| `apps/cli/config/agent-presets/conductor/agent.cordis.yml`; `apps/cli/config/agent-presets/conductor/preset.yml` | 定义随应用附带的组合、提示、技能来源及显示元数据。 | 插件包提供 bundle 入口和 preset 元数据，经通用 preset loader 发现。 |
+| `apps/cli/package.json` | 把 `dsh-conductor-presets` 和 `dsh-tool-conductor` 列为 CLI 必需依赖，并打包 `config/`。 | 独立安装可选的 Conductor bundle 和 preset。 |
+| `apps/cli/composition.md`; `apps/cli/reference/README.md`; `apps/cli/reference/README.zh.md` | 记载内置组合和启动时资源准备。 | 从已安装 bundle 生成组合图，并在 Conductor 包内维护说明。 |
+| `apps/cli/tests/conductor-assets.e2e.ts`; `apps/cli/tests/conductor-source-launch.spec.ts`; `apps/cli/tests/generate-conductor-skills.spec.ts`; `apps/cli/tests/fixtures/source-launch-fixture.ts` | 验证 CLI 自有资源复制与源码启动；fixture 还导入 `conductor-presets` 源码。 | 将资源与 bundle 测试移至 Conductor；CLI 只保留通用 bundle 加载覆盖。 |
+| `apps/cli/tests/web-agent-presets.e2e.ts`; `apps/web/tests/agent-preset-authoring.e2e.ts`; `apps/web/tests/agent-preset-selection.e2e.ts` | 假定内置目录及浏览器 UI 必有 Conductor preset。 | 验证插件安装及可选 preset 发现。 |
+| `apps/web/tests/conductor-owner.e2e.ts`; `apps/web/tests/conductor-critic.e2e.ts`; `apps/web/tsconfig.json` | 导入 Conductor 类型与 adapter，并纳入浏览器场景。 | 将 Conductor 专属浏览器测试及 TypeScript 纳入项移到插件集成测试。 |
+| `apps/web/tests/snapshots/agent-preset-authoring/created.expected.md`; `apps/web/tests/snapshots/agent-preset-authoring/damaged.expected.md`; `apps/web/tests/snapshots/agent-preset-authoring/section.expected.md`; `apps/web/tests/snapshots/agent-preset-selection/danish-presets.expected.md`; `apps/web/tests/snapshots/agent-preset-selection/menu.expected.md`; `apps/web/tests/snapshots/conductor-owner/da-DK-accepted-receipt.expected.md`; `apps/web/tests/snapshots/conductor-owner/da-DK-waiting.expected.md`; `apps/web/tests/snapshots/conductor-owner/en-US-accepted-receipt.expected.md`; `apps/web/tests/snapshots/conductor-owner/en-US-proposal-receipt.expected.md`; `apps/web/tests/snapshots/conductor-owner/en-US-proposal.expected.md`; `apps/web/tests/snapshots/conductor-owner/en-US-rejected-receipt.expected.md`; `apps/web/tests/snapshots/conductor-owner/en-US-waiting.expected.md` | 固定内置 preset 与所有者卡片输出。 | 可选插件快照留在其集成测试；重新记录通用应用基线。 |
+
+`apps/cli/src` 和 `apps/web/src` 没有 Conductor 引用。快照是测试证据，而非运行时依赖。
+
 ## Alternatives considered
 
 **先同步 fork。** 所有者已否决。此时移动基础会掩盖 Conductor 专有的依赖。

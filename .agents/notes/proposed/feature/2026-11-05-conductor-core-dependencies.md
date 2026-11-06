@@ -29,6 +29,25 @@ Entries enumerate non-Conductor source files in the relevant merged PR diffs. Ge
 
 The historical `packages/extensions/tool-cordis/src/api-catalog.ts`, `packages/extensions/cordis-client-runner/src/client/slot-catalog.ts` and `packages/core/session/src/known-event-types.ts` changes are especially easy to confuse: the catalog files are generated projections, while the session file contains direct Conductor event-name registrations. #64's generic implementation is substantial, yet it is a dependency because Conductor's critic uses its identity and budget guarantees; its own Agent Note remains the authority on semantics. Existing owner UI in `ui-user-questions` is not a separate Conductor UI plugin; extraction should move its domain presentation, not copy the coupling into the new host.
 
+### App-level coupling
+
+The `apps/` scan covers executable wiring, packaging, documentation and test evidence. These are app bindings rather than core-package imports; extraction must move or replace them without making the host depend on Conductor.
+
+| App paths | Current binding | Plugin extraction |
+|---|---|---|
+| `apps/cli/scripts/source-launch.ts` | Calls `generateConductorSkills()` before CLI boot. | Let a Conductor bundle install its resources; leave generic source launch unaware of Conductor. |
+| `apps/cli/scripts/generate-conductor-skills.ts` | Copies `.agents/conductor/{README.md,roles/,templates/}` and `.agents/skills/conductor-*/` into `apps/cli/config/agent-presets/conductor/skills/`. | Publish the assets from the Conductor package through skill registration or a bundle-owned asset step. |
+| `apps/cli/tsdown.config.ts` | Runs the same generator after CLI build. | Move the asset step to the Conductor package build/bundle. |
+| `apps/cli/config/agent-presets/conductor/agent.cordis.yml`; `apps/cli/config/agent-presets/conductor/preset.yml` | Define the shipped composition, prompt, skill source and display metadata. | Ship a bundle entry and preset metadata in the plugin package, discovered through the generic preset loader. |
+| `apps/cli/package.json` | Makes `dsh-conductor-presets` and `dsh-tool-conductor` mandatory CLI dependencies and packs `config/`. | Install an optional Conductor bundle and preset independently. |
+| `apps/cli/composition.md`; `apps/cli/reference/README.md`; `apps/cli/reference/README.zh.md` | Document built-in Conductor composition and launch-time assets. | Generate composition from installed bundles and document Conductor in its package. |
+| `apps/cli/tests/conductor-assets.e2e.ts`; `apps/cli/tests/conductor-source-launch.spec.ts`; `apps/cli/tests/generate-conductor-skills.spec.ts`; `apps/cli/tests/fixtures/source-launch-fixture.ts` | Assert CLI-owned asset copying and source launch; the fixture imports `conductor-presets` source. | Move asset/bundle tests with Conductor; retain generic bundle-loading coverage in CLI. |
+| `apps/cli/tests/web-agent-presets.e2e.ts`; `apps/web/tests/agent-preset-authoring.e2e.ts`; `apps/web/tests/agent-preset-selection.e2e.ts` | Assume Conductor is present in the built-in preset catalog and browser UI. | Test plugin installation and optional preset discovery. |
+| `apps/web/tests/conductor-owner.e2e.ts`; `apps/web/tests/conductor-critic.e2e.ts`; `apps/web/tsconfig.json` | Import Conductor types and adapters and include the browser scenarios. | Move Conductor browser tests and their TypeScript inclusion to the plugin integration suite. |
+| `apps/web/tests/snapshots/agent-preset-authoring/created.expected.md`; `apps/web/tests/snapshots/agent-preset-authoring/damaged.expected.md`; `apps/web/tests/snapshots/agent-preset-authoring/section.expected.md`; `apps/web/tests/snapshots/agent-preset-selection/danish-presets.expected.md`; `apps/web/tests/snapshots/agent-preset-selection/menu.expected.md`; `apps/web/tests/snapshots/conductor-owner/da-DK-accepted-receipt.expected.md`; `apps/web/tests/snapshots/conductor-owner/da-DK-waiting.expected.md`; `apps/web/tests/snapshots/conductor-owner/en-US-accepted-receipt.expected.md`; `apps/web/tests/snapshots/conductor-owner/en-US-proposal-receipt.expected.md`; `apps/web/tests/snapshots/conductor-owner/en-US-proposal.expected.md`; `apps/web/tests/snapshots/conductor-owner/en-US-rejected-receipt.expected.md`; `apps/web/tests/snapshots/conductor-owner/en-US-waiting.expected.md` | Pin built-in preset and owner-card output. | Keep optional-plugin snapshots with its integration suite; re-record the generic app baseline. |
+
+The scan found no Conductor reference in `apps/cli/src` or `apps/web/src`. The snapshot paths are evidence, not runtime dependencies.
+
 ## Alternatives considered
 
 **Sync the fork first.** Rejected by the owner. A newer upstream would move the baseline while this dependency inventory is being established and could hide what is Conductor-specific.
