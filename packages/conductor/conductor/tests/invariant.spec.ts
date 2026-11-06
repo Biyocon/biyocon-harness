@@ -55,7 +55,7 @@ describe('dsh-conductor checkpoint invariant', () => {
     expect(() => session.append('conductor/checkpoint', {
       runId: ConductorRunId('CON-2026-0002'),
       record: record(),
-    })).toThrow(/checkpoint key CON-2026-0002 does not match record CON-2026-0001/)
+    })).toThrow(/invalid conductor checkpoint for run "CON-2026-0002" \(format 5\)/)
   })
 
   it('validates checkpoints that predate companion installation', async () => {
@@ -69,5 +69,18 @@ describe('dsh-conductor checkpoint invariant', () => {
     })
     await ctx.plugin(InvariantRegistry, { enabled: true })
     await expect(ctx.plugin(ConductorInvariant)).resolves.toBeDefined()
+  })
+
+  it('keeps an existing format-4 checkpoint readable but rejects a new one', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const session = ctx.sessions.create(SessionId('conductor-invariant-old'))
+    const old = JSON.stringify({ recordFormatVersion: 4, privatePayload: 'synthetic secret' })
+    session.append('conductor/checkpoint', { runId: ConductorRunId('CON-2026-0001'), record: old })
+    await ctx.plugin(InvariantRegistry, { enabled: true })
+    await expect(ctx.plugin(ConductorInvariant)).resolves.toBeDefined()
+    expect(() => session.append('conductor/checkpoint', {
+      runId: ConductorRunId('CON-2026-0002'), record: old,
+    })).toThrow(/format 4/)
   })
 })

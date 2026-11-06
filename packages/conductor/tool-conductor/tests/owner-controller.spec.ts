@@ -97,6 +97,46 @@ async function setup(
 }
 
 describe('Conductor-owned host answer turns', () => {
+  it('opens a session with an old checkpoint, preserves history, logs only identity, and rejects reuse', async () => {
+    const original = await setup()
+    const runId = original.run.runId
+    original.agent.session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'Synthetic earlier question.' }], source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    const seed = structuredClone(original.agent.session.events)
+    const checkpoint = seed.find(event => event.type === 'conductor/checkpoint')
+    if (checkpoint?.type !== 'conductor/checkpoint') throw new Error('Fixture checkpoint is missing')
+    checkpoint.data.record = JSON.stringify({ recordFormatVersion: 4, privatePayload: 'synthetic secret' })
+    const logged: string[] = []
+    const reopened = await setup(seed, true, undefined, (ctx) => {
+      ctx.logger.exporter({ levels: { default: 3 }, export: (message) => { logged.push(...message.args.map(String)) } })
+    })
+    expect(reopened.agent.session.events.slice(0, seed.length)).toEqual(seed)
+    expect(reopened.agent.session.events.some(event => event.type === 'user/message'
+      && event.data.content.some(block => block.type === 'text' && block.text === 'Synthetic earlier question.'))).toBe(true)
+    expect(reopened.controller.phase(reopened.agent)).toBeUndefined()
+    expect(logged.join('\n')).toContain(runId)
+    expect(logged.join('\n')).toContain('format 4')
+    expect(logged.join('\n')).not.toContain('synthetic secret')
+    await expect(reopened.store.load(runId)).rejects.toThrow('cannot be resumed (format 4)')
+    await expect(reopened.controller.reconnect(reopened.agent, runId)).rejects.toThrow('cannot be resumed (format 4)')
+    await expect(reopened.controller.resumePending(reopened.agent, runId, new AbortController().signal))
+      .rejects.toThrow('cannot be resumed (format 4)')
+  })
+
+  it('logs an unknown format without exposing malformed checkpoint bytes', async () => {
+    const original = await setup()
+    const seed = structuredClone(original.agent.session.events)
+    const checkpoint = seed.find(event => event.type === 'conductor/checkpoint')
+    if (checkpoint?.type !== 'conductor/checkpoint') throw new Error('Fixture checkpoint is missing')
+    checkpoint.data.record = '{synthetic private bytes'
+    const logged: string[] = []
+    await setup(seed, false, undefined, (ctx) => {
+      ctx.logger.exporter({ levels: { default: 3 }, export: (message) => { logged.push(...message.args.map(String)) } })
+    })
+    expect(logged.join('\n')).toContain(`Conductor run "${original.run.runId}" cannot be resumed (format unknown)`)
+    expect(logged.join('\n')).not.toContain('synthetic private bytes')
+  })
   it('cancels identical-answer receipt recovery without dispatching or creating another question', async () => {
     const h = await setup(undefined, true)
     const pending = Promise.withResolvers<AskUserQuestionRequest>()

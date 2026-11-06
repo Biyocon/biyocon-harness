@@ -84,12 +84,14 @@ export type { CreateRunInput, GateVerdict } from './state.ts'
 export {
   InMemoryConductorRunStore,
   SessionConductorRunStore,
+  ConductorRunUnavailableError,
+  inspectRunRecord,
   parseRun,
   resumeRun,
   serializeRun,
   validateResumable,
 } from './persistence.ts'
-export type { ConductorCheckpointData, ConductorRunStore } from './persistence.ts'
+export type { ConductorCheckpointData, ConductorRunStore, InspectedConductorRun, UnavailableConductorRun } from './persistence.ts'
 export { decisionForStatus, reworkTarget, routeGate } from './routing.ts'
 export type { RoutedGate } from './routing.ts'
 export { drive, SpecialistExecutionFailure } from './drive.ts'
@@ -99,7 +101,9 @@ export { isValidRunId, mintRunId } from './run-id.ts'
 
 import type { Context } from '@deepseek-ai/cordis'
 import { conductorChildrenProjection } from './child-projection.ts'
+import { conductorUnavailableRunsProjection } from './run-availability.ts'
 export { conductorChildrenProjection }
+export { conductorUnavailableRunsProjection }
 
 /** Projection service required for persistent Conductor child catalogs. */
 export const inject = ['sessionProjections']
@@ -110,4 +114,5 @@ export const inject = ['sessionProjections']
  */
 export function apply(ctx: Context): void {
   ctx.sessionProjections.register(conductorChildrenProjection)
+  ctx.sessionProjections.register(conductorUnavailableRunsProjection)
 }

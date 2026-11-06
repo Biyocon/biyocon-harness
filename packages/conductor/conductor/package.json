@@ -31,6 +31,10 @@
     "./child-types": {
       "types": "./lib/types/child-types.d.ts",
       "default": "./lib/types/child-types.js"
+    },
+    "./run-availability-types": {
+      "types": "./lib/types/run-availability-types.d.ts",
+      "default": "./lib/types/run-availability-types.js"
     }
   },
   "files": [

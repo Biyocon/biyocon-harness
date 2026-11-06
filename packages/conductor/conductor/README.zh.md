@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-Conductor runtime 拥有 run 状态、A–G gate、按缺陷类别的 rework 路由、source/execution baseline 以及显式 closeout record。`SessionConductorRunStore` 在每次转换后向父 Session 日志追加完整的键控 checkpoint 并执行 flush；恢复只接受最后一个已记录 gate 的状态，并拒绝 terminal 或 escalated run。预发布 record 携带显式格式版本，不支持的 record 会在不迁移的情况下被拒绝。
+Conductor runtime 拥有 run 状态、A–G gate、按缺陷类别的 rework 路由、source/execution baseline 以及显式 closeout record。`SessionConductorRunStore` 在每次转换后向父 Session 日志追加完整的键控 checkpoint 并执行 flush；恢复只接受最后一个已记录 gate 的状态，并拒绝 terminal 或 escalated run。预发布 record 携带显式格式版本。不支持或无效的已保存 record 可只读显示为不可用 runId 和格式号，因此聊天仍可打开；恢复仍会拒绝，且不迁移。新运行使用不同 runId，不修改旧检查点。[此决策](../../../.agents/notes/implemented/bug-fix/2026-11-06-conductor-unsupported-record-history.md)拥有读取与操作的区分。
 
 实现专家把 `SpecialistEnvelope` 返回给 Conductor，绝不自行选择下一个专家。Gate C 提议不可变 execution baseline，其中包含由部署解析的 quality-command binding 及其 definition hash。在 Gate C 通过之前，host 必须授权精确的 baseline hash 及其 effect profile：实施所需的 workspace write、存在绑定命令时的 catalog quality execution，以及无 external effect。拒绝授权或 approval provider 不可用都会在 Headsman 启动前阻塞 run。已授权 baseline 保留在 append-only history 中；scope 或 plan rework 只清除 active baseline 和 authorization，保留旧证据，但旧证据不能满足后续 baseline。
 

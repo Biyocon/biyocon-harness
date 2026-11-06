@@ -7,7 +7,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { parseRun } from './persistence.ts'
+import { inspectRunRecord } from './persistence.ts'
 
 const PACKAGE_NAME = '@deepseek-ai/dsh-conductor'
 
@@ -16,28 +16,23 @@ export const name = 'conductor-invariant'
 /** Service required before the companion can reserve package ownership. */
 export const inject = ['invariants']
 
-function validateCheckpoint(event: SessionEvent, fail: InvariantFailure): void {
+function validateCheckpoint(event: SessionEvent, fail: InvariantFailure, existing: boolean): void {
   if (event.type !== 'conductor/checkpoint' || event.data.record === null) return
-  try {
-    const run = parseRun(event.data.record)
-    if (run.runId !== event.data.runId) {
-      fail(`conductor checkpoint key ${event.data.runId} does not match record ${run.runId}`)
-    }
-  } catch (error) {
-    /* v8 ignore next -- parseRun and the run-id comparison throw Error instances; String handles foreign throws defensively. */
-    fail(`invalid conductor checkpoint: ${error instanceof Error ? error.message : String(error)}`)
+  const inspected = inspectRunRecord(event.data.runId, event.data.record)
+  if (inspected.kind === 'unavailable' && !existing) {
+    fail(`invalid conductor checkpoint for run ${JSON.stringify(event.data.runId)} (format ${inspected.format ?? 'unknown'})`)
   }
 }
 
-/** Validate every existing and newly published Conductor checkpoint. */
+/** Permit unavailable existing checkpoints while rejecting invalid new writes. */
 const install: InvariantInstaller = Object.assign((ctx: Context, fail: InvariantFailure) => {
   for (const session of ctx.sessions.list()) {
-    for (const event of session.events) validateCheckpoint(event, fail)
+    for (const event of session.events) validateCheckpoint(event, fail, true)
   }
   ctx.on('internal/dispatch', (_mode, eventName, args) => {
     if (eventName !== 'session/event') return
     const event = (args as [unknown, SessionEvent])[1]
-    validateCheckpoint(event, fail)
+    validateCheckpoint(event, fail, false)
   }, { global: true })
 }, { inject: ['sessions'] })
 
