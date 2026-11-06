@@ -66,6 +66,45 @@ describe('installed Conductor through the headless example', () => {
   })
   registerOwnerEscalationSnapshots()
 
+  it('opens a format-4 session with its earlier chat and starts a distinct Conductor run', async () => {
+    const expectedPath = join(expectedDirectory, 'unavailable-run.expected.md')
+    const result = await runLoaderSmoke({
+      label: 'installed Conductor old-run history snapshot', tempDirPrefix: 'conductor-old-run-',
+      binScript: driver, libBinScript: driver, configPath,
+      binArgs: [configPath, 'Analyze probe.txt and report the marker without modifying files.'],
+      tsconfigPath: join(root, 'tsconfig.json'),
+      env: { DSH_SNAPSHOT: 'replay', DSH_TELEMETRY_DISABLED: '1', DSH_CONDUCTOR_OLD_RECORD: '1' },
+      prepare: async (cwd) => {
+        await mkdir(join(cwd, '.git'))
+        await cp(shipped, join(cwd, 'installed-presets/conductor'), { recursive: true })
+        await writeFile(join(cwd, 'probe.txt'), 'DETECTIVE_EXTERNAL_OK\n')
+      },
+      inspect: async (cwd) => {
+        const files = (await readdir(join(cwd, '.sessions'), { recursive: true })).filter(file => file.endsWith('.jsonl'))
+        const logs = await Promise.all(files.map(file => readFile(join(cwd, '.sessions', file), 'utf8')))
+        const parent = logs.map(log => log.trim().split('\n').map(line => JSON.parse(line) as SessionEvent | SessionHeader))
+          .find(rows => (rows[0] as SessionHeader).parentSession === undefined)!
+        const events = parent.slice(1) as SessionEvent[]
+        const old = events.find(event => event.type === 'conductor/checkpoint'
+          && event.data.runId === 'CON-2026-0004')
+        if (old?.type !== 'conductor/checkpoint' || old.data.record === null) throw new Error('Missing synthetic old run')
+        expect(JSON.parse(old.data.record)).toEqual({ recordFormatVersion: 4 })
+        const fresh = events.find(event => event.type === 'conductor/checkpoint' && event.data.runId !== old.data.runId)
+        expect(fresh).toBeDefined()
+        const user = events.find(event => event.type === 'user/message')
+        const prior = user?.type === 'user/message' ? user.data.content.find(block => block.type === 'text') : undefined
+        const assistant = events.filter(event => event.type === 'assistant/message').at(-1)
+        const reply = assistant?.type === 'assistant/message'
+          ? assistant.data.message.content.find(block => block.type === 'text') : undefined
+        const snapshot = `Earlier chat: ${prior?.type === 'text' ? prior.text : ''}\nOld Conductor run: cannot be resumed (format 4)\nNew Conductor run: separate runId\nAssistant: ${reply?.type === 'text' ? reply.text : ''}\n`
+        if (process.env.DSH_SNAPSHOT === 'refresh') await writeFile(expectedPath, snapshot)
+        expect(snapshot).toBe(await readFile(expectedPath, 'utf8'))
+      },
+    })
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toContain('Conductor stopped after Detective: DETECTIVE_EXTERNAL_OK.')
+  }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+
   it('routes a task without a Conductor keyword before workspace tools despite contrary AGENTS instructions', async () => {
     const result = await runLoaderSmoke({
       label: 'installed Conductor external-workspace snapshot',

@@ -3,9 +3,12 @@ import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-subagent/client'
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-conductor/child-types'
+import type {} from '@deepseek-ai/dsh-conductor/run-availability-types'
 import type { ConductorChild } from '@deepseek-ai/dsh-conductor/child-types'
 import { Content } from './Content.tsx'
+import { UnavailableRunsHeader, UnavailableRunsPanel } from './UnavailableRuns.tsx'
 import { NS, da, en, type Key } from './locales.ts'
 declare module '@deepseek-ai/dsh-client-ui-slots' { interface LocaleNamespaceMap { 'conductor-child': Key } }
 type Owner = PropsRuntime<'subagent.catalog.content'>
@@ -19,4 +22,10 @@ export const inject = ['slots', 'locale']
 export function apply(ctx: ClientContext): void {
   ctx.effect(()=>ctx.locale.register(NS,{ da,en }), 'conductor-child: locale')
   ctx.slots.inject('subagent.catalog.content',()=>ctx.slots.register({ name:'subagent.catalog.content',select:selectChild,locale:NS },Content))
+  ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
+    name: 'conversation.session.header.actions', id: 'conductor-unavailable', order: -5, locale: NS,
+  }, UnavailableRunsHeader))
+  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+    name: 'conversation.input.dock', id: 'conductor-unavailable', order: 5, locale: NS,
+  }, UnavailableRunsPanel))
 }

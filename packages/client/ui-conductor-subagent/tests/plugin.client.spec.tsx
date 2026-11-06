@@ -11,7 +11,34 @@ import * as host from '../src/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { da, en } from '../src/client/locales.ts'
 import { Content } from '../src/client/Content.tsx'
+import { UnavailableRunsHeader, UnavailableRunsPanel } from '../src/client/UnavailableRuns.tsx'
 afterEach(cleanup)
+
+it.each([
+  [da, 'kan ikke genoptages (format 4)', 'kan ikke genoptages (ukendt format)'],
+  [en, 'cannot be resumed (format 4)', 'cannot be resumed (unknown format)'],
+] as const)('shows read-only unavailable runs in the Conductor panel and session header', (dictionary, known, unknown) => {
+  const props = { sessionId: 'synthetic' as SessionId, t: makeTranslate(dictionary),
+    useSessions: (select: (state: unknown) => unknown) => select({ byId: { synthetic: { projectionValues: {
+      conductorUnavailableRuns: { 'CON-2026-0004': { format: 4 }, 'CON-2026-0005': { format: null } },
+    } } } }),
+  } as unknown as Parameters<typeof UnavailableRunsPanel>[0]
+  const panel = render(<UnavailableRunsPanel {...props} />)
+  expect(panel.getByRole('region').textContent).toContain(known)
+  expect(panel.getByRole('region').textContent).toContain(unknown)
+  expect(panel.container.querySelector('button')).toBeNull()
+  const header = render(<UnavailableRunsHeader {...props} />)
+  expect(header.getByRole('status').textContent).toContain(known)
+  expect(header.getByRole('status').textContent).toContain(unknown)
+})
+
+it('shows no unavailable-run chrome when the session has no matching projection', () => {
+  const props = { sessionId: 'synthetic' as SessionId, t: makeTranslate(en),
+    useSessions: (select: (state: unknown) => unknown) => select({ byId: {} }),
+  } as unknown as Parameters<typeof UnavailableRunsPanel>[0]
+  expect(render(<UnavailableRunsPanel {...props} />).container.textContent).toBe('')
+  expect(render(<UnavailableRunsHeader {...props} />).container.textContent).toBe('')
+})
 
 it.each([da, en])('renders validated findings and all model text literally', (dictionary) => {
   const text = '<script>alert("finding")</script> [external](https://example.invalid)'

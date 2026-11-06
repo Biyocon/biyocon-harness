@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
-import { ConductorRunId, QualityCommandId, SessionConductorRunStore, applyScriptedOwnerAnswer, consumeOwnerContinuation, contentHash, createRun, executionBaselineHash, ownerMandateHash, parseRun, parkOwnerQuestion, recordGate, serializeRun, validateResumable } from '../src/index.ts'
+import { ConductorRunId, QualityCommandId, SessionConductorRunStore, applyScriptedOwnerAnswer, consumeOwnerContinuation, contentHash, createRun, executionBaselineHash, inspectRunRecord, ownerMandateHash, parseRun, parkOwnerQuestion, recordGate, resumeRun, serializeRun, validateResumable } from '../src/index.ts'
 import { validateIntakeHistory } from '../src/intake-history.ts'
 import type { ConductorRun } from '../src/index.ts'
 import { analysisReply, analysisRun, implementationAdmission } from './intake-fixtures.ts'
@@ -41,6 +41,31 @@ describe('owner-ledger durable records' , () => {
     expect(parseRun(serializeRun(initial()))).toEqual(initial())
   })
 
+  it('keeps a format-4 run untouched while a distinct new run is saved', async () => {
+    const session = Session.create(SessionId('owner-root'))
+    const store = new SessionConductorRunStore(session, () => Promise.resolve())
+    const oldId = ConductorRunId('CON-2026-0037')
+    const oldRecord = JSON.stringify({ recordFormatVersion: 4, privatePayload: 'synthetic secret' })
+    session.append('conductor/checkpoint', { runId: oldId, record: oldRecord })
+    await expect(store.load(oldId)).rejects.toThrow('cannot be resumed (format 4)')
+    await expect(resumeRun(store, oldId)).rejects.toThrow('cannot be resumed (format 4)')
+    const fresh = { ...initial(), runId: ConductorRunId('CON-2026-0038') }
+    await store.save(fresh)
+    await expect(store.load(fresh.runId)).resolves.toEqual(fresh)
+    expect(session.events.find(event => event.type === 'conductor/checkpoint')?.data.record).toBe(oldRecord)
+  })
+
+  it('reports unknown format without exposing malformed or nonsensical records', async () => {
+    const runId = ConductorRunId('CON-2026-0037')
+    for (const record of ['42', 'null', '[]', '{}', '{"recordFormatVersion":1.5}']) {
+      expect(inspectRunRecord(runId, record)).toEqual({ kind: 'unavailable', format: null })
+    }
+    const session = Session.create(SessionId('owner-root'))
+    session.append('conductor/checkpoint', { runId, record: '{synthetic private bytes' })
+    const store = new SessionConductorRunStore(session, () => Promise.resolve())
+    await expect(store.load(runId)).rejects.toThrow('cannot be resumed (format unknown)')
+  })
+
   it('binds checkpoints to the actual parent session and keyed run identity', async () => {
     const session = Session.create(SessionId('owner-root'))
     const store = new SessionConductorRunStore(session, () => Promise.resolve())
@@ -51,10 +76,10 @@ describe('owner-ledger durable records' , () => {
       .rejects.toThrow('another owning root session')
     session.append('conductor/checkpoint', { runId: run.runId,
       record: serializeRun({ ...run, ownerSessionId: SessionId('foreign-root') }) })
-    expect(() => store.load(run.runId)).toThrow('does not match its owning root session and run id')
+    await expect(store.load(run.runId)).rejects.toThrow('cannot be resumed (format 5)')
     session.append('conductor/checkpoint', { runId: run.runId,
       record: serializeRun({ ...run, runId: ConductorRunId('CON-2026-0038') }) })
-    expect(() => store.load(run.runId)).toThrow('does not match its owning root session and run id')
+    await expect(store.load(run.runId)).rejects.toThrow('cannot be resumed (format 5)')
   })
 
   it.each(['implementation', 'analysis'] as const)('retains %s owner questions and reserved continuations across restart', async (purpose) => {

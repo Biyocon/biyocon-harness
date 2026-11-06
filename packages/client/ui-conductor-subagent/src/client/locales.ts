@@ -32,6 +32,9 @@ export const da = {
   'status.completed': 'færdig',
   'status.failed': 'fejlet',
   'status.running': 'kører',
+  'unavailable': 'kan ikke genoptages (format {format})',
+  'unavailable.unknown': 'kan ikke genoptages (ukendt format)',
+  'unavailable.title': 'Conductor-kørslen',
 } as const
 /** Dictionary keys shared by both supported locales. */
 export type Key = keyof typeof da
@@ -67,4 +70,7 @@ export const en: Record<Key, string> = {
   'status.completed': 'completed',
   'status.failed': 'failed',
   'status.running': 'running',
+  'unavailable': 'cannot be resumed (format {format})',
+  'unavailable.unknown': 'cannot be resumed (unknown format)',
+  'unavailable.title': 'Conductor run',
 }

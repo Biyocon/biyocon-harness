@@ -3,7 +3,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import { boot, installFailLoud, resolveConfigPath } from '@deepseek-ai/dsh-app-boot'
 import { runFixtureTurn } from '@deepseek-ai/dsh-loader-smoke'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import { ConductorRunId } from '@deepseek-ai/dsh-conductor'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-presets'
 import type {} from '../../../../packages/conductor/tool-conductor/src/owner-controller.ts'
@@ -18,9 +19,18 @@ try {
   const agentOptions = { provider: 'conductor-installed', model: 'conductor-installed' }
   const setup = (agentCtx: Context) => runtime.agentPresets.mount(agentCtx, 'conductor').then(() => undefined)
   if (process.env.DSH_CONDUCTOR_RESUME_RUN_ID === undefined) {
+    const seed = process.env.DSH_CONDUCTOR_OLD_RECORD === '1' ? (() => {
+      const session = Session.create(SessionId('conductor-installed-parent'))
+      session.append('user/message', createUserMessage({ source: { kind: 'user' },
+        content: [{ type: 'text', text: 'Synthetic earlier question.' }] }), { surfaceOp: 'append' })
+      session.append('conductor/checkpoint', { runId: ConductorRunId('CON-2026-0004'),
+        record: JSON.stringify({ recordFormatVersion: 4 }) })
+      return session.events
+    })() : undefined
     await runtime.agents.create({
       sessionId: SessionId('conductor-installed-parent'),
       meta: { cwd: process.cwd(), agentPreset: 'conductor' }, agentOptions, setup,
+      ...seed === undefined ? {} : { seed },
     })
   } else {
     await runtime.agents.resume({ resumeSessionId: SessionId('conductor-installed-parent'), agentOptions, setup })

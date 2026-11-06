@@ -27,7 +27,7 @@ import type {
   QualityExecutorStage,
   QualityPolicyStage,
 } from './types.ts'
-import type { Session } from '@deepseek-ai/dsh-session'
+import type { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { isValidRunId } from './run-id.ts'
 import { executionBaselineHash, executionEffectProfile } from './quality.ts'
 import { CONDUCTOR_RECORD_FORMAT_VERSION } from './state.ts'
@@ -44,6 +44,47 @@ export interface ConductorCheckpointData {
   runId: ConductorRunId
   /** Serialized run snapshot, or null when the key was deleted. */
   record: string | null
+}
+
+/** A saved run that can be displayed as unavailable but cannot be used. */
+export interface UnavailableConductorRun {
+  readonly kind: 'unavailable'
+  readonly format: number | null
+}
+
+/** Result of inspecting a checkpoint without granting resume authority. */
+export type InspectedConductorRun = { readonly kind: 'current'; readonly run: ConductorRun } | UnavailableConductorRun
+
+/** Safe, actionable failure for every operation that loads an unusable run. */
+export class ConductorRunUnavailableError extends Error {
+  constructor(readonly runId: ConductorRunId, readonly format: number | null) {
+    super(`Conductor run ${JSON.stringify(runId)} cannot be resumed (format ${format ?? 'unknown'}): its saved record is unsupported or invalid. Start a new run with a new runId.`)
+  }
+}
+
+/** Read only the format number needed for presentation and redacted diagnostics. */
+function storedRecordFormat(json: string): number | null {
+  let value: unknown
+  try { value = JSON.parse(json) } catch { return null }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+  const format: unknown = (value as Record<string, unknown>)['recordFormatVersion']
+  return typeof format === 'number' && Number.isSafeInteger(format) ? format : null
+}
+
+/**
+ * Inspect a logged checkpoint for read-only presentation; actions still use the strict store.
+ * @param runId - keyed checkpoint identity.
+ * @param record - serialized checkpoint without publication to diagnostics.
+ * @param ownerSessionId - owning root when read from an agent session.
+ * @returns current run or safe unavailable metadata.
+ */
+export function inspectRunRecord(runId: ConductorRunId, record: string, ownerSessionId?: SessionId): InspectedConductorRun {
+  let run: ConductorRun
+  try { run = parseRun(record) } catch { return { kind: 'unavailable', format: storedRecordFormat(record) } }
+  if (run.runId !== runId || ownerSessionId !== undefined && run.ownerSessionId !== null && run.ownerSessionId !== ownerSessionId) {
+    return { kind: 'unavailable', format: storedRecordFormat(record) }
+  }
+  return { kind: 'current', run }
 }
 
 declare module '@deepseek-ai/dsh-session/types' {
@@ -406,10 +447,9 @@ export class SessionConductorRunStore implements ConductorRunStore {
       const event = this.session.events[index]
       if (event?.type !== 'conductor/checkpoint' || event.data.runId !== runId) continue
       if (event.data.record === null) return Promise.resolve(undefined)
-      const run = parseRun(event.data.record)
-      if (run.runId !== runId || run.ownerSessionId !== null && run.ownerSessionId !== this.session.id) {
-        throw new Error('Conductor checkpoint does not match its owning root session and run id')
-      }
+      const inspected = inspectRunRecord(runId, event.data.record, this.session.id)
+      if (inspected.kind === 'unavailable') return Promise.reject(new ConductorRunUnavailableError(runId, inspected.format))
+      const run = inspected.run
       return Promise.resolve(replayOwnerInteractions(run, this.session.events.slice(index + 1)))
     }
     return Promise.resolve(undefined)
