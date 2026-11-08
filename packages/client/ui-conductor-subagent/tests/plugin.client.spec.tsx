@@ -14,6 +14,30 @@ import { Content } from '../src/client/Content.tsx'
 import { UnavailableRunsHeader, UnavailableRunsPanel } from '../src/client/UnavailableRuns.tsx'
 afterEach(cleanup)
 
+it('registers both unavailable-run slots with stable placement and locale', async () => {
+  const ctx = new Context()
+  await ctx.plugin(SlotRegistry)
+  const removeLocale = vi.fn()
+  ctx.provide('locale', { register: () => removeLocale } as never)
+  ctx.slots.register({ name: 'root', children: {
+    'conversation.session.header.actions': { kind: 'list', scope: 'session' },
+    'conversation.input.dock': { kind: 'list', scope: 'session' },
+  } } as never, () => null)
+  const fiber = await ctx.plugin({ inject, apply })
+  const slots = [
+    ['conversation.session.header.actions', UnavailableRunsHeader, -5],
+    ['conversation.input.dock', UnavailableRunsPanel, 5],
+  ] as const
+  for (const [name, component, order] of slots) {
+    expect(ctx.slots.entries(name)).toMatchObject([{
+      component, options: { id: 'conductor-unavailable', order }, locale: 'conductor-child',
+    }])
+  }
+  await fiber.dispose()
+  for (const [name] of slots) expect(ctx.slots.entries(name)).toHaveLength(0)
+  expect(removeLocale).toHaveBeenCalledOnce()
+})
+
 it.each([
   [da, 'kan ikke genoptages (format 4)', 'kan ikke genoptages (ukendt format)'],
   [en, 'cannot be resumed (format 4)', 'cannot be resumed (unknown format)'],
