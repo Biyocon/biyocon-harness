@@ -39,6 +39,10 @@ The historical `packages/extensions/tool-cordis/src/api-catalog.ts`, `packages/e
 | `packages/bundle/web-app/cordis.patch.yml` | The shipped Web bundle unconditionally mounts `@deepseek-ai/dsh-client-ui-conductor-subagent` as `ui-conductor-subagent` ([#45](https://github.com/Biyocon/biyocon-harness/pull/45)). | Move the UI mount to the optional Conductor bundle alongside its host presentation mount. |
 | `packages/bundle/web-app/package.json` | Requires the Conductor UI plugin for that Web-bundle mount ([#45](https://github.com/Biyocon/biyocon-harness/pull/45)). | Move the dependency to the optional Conductor bundle so the generic Web bundle can load without Conductor. |
 | `packages/client/ui-user-questions/package.json`; `packages/client/ui-user-questions/tsconfig.json` | The shared question UI has a Conductor peer/dev dependency and a TypeScript project reference to `packages/conductor/conductor` ([#54](https://github.com/Biyocon/biyocon-harness/pull/54)). | Move owner-specific components and their dependency/reference to a separate Conductor UI plugin; keep generic questions free of Conductor imports. |
+| `tsconfig.base.json` | Source path aliases resolve Conductor types and the Conductor UI plugin; invariant and source include globs also cover `packages/conductor/*`. | Remove Conductor-specific aliases and globs from the host compiler configuration; compile the extracted packages through their own project configuration. |
+| `tsconfig.client.json` | References the `ui-conductor-subagent` project in the generic client build. | Move that project reference to the optional Conductor UI build. |
+| `tsconfig.host.json` | References all three Conductor projects and includes Conductor browser tests in the generic host program. | Move project references and test inclusion to the plugin integration build. |
+| `examples/package.json` | Makes `dsh-conductor`, `dsh-conductor-presets` and `dsh-tool-conductor` mandatory example-workspace dependencies. | Put Conductor examples and their dependencies in an optional plugin example workspace; keep the generic examples independent. |
 
 ### App-level coupling
 

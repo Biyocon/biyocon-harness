@@ -39,6 +39,10 @@ Biyocon Harness 保持 rc.7 基础；所有者已取消 [#68](https://github.com
 | `packages/bundle/web-app/cordis.patch.yml` | 随产品附带的 Web bundle 无条件以 `ui-conductor-subagent` 安装 `@deepseek-ai/dsh-client-ui-conductor-subagent`（[#45](https://github.com/Biyocon/biyocon-harness/pull/45)）。 | 把 UI 安装行与宿主呈现行一起移入可选 Conductor bundle。 |
 | `packages/bundle/web-app/package.json` | 为该 Web bundle 安装声明 Conductor UI 插件依赖（[#45](https://github.com/Biyocon/biyocon-harness/pull/45)）。 | 把依赖移入可选 Conductor bundle，使通用 Web bundle 无需 Conductor 也能加载。 |
 | `packages/client/ui-user-questions/package.json`; `packages/client/ui-user-questions/tsconfig.json` | 共享提问 UI 对 Conductor 有 peer/dev 依赖及指向 `packages/conductor/conductor` 的 TypeScript 项目引用（[#54](https://github.com/Biyocon/biyocon-harness/pull/54)）。 | 把 owner 专属组件连同依赖和引用移到独立 Conductor UI 插件，使通用提问包不导入 Conductor。 |
+| `tsconfig.base.json` | 源码路径别名解析 Conductor 类型和 Conductor UI 插件；不变量及源码包含通配符也覆盖 `packages/conductor/*`。 | 从宿主编译配置移除 Conductor 专属别名和通配符；通过独立项目配置编译提取出的包。 |
+| `tsconfig.client.json` | 通用客户端构建引用 `ui-conductor-subagent` 项目。 | 将该项目引用移至可选的 Conductor UI 构建。 |
+| `tsconfig.host.json` | 通用宿主程序引用三个 Conductor 项目，并纳入 Conductor 浏览器测试。 | 将项目引用和测试纳入项移至插件集成构建。 |
+| `examples/package.json` | 将 `dsh-conductor`、`dsh-conductor-presets` 和 `dsh-tool-conductor` 设为示例工作区的必需依赖。 | 将 Conductor 示例及其依赖移至可选插件示例工作区，使通用示例保持独立。 |
 
 ### App-level coupling
 
