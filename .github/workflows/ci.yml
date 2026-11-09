@@ -14,6 +14,7 @@ on:
         options:
           - larger-runner-benchmark
           - consolidated-runner-benchmark
+          - full-validation
 
 # Cancel a superseded run on every event EXCEPT push. A push run carries the two
 # self-hosted standby drills, which take longer than the interval between master
@@ -65,7 +66,7 @@ jobs:
   # serial-linux-selfhosted standby lane below. The Windows failover switch is
   # the separate DSH_CI_FAILOVER_WINDOWS variable on the windows-native job below.
   node-24:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full-validation')
     runs-on: >-
       ${{ github.event.pull_request.head.repo
           && toJSON(github.event.pull_request.head.repo.id) == github.repository_id
@@ -119,10 +120,15 @@ jobs:
       - name: Run static gates
         env:
           DSH_ARCHIVE_BASE_REF: ${{ github.event.pull_request.base.sha }}
-        run: pnpm run check:ci:static
+        run: |
+          if [ -z "$DSH_ARCHIVE_BASE_REF" ]; then
+            DSH_ARCHIVE_BASE_REF="$(git rev-parse --verify 'HEAD^')"
+            export DSH_ARCHIVE_BASE_REF
+          fi
+          pnpm run check:ci:static
 
   node-24-coverage:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full-validation')
     runs-on: >-
       ${{ github.event.pull_request.head.repo
           && toJSON(github.event.pull_request.head.repo.id) == github.repository_id
@@ -192,7 +198,7 @@ jobs:
         run: pnpm run check:ci:coverage
 
   node-24-consumers:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full-validation')
     runs-on: >-
       ${{ github.event.pull_request.head.repo
           && toJSON(github.event.pull_request.head.repo.id) == github.repository_id
@@ -280,7 +286,7 @@ jobs:
 
 
   node-compat:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full-validation')
     # Each compatibility contract receives an independent standard hosted job.
     runs-on: ${{ matrix.runner }}
     name: ${{ matrix.name }}
@@ -318,7 +324,7 @@ jobs:
         run: pnpm run check:node-compat
 
   python-sdk:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full-validation')
     runs-on: ubuntu-latest
     name: python 3.10 / keyless SDK
     steps:
@@ -340,7 +346,7 @@ jobs:
   # The reusable builder owns the executable, snapshot, wheel, clean-install,
   # GLIBC, and manylinux checks; release validation retains all native targets.
   python-runtime:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full-validation')
     name: python runtime / release-shaped Linux x64
     uses: ./.github/workflows/build-exe-for-python-sdk.yml
     with:
@@ -358,7 +364,7 @@ jobs:
   # Current topology and fidelity limits live in
   # .agents/notes/implemented/process/2026-08-08-native-windows-pull-request-ci.md
   windows:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full-validation')
     runs-on: ubuntu-latest
     name: windows node 24 / wine blocking
     timeout-minutes: 15
@@ -438,7 +444,7 @@ jobs:
   # DSH_CI_FAILOVER_LINUX variable that retargets the three required Linux jobs
   # and the all-checks-passed verdict above.
   windows-native:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full-validation')
     runs-on: >-
       ${{ github.event.pull_request.head.repo
           && toJSON(github.event.pull_request.head.repo.id) == github.repository_id
@@ -933,7 +939,7 @@ jobs:
           || 'ubuntu-latest')
           || 'ubuntu-24.04' }}
     needs: [node-24, node-24-coverage, node-24-consumers, node-compat, python-sdk, python-runtime, windows]
-    if: always() && github.event_name == 'pull_request'
+    if: always() && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full-validation'))
     steps:
       - name: Fail if any needed job did not succeed
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
@@ -942,3 +948,16 @@ jobs:
           exit 1
       - name: All checks passed
         run: echo "All needed jobs succeeded (${{ join(needs.*.result, ', ') }})"
+
+  full-validation-verdict:
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.suite == 'full-validation'
+    runs-on: ubuntu-24.04
+    needs: [all-checks-passed, windows-native]
+    steps:
+      - name: Require complete CI including native Windows
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: |
+          echo "::error::Full validation job results: ${{ join(needs.*.result, ', ') }}"
+          exit 1
+      - name: Full validation passed
+        run: echo "Required CI and native Windows succeeded (${{ join(needs.*.result, ', ') }})"
