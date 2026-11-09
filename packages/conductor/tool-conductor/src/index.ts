@@ -14,6 +14,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {
   ConductorRunId,
+  ConductorRunUnavailableError,
   QualityCommandId,
   createRun,
   drive,
@@ -1010,9 +1011,18 @@ export function apply(ctx: Context, config: Config): void {
             ...call.planSources === undefined ? {} : { planSources: call.planSources },
           }, materials)
           if (Buffer.byteLength(JSON.stringify(admission)) > resolved.maxMaterialTotalBytes) throw new Error('Conductor admission exceeds maxMaterialTotalBytes')
-          let runId = mintRunId()
-          for (let attempt = 0; attempt < 8 && (await store.load(runId)) !== undefined; attempt += 1) {
+          let runId: ConductorRunId
+          for (let attempt = 0; ; attempt += 1) {
             runId = mintRunId()
+            let occupied: boolean
+            try {
+              occupied = (await store.load(runId)) !== undefined
+            } catch (error) {
+              if (!(error instanceof ConductorRunUnavailableError)) throw error
+              occupied = true
+            }
+            if (!occupied) break
+            if (attempt === 8) throw new Error('Unable to mint an unused Conductor runId after 9 attempts')
           }
           run = createRun(runId, {
             admission,

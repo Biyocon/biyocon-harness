@@ -7,6 +7,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { boot, healProfilesModuleFallback, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
 import { provideCmdline } from '@deepseek-ai/dsh-cmdline'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import { ConductorRunId } from '@deepseek-ai/dsh-conductor'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -158,6 +159,22 @@ beforeAll(async () => {
 }, 120_000)
 
 describe('the shipped Web composition', () => {
+  it('presents unavailable runs through the base bundle before a Conductor preset mounts', async () => {
+    const projections = ctx.get('sessionProjections')
+    if (projections === undefined) throw new Error('the Web composition must compose a projection registry')
+    const handle = await ctx.agents.create({ sessionId: SessionId('preset-old-conductor'),
+      setup: agentCtx => ctx.agentPresets.mount(agentCtx, 'minimal').then(() => undefined) })
+    try {
+      handle.agent.session.append('conductor/checkpoint', {
+        runId: ConductorRunId('CON-2026-0004'), record: JSON.stringify({ recordFormatVersion: 4 }),
+      })
+      expect(projections.snapshot(handle.agent.session).values.conductorUnavailableRuns)
+        .toEqual({ 'CON-2026-0004': { format: 4 } })
+    } finally {
+      await handle.dispose()
+    }
+  })
+
   it('leaves the global tool layer empty', () => {
     // Every model-facing tool belongs to a preset, `ask_user_question`
     // included: a tool in the global layer reaches EVERY agent regardless of

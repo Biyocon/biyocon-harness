@@ -9,7 +9,7 @@ import { ownerQuestionIntent, ownerQuestionResponse } from './owner-presentation
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
-import { applyScriptedOwnerAnswer, publishOwnerAcknowledgement, consumeOwnerContinuation, decodeOwnerInteractionEvent, effectiveOwnerMandate, parseRun, pendingOwnerResumePlan, SessionConductorRunStore } from '@deepseek-ai/dsh-conductor'
+import { applyScriptedOwnerAnswer, publishOwnerAcknowledgement, consumeOwnerContinuation, decodeOwnerInteractionEvent, effectiveOwnerMandate, inspectRunRecord, pendingOwnerResumePlan, SessionConductorRunStore } from '@deepseek-ai/dsh-conductor'
 import { isDeepStrictEqual } from 'node:util'
 import type { ConductorRun, ConductorRunId, ScriptedOwnerResponse } from '@deepseek-ai/dsh-conductor'
 import { OwnerReservations } from './owner-reservation.ts'
@@ -104,13 +104,19 @@ export class ConductorOwnerController {
 
   constructor(private readonly ctx: Context, private readonly productionQuestions = false) {
     ctx.on('agent/created', ({ agent }) => {
-      if (!this.productionQuestions || !this.ctx.agents.roots().includes(agent)) return
+      if (!this.ctx.agents.roots().includes(agent)) return
       const latest = new Set<string>()
       for (const event of agent.session.events.toReversed()) {
         if (event.type !== 'conductor/checkpoint' || latest.has(event.data.runId)) continue
         latest.add(event.data.runId)
         if (event.data.record === null) continue
-        const run = parseRun(event.data.record)
+        const inspected = inspectRunRecord(event.data.runId, event.data.record, agent.id)
+        if (inspected.kind === 'unavailable') {
+          this.ctx.logger.warn(`Conductor run ${JSON.stringify(event.data.runId)} cannot be resumed (format ${inspected.format ?? 'unknown'}); saved record is unsupported or invalid`)
+          continue
+        }
+        if (!this.productionQuestions) continue
+        const run = inspected.run
         if (run.status === 'awaiting_owner') { this.offer(agent, run.runId); break }
         const last = run.ownerLedger.at(-1)
         if ((run.status === 'continuation_pending' || run.status === 'aborted')
@@ -306,7 +312,9 @@ export class ConductorOwnerController {
       if (event.type !== 'conductor/checkpoint' || checkpoints.has(event.data.runId)) continue
       checkpoints.add(event.data.runId)
       if (event.data.record === null) continue
-      const run = parseRun(event.data.record)
+      const inspected = inspectRunRecord(event.data.runId, event.data.record, agent.id)
+      if (inspected.kind === 'unavailable') continue
+      const run = inspected.run
       if (run.status === 'awaiting_owner' || run.status === 'continuation_pending') return 'awaiting-owner'
     }
     return undefined
