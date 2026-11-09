@@ -45,6 +45,17 @@ Biyocon Harness 保持 rc.7 基础；所有者已取消 [#68](https://github.com
 | `examples/package.json` | 将 `dsh-conductor`、`dsh-conductor-presets` 和 `dsh-tool-conductor` 设为示例工作区的必需依赖。 | 将 Conductor 示例及其依赖移至可选插件示例工作区，使通用示例保持独立。 |
 | `scripts/gen-persistence-catalog.ts` | `collectLogEvents()` 只扫描 `packages/*/*/src/**/*.ts`，`packageNameFor()` 从仓库内路径推断包所有权。提取后插件的必需事件将缺席于 `known-event-types.ts`，回放时被拒绝。 | 通过显式的已安装插件输入发现事件声明，并从插件包清单确认所有权；为每个装配发行版重新生成严格的已知事件集合。若插件可在宿主构建后安装，则在读取会话前增加经过验证的事件注册步骤；绝不静默接受未知的必需事件。 |
 
+### Repository tooling and examples
+
+| 路径 | 当前耦合 | 插件化后的替代方式 |
+|---|---|---|
+| `scripts/gen-tool-catalog.ts` | 导入并安装 `dsh-tool-conductor`，以生成其工具目录条目。 | 从已安装插件加载目录贡献；移除通用脚本对 Conductor 的直接导入。 |
+| `scripts/gen-cordis-catalog.ts` | 硬编码 Conductor 所有者测试组合值的说明。 | 将说明随插件迁移，或经通用目录元数据提供。 |
+| `scripts/check-workspace-constraints.ts` | 要求 Conductor 发布包包含带哈希的持久化代码块。 | 将此包专属的打包断言移至 Conductor 发布检查。 |
+| `knip.json`; `scripts/ui-locales.spec.ts`; `scripts/translation-pairing.manifest.json` | 指向 Conductor 示例 fixture、内置 preset 元数据和生成的技能资源。 | 将 fixture 与 preset 检查移至插件示例；资源生成迁移时更新通用双语配对排除项。 |
+| `scripts/type-equiv.manifest.json`; `scripts/verify-package-readme-model-experience.ts` | 固定 Conductor 类型到文档的映射以及 Conductor README 例外。 | 将映射和文档检查移至插件文档；移除宿主专属例外。 |
+| `examples/headless-agent/conductor*.cordis.snapshot.yml` | 装配 Conductor 专属回放示例及其 fixture。 | 将其与依赖一并放入可选插件的集成示例。 |
+
 ### App-level coupling
 
 对 `apps/` 的扫描涵盖可执行接线、打包、文档和测试证据。这些是应用装配，而非核心包导入；提取时须搬走或替换，不能让宿主依赖 Conductor。

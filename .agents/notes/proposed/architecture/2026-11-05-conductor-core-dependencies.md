@@ -45,6 +45,17 @@ The historical `packages/extensions/tool-cordis/src/api-catalog.ts`, `packages/e
 | `examples/package.json` | Makes `dsh-conductor`, `dsh-conductor-presets` and `dsh-tool-conductor` mandatory example-workspace dependencies. | Put Conductor examples and their dependencies in an optional plugin example workspace; keep the generic examples independent. |
 | `scripts/gen-persistence-catalog.ts` | `collectLogEvents()` scans only `packages/*/*/src/**/*.ts`, and `packageNameFor()` derives ownership from that in-repo path. An extracted plugin's required events would be absent from `known-event-types.ts` and rejected during replay. | Discover event declarations through explicit installed-plugin inputs, resolve ownership from their package manifests, and regenerate the strict known-event set for each assembled distribution. If plugins can be installed after host build, add a validated event registration step before session read; never silently accept unknown required events. |
 
+### Repository tooling and examples
+
+| Path | Current binding | Plugin extraction |
+|---|---|---|
+| `scripts/gen-tool-catalog.ts` | Imports and mounts `dsh-tool-conductor` to generate its tool catalog entry. | Load catalog contributors from installed plugins; remove the generic script's direct Conductor import. |
+| `scripts/gen-cordis-catalog.ts` | Hard-codes descriptions for Conductor owner test composition values. | Move those descriptions with the plugin or supply them through generic catalog metadata. |
+| `scripts/check-workspace-constraints.ts` | Requires Conductor's hashed persistence chunk in its published package files. | Move this package-specific packaging assertion to the Conductor release checks. |
+| `knip.json`; `scripts/ui-locales.spec.ts`; `scripts/translation-pairing.manifest.json` | Name Conductor example fixtures, built-in preset metadata and generated skill assets. | Move fixture and preset checks with plugin examples; update the generic pairing exclusions when asset generation moves. |
+| `scripts/type-equiv.manifest.json`; `scripts/verify-package-readme-model-experience.ts` | Pin Conductor type-to-doc mappings and Conductor README exceptions. | Move mappings and documentation checks with plugin docs; remove host-only exceptions. |
+| `examples/headless-agent/conductor*.cordis.snapshot.yml` | Assemble Conductor-specific replay examples and their fixtures. | Ship them in the optional plugin integration examples alongside their dependencies. |
+
 ### App-level coupling
 
 The `apps/` scan covers executable wiring, packaging, documentation and test evidence. These are app bindings rather than core-package imports; extraction must move or replace them without making the host depend on Conductor.
