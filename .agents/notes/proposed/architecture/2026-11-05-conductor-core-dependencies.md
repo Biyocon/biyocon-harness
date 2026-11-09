@@ -14,7 +14,7 @@ Keep new Conductor code in `packages/conductor/*` and separate UI plugin package
 
 ### Merged dependencies and planned extension
 
-Entries enumerate non-Conductor source files in the relevant merged PR diffs. Generated API catalogs, READMEs, tests, fixtures, snapshots, example wiring and manifests follow their owning source change and are not independent runtime dependencies. Biyocon-wide branding/localization and unrelated fixes are excluded. The first pass records exact source paths; a future extraction must inspect current target APIs and the full PR diffs before carrying any entry across.
+Entries enumerate non-Conductor source files in the relevant merged PR diffs. Generated catalogs, READMEs, tests, fixtures, snapshots and example wiring follow their owning source change; runtime-consumed catalogs and direct manifest or TypeScript project bindings are recorded below. Biyocon-wide branding/localization and unrelated fixes are excluded. A future extraction must inspect current target APIs and the full PR diffs before carrying any entry across.
 
 | PR | Files outside Conductor packages | Purpose / extraction concern |
 |---|---|---|
@@ -38,6 +38,7 @@ The historical `packages/extensions/tool-cordis/src/api-catalog.ts`, `packages/e
 | `packages/bundle/base/package.json` | Requires `@deepseek-ai/dsh-conductor` for that base-bundle mount. | Make the optional Conductor bundle own the dependency; keep the base bundle Conductor-free. |
 | `packages/bundle/web-app/cordis.patch.yml` | The shipped Web bundle unconditionally mounts `@deepseek-ai/dsh-client-ui-conductor-subagent` as `ui-conductor-subagent` ([#45](https://github.com/Biyocon/biyocon-harness/pull/45)). | Move the UI mount to the optional Conductor bundle alongside its host presentation mount. |
 | `packages/bundle/web-app/package.json` | Requires the Conductor UI plugin for that Web-bundle mount ([#45](https://github.com/Biyocon/biyocon-harness/pull/45)). | Move the dependency to the optional Conductor bundle so the generic Web bundle can load without Conductor. |
+| `packages/client/ui-user-questions/package.json`; `packages/client/ui-user-questions/tsconfig.json` | The shared question UI has a Conductor peer/dev dependency and a TypeScript project reference to `packages/conductor/conductor` ([#54](https://github.com/Biyocon/biyocon-harness/pull/54)). | Move owner-specific components and their dependency/reference to a separate Conductor UI plugin; keep generic questions free of Conductor imports. |
 
 ### App-level coupling
 

@@ -14,7 +14,7 @@ Biyocon Harness 保持 rc.7 基础；所有者已取消 [#68](https://github.com
 
 ### Merged dependencies and planned extension
 
-条目列举相关已合并 PR 中位于 Conductor 包之外的源文件。生成的 API 目录、README、测试、fixture、snapshot、示例接线和清单随其源改动更新，不构成独立运行依赖。排除覆盖整个 Biyocon 的品牌/本地化及无关修复。首版列出准确源路径；未来移植前必须检查目标 API 和完整 PR 差异。
+条目列举相关已合并 PR 中位于 Conductor 包之外的源文件。生成目录、README、测试、fixture、snapshot 和示例接线随其源改动更新；运行时使用的目录及直接清单或 TypeScript 项目绑定列在下文。排除覆盖整个 Biyocon 的品牌/本地化及无关修复。移植前须检查目标 API 和完整 PR 差异。
 
 | PR | Conductor 包之外的文件 | 用途／移植关注点 |
 |---|---|---|
@@ -38,6 +38,7 @@ Biyocon Harness 保持 rc.7 基础；所有者已取消 [#68](https://github.com
 | `packages/bundle/base/package.json` | 为基础 bundle 的安装声明 `@deepseek-ai/dsh-conductor` 依赖。 | 由可选 Conductor bundle 持有该依赖，使基础 bundle 不依赖 Conductor。 |
 | `packages/bundle/web-app/cordis.patch.yml` | 随产品附带的 Web bundle 无条件以 `ui-conductor-subagent` 安装 `@deepseek-ai/dsh-client-ui-conductor-subagent`（[#45](https://github.com/Biyocon/biyocon-harness/pull/45)）。 | 把 UI 安装行与宿主呈现行一起移入可选 Conductor bundle。 |
 | `packages/bundle/web-app/package.json` | 为该 Web bundle 安装声明 Conductor UI 插件依赖（[#45](https://github.com/Biyocon/biyocon-harness/pull/45)）。 | 把依赖移入可选 Conductor bundle，使通用 Web bundle 无需 Conductor 也能加载。 |
+| `packages/client/ui-user-questions/package.json`; `packages/client/ui-user-questions/tsconfig.json` | 共享提问 UI 对 Conductor 有 peer/dev 依赖及指向 `packages/conductor/conductor` 的 TypeScript 项目引用（[#54](https://github.com/Biyocon/biyocon-harness/pull/54)）。 | 把 owner 专属组件连同依赖和引用移到独立 Conductor UI 插件，使通用提问包不导入 Conductor。 |
 
 ### App-level coupling
 
