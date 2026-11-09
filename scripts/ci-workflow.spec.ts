@@ -12,6 +12,7 @@ const publicForkWindowsRunnerSelector = actionExpression(`${trustedPullRequestHe
 const trustedGateConcurrency = actionExpression(`${trustedPullRequestHead} && '8' || '2'`)
 const hostedLinuxSetup = actionExpression(`!(${trustedPullRequestHead}) || vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'`)
 const selfHostedLinuxSetup = actionExpression(`${trustedPullRequestHead} && vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]'`)
+const fullValidationCondition = "github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full-validation')"
 
 describe('CI workflow', () => {
   it('routes only an explicitly trusted pull request head beyond hosted runners', () => {
@@ -146,7 +147,7 @@ describe('CI workflow', () => {
     // Required PR job: Wine on ubuntu-latest, runs wine-windows-gates.sh.
     expect(windows['runs-on']).toBe('ubuntu-latest')
     expect(windows.name).toBe('windows node 24 / wine blocking')
-    expect(windows.if).toBe("github.event_name == 'pull_request'")
+    expect(windows.if).toBe(fullValidationCondition)
     expect(commandSteps.some(step => step.run.includes('wine-windows-gates.sh'))).toBe(true)
     expect(windows.needs).toBeUndefined()
     const wineSteps = windows.steps.filter(isRecord)
@@ -165,7 +166,7 @@ describe('CI workflow', () => {
     expect(windowsNative['runs-on']).toContain('dsh-windows-2025-16core')
     expectRunnerSelector(windowsNative, publicForkWindowsRunnerSelector)
     expect(windowsNative.name).toBe('windows node 24 / native complete')
-    expect(windowsNative.if).toBe("github.event_name == 'pull_request'")
+    expect(windowsNative.if).toBe(fullValidationCondition)
     expect(windowsNative.env).toMatchObject({
       DSH_COVERAGE_MAX_WORKERS: actionExpression(`${trustedPullRequestHead} && '2' || '1'`),
       DSH_COVERAGE_TEST_TIMEOUT_MS: '30000',
@@ -302,8 +303,9 @@ describe('CI workflow', () => {
     // `pull_request` yet IS push-reachable, so matching on the event name alone
     // would silently misclassify it as gated.
     const NOT_PUSH_REACHABLE = new Set([
-      "github.event_name == 'pull_request'",
-      "always() && github.event_name == 'pull_request'",
+      fullValidationCondition,
+      `always() && (${fullValidationCondition})`,
+      "always() && github.event_name == 'workflow_dispatch' && inputs.suite == 'full-validation'",
       "github.event.repository.fork == false && github.event_name == 'workflow_dispatch' && inputs.suite == 'larger-runner-benchmark'",
       "github.event.repository.fork == false && github.event_name == 'workflow_dispatch' && inputs.suite == 'consolidated-runner-benchmark'",
     ])
@@ -334,6 +336,39 @@ describe('CI workflow', () => {
     }
   })
 
+  it('runs the complete PR matrix on manual full validation without making master pushes expensive', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml')
+    const dispatch = workflowEvent(workflow, 'workflow_dispatch')
+    expect(dispatch).toMatchObject({
+      inputs: { suite: { options: ['larger-runner-benchmark', 'consolidated-runner-benchmark', 'full-validation'] } },
+    })
+
+    for (const name of ['node-24', 'node-24-coverage', 'node-24-consumers', 'node-compat', 'python-sdk', 'python-runtime', 'windows', 'windows-native']) {
+      expect(workflowJob(workflow, name).if, name).toBe(fullValidationCondition)
+    }
+    expect(workflowJob(workflow, 'all-checks-passed').if).toBe(`always() && (${fullValidationCondition})`)
+
+    const verdict = workflowJob(workflow, 'full-validation-verdict')
+    expect(verdict).toMatchObject({
+      if: "always() && github.event_name == 'workflow_dispatch' && inputs.suite == 'full-validation'",
+      needs: ['all-checks-passed', 'windows-native'],
+    })
+    expect(verdict.steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        if: "contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')",
+      }),
+    ]))
+
+    const staticJob = workflowJob(workflow, 'node-24')
+    if (!Array.isArray(staticJob.steps)) throw new TypeError('static job must define steps')
+    expect(staticJob.steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: 'Run static gates',
+        env: { DSH_ARCHIVE_BASE_REF: '${{ github.event.pull_request.base.sha || github.sha }}' },
+      }),
+    ]))
+  })
+
   it('keeps supported LSP source under native Windows coverage', () => {
     const config = readFileSync(resolve(root, 'vitest.config.ts'), 'utf8')
 
@@ -351,7 +386,7 @@ describe('CI workflow', () => {
     }
 
     expect(pythonRuntime).toMatchObject({
-      if: "github.event_name == 'pull_request'",
+      if: fullValidationCondition,
       name: 'python runtime / release-shaped Linux x64',
       uses: './.github/workflows/build-exe-for-python-sdk.yml',
       with: {
