@@ -57,6 +57,10 @@ export type InspectedConductorRun = { readonly kind: 'current'; readonly run: Co
 
 /** Safe, actionable failure for every operation that loads an unusable run. */
 export class ConductorRunUnavailableError extends Error {
+  /**
+   * @param runId - identity of the unavailable saved run.
+   * @param format - stored format number, or null when unavailable.
+   */
   constructor(readonly runId: ConductorRunId, readonly format: number | null) {
     super(`Conductor run ${JSON.stringify(runId)} cannot be resumed (format ${format ?? 'unknown'}): its saved record is unsupported or invalid. Start a new run with a new runId.`)
   }

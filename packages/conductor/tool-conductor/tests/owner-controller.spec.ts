@@ -109,7 +109,7 @@ describe('Conductor-owned host answer turns', () => {
     checkpoint.data.record = JSON.stringify({ recordFormatVersion: 4, privatePayload: 'synthetic secret' })
     const logged: string[] = []
     const reopened = await setup(seed, true, undefined, (ctx) => {
-      ctx.logger.exporter({ levels: { default: 3 }, export: (message) => { logged.push(...message.args.map(String)) } })
+      ctx.logger.exporter({ levels: { default: 3 }, export: (message) => { logged.push(JSON.stringify(message.args)) } })
     })
     expect(reopened.agent.session.events.slice(0, seed.length)).toEqual(seed)
     expect(reopened.agent.session.events.some(event => event.type === 'user/message'
@@ -132,9 +132,10 @@ describe('Conductor-owned host answer turns', () => {
     checkpoint.data.record = '{synthetic private bytes'
     const logged: string[] = []
     await setup(seed, false, undefined, (ctx) => {
-      ctx.logger.exporter({ levels: { default: 3 }, export: (message) => { logged.push(...message.args.map(String)) } })
+      ctx.logger.exporter({ levels: { default: 3 }, export: (message) => { logged.push(JSON.stringify(message.args)) } })
     })
-    expect(logged.join('\n')).toContain(`Conductor run "${original.run.runId}" cannot be resumed (format unknown)`)
+    expect(logged.join('\n')).toContain(original.run.runId)
+    expect(logged.join('\n')).toContain('cannot be resumed (format unknown)')
     expect(logged.join('\n')).not.toContain('synthetic private bytes')
   })
   it('cancels identical-answer receipt recovery without dispatching or creating another question', async () => {

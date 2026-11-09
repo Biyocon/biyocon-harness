@@ -4,7 +4,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import {
-  ConductorRunId, createRun, executionBaselineHash, executionEffectProfile, conductorChildrenProjection,
+  ConductorRunId, ConductorRunUnavailableError, createRun, executionBaselineHash, executionEffectProfile, conductorChildrenProjection,
   QualityCommandId, ownerMandateHash, recordGate, SessionConductorRunStore,
 } from '@deepseek-ai/dsh-conductor'
 import type { ConductorAdmission, ConductorRun, CapturedReport, QualityCommandBinding } from '@deepseek-ai/dsh-conductor'
@@ -1209,6 +1209,31 @@ describe('dsh-tool-conductor unit boundary', () => {
     expect(created.isError, JSON.stringify(created)).toBe(false)
     expect(load).toHaveBeenCalledTimes(2)
     load.mockRestore()
+
+    const unavailable = await setup()
+    const unavailableLoad = vi.spyOn(SessionConductorRunStore.prototype, 'load')
+      .mockRejectedValueOnce(new ConductorRunUnavailableError(ConductorRunId('CON-2026-0004'), 4))
+    const retry = await execute(unavailable.ctx, baseArgs, unavailable.parent)
+    expect(retry.isError, JSON.stringify(retry)).toBe(false)
+    expect(unavailableLoad).toHaveBeenCalledTimes(2)
+    unavailableLoad.mockRestore()
+
+    const storageFailure = await setup()
+    const failedLoad = vi.spyOn(SessionConductorRunStore.prototype, 'load')
+      .mockRejectedValueOnce(new Error('synthetic storage failure'))
+    const failed = await execute(storageFailure.ctx, baseArgs, storageFailure.parent)
+    expect(failed.isError).toBe(true)
+    expect(JSON.stringify(failed.content)).toContain('synthetic storage failure')
+    failedLoad.mockRestore()
+
+    const exhausted = await setup()
+    const occupiedLoad = vi.spyOn(SessionConductorRunStore.prototype, 'load')
+      .mockRejectedValue(new ConductorRunUnavailableError(ConductorRunId('CON-2026-0004'), 4))
+    const noId = await execute(exhausted.ctx, baseArgs, exhausted.parent)
+    expect(noId.isError).toBe(true)
+    expect(JSON.stringify(noId.content)).toContain('Unable to mint an unused Conductor runId after 9 attempts')
+    expect(occupiedLoad).toHaveBeenCalledTimes(9)
+    occupiedLoad.mockRestore()
 
     const running = await setup()
     const runId = ConductorRunId('CON-2026-0042')

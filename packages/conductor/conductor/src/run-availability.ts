@@ -13,7 +13,7 @@ export const conductorUnavailableRunsProjection: ProjectionDefinition<'conductor
     if (event.type !== 'conductor/checkpoint') return state
     const runId = event.data.runId
     const withoutRun = (): Record<string, UnavailableRunView> =>
-      Object.fromEntries(Object.entries(state).filter(([key]) => key !== runId))
+      Object.hasOwn(state, runId) ? Object.fromEntries(Object.entries(state).filter(([key]) => key !== runId)) : state
     if (event.data.record === null) return withoutRun()
     const inspected = inspectRunRecord(runId, event.data.record)
     return inspected.kind === 'unavailable' ? { ...state, [runId]: { format: inspected.format } } : withoutRun()
