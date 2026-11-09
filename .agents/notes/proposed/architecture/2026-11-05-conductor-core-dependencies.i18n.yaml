@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-11-05-conductor-core-dependencies.md
-2026-11-05-conductor-core-dependencies.md: 5bf3261fc5ecc519215fa029a0caf4238b62f393
-2026-11-05-conductor-core-dependencies.zh.md: ca3f5213d88b61106fa49cb81674d859dee837bd
+2026-11-05-conductor-core-dependencies.md: c58f36c89aced638c2414eabefb2dc4eb443efda
+2026-11-05-conductor-core-dependencies.zh.md: 28ed2dc231dbb4e5dea457d05bb0a5607abb0beb

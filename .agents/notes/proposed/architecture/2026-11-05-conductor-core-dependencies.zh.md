@@ -28,7 +28,7 @@ Biyocon Harness 保持 rc.7 基础；所有者已取消 [#68](https://github.com
 | [#71](https://github.com/Biyocon/biyocon-harness/pull/71) | `packages/interaction/user-questions/src/types.ts`; `packages/client/ui-user-questions/src/client/ConductorOwnerPanel.tsx` | v5 批评者运行的所有者继续元数据和面板呈现；遵循 #54 的移植分界。 |
 | Planned [#75 phase 1](../feature/2026-11-05-conductor-analysis-claim-verification.md) | `packages/core/system-prompt/src/index.ts`; `packages/core/tools/src/index.ts`; `packages/web/tool-web/src/search.ts` (proposed locations) | 通用的类型化 `PromptSection.requiresTools` 与有效工具名称视图，网页指导关联真实能力。尚无代码交付；本清单合并及所有者另行下达任务后，才以独立 PR 实施。 |
 
-历史上的 `packages/extensions/tool-cordis/src/api-catalog.ts`、`packages/extensions/cordis-client-runner/src/client/slot-catalog.ts` 和 `packages/core/session/src/known-event-types.ts` 都是生成投影，而非直接注册。`scripts/gen-persistence-catalog.ts` 从 `SessionEventMap` 声明合并生成事件集合；API 和插槽目录分别供 `cordis_inspect` 与客户端插槽检查器使用，因此提取时须按已安装包重新生成。批评者依赖 #64 的身份和预算保证。现有 `ui-user-questions` 中的所有者 UI 应移入独立插件。
+历史上的 `packages/extensions/tool-cordis/src/api-catalog.ts`、`packages/extensions/cordis-client-runner/src/client/slot-catalog.ts` 和 `packages/core/session/src/known-event-types.ts` 都是生成投影，而非直接注册。`scripts/gen-persistence-catalog.ts` 从 `SessionEventMap` 声明合并生成事件集合；提取时须先完成下述生成器改动，再按已安装包重新生成。API 和插槽目录也须重新生成。批评者依赖 #64 的身份和预算保证。现有 `ui-user-questions` 中的所有者 UI 应移入独立插件。
 
 ### Package/bundle coupling
 
@@ -43,6 +43,7 @@ Biyocon Harness 保持 rc.7 基础；所有者已取消 [#68](https://github.com
 | `tsconfig.client.json` | 通用客户端构建引用 `ui-conductor-subagent` 项目。 | 将该项目引用移至可选的 Conductor UI 构建。 |
 | `tsconfig.host.json` | 通用宿主程序引用三个 Conductor 项目，并纳入 Conductor 浏览器测试。 | 将项目引用和测试纳入项移至插件集成构建。 |
 | `examples/package.json` | 将 `dsh-conductor`、`dsh-conductor-presets` 和 `dsh-tool-conductor` 设为示例工作区的必需依赖。 | 将 Conductor 示例及其依赖移至可选插件示例工作区，使通用示例保持独立。 |
+| `scripts/gen-persistence-catalog.ts` | `collectLogEvents()` 只扫描 `packages/*/*/src/**/*.ts`，`packageNameFor()` 从仓库内路径推断包所有权。提取后插件的必需事件将缺席于 `known-event-types.ts`，回放时被拒绝。 | 通过显式的已安装插件输入发现事件声明，并从插件包清单确认所有权；为每个装配发行版重新生成严格的已知事件集合。若插件可在宿主构建后安装，则在读取会话前增加经过验证的事件注册步骤；绝不静默接受未知的必需事件。 |
 
 ### App-level coupling
 
