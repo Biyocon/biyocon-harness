@@ -10,7 +10,7 @@ The CI workflow runs its complete test matrix on pull requests. On a push to Biy
 
 ## Decision
 
-The existing `workflow_dispatch` suite offers `full-validation`. It runs the same static, coverage, consumer, Node compatibility, Python, Wine, and native Windows jobs as a pull request on the selected ref. The existing `all checks passed` job retains its required PR dependencies; a separate manual verdict also requires native Windows to succeed. The static archive check uses the PR base for pull requests and the selected commit for a manual run. Without a trusted PR head, runner selection stays on GitHub-hosted pools.
+The existing `workflow_dispatch` suite offers `full-validation`. It runs the same static, coverage, consumer, Node compatibility, Python, Wine, and native Windows jobs as a pull request on the selected ref. The existing `all checks passed` job retains its required PR dependencies; a separate manual verdict also requires native Windows to succeed. The static archive check uses the PR base for pull requests and the selected commit's first parent for a manual run, rejecting a commit without a parent. Without a trusted PR head, runner selection stays on GitHub-hosted pools.
 
 Master pushes retain their lightweight job selection. To validate a merged head, dispatch `gh workflow run CI --repo Biyocon/biyocon-harness --ref master -f suite=full-validation` and compare the run's head SHA with the intended master SHA before accepting its result. The workflow's existing run-level concurrency may cancel an in-progress run on the same ref when a manual dispatch starts; the [CI failover runbook](2026-07-26-ci-failover-runbook.md) records that limit.
 

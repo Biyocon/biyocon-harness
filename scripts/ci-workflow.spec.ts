@@ -361,12 +361,14 @@ describe('CI workflow', () => {
 
     const staticJob = workflowJob(workflow, 'node-24')
     if (!Array.isArray(staticJob.steps)) throw new TypeError('static job must define steps')
-    expect(staticJob.steps).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        name: 'Run static gates',
-        env: { DSH_ARCHIVE_BASE_REF: '${{ github.event.pull_request.base.sha || github.sha }}' },
-      }),
-    ]))
+    const staticSteps: unknown[] = staticJob.steps
+    const staticGate = staticSteps.find(step => isRecord(step) && step.name === 'Run static gates')
+    if (!isRecord(staticGate) || typeof staticGate.run !== 'string') throw new TypeError('static gate step is missing')
+    expect(staticGate.env).toEqual({ DSH_ARCHIVE_BASE_REF: '${{ github.event.pull_request.base.sha }}' })
+    expect(staticGate.run).toContain("git rev-parse --verify 'HEAD^'")
+    const checkout = staticSteps.find(step => isRecord(step) && step.uses === 'actions/checkout@v6')
+    if (!isRecord(checkout) || !isRecord(checkout.with)) throw new TypeError('static checkout is missing')
+    expect(checkout.with['fetch-depth']).toBe(0)
   })
 
   it('keeps supported LSP source under native Windows coverage', () => {
