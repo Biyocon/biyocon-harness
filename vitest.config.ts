@@ -253,7 +253,6 @@ export default defineConfig({
         'packages/typert/generator/src/*.ts',
         'packages/host/apiproxy/src/index.ts',
         'packages/host/apiproxy/src/invariant.ts',
-        'packages/host/apiproxy/src/api-proxy.ts',
         // Projection/command round: executor lifecycle branches and the
         // registry's drive tails need the same maturing lanes. TODO(gui):
         // cover and remove with the client test lane above.

@@ -235,12 +235,88 @@ function forwardedSettings(ns: string): HostFrame {
 }
 
 describe('settings domain', () => {
+  it('handles an omitted optional secrets array and a non-Error write rejection', async () => {
+    const ctx = await harness()
+    try {
+      ctx.settings.register(NS, AdapterConfig)
+      const describe = ctx.settings.describe.bind(ctx.settings)
+      vi.spyOn(ctx.settings, 'describe').mockImplementation(options => describe(options).map(({ secrets: _secrets, ...entry }) => entry))
+      const api = createApiProxy(ctx, DEFAULTS)
+      expect(expectOk(await api.settings.describe(request({}))).namespaces[0]?.secrets).toEqual([])
+      vi.spyOn(ctx.settings, 'update').mockRejectedValueOnce('synthetic write rejection')
+      expect(expectErr(await api.settings.update(request({ ns: NS, patch: {} }))))
+        .toMatchObject({ code: 'settings-rejected', message: 'synthetic write rejection' })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('reports a committed write whose namespace owner disappears before the acknowledgement read', async () => {
+    const ctx = await harness()
+    const owner = ctx.plugin({
+      name: 'synthetic-settings-owner', inject: ['settings'],
+      apply(ownerCtx: Context) { ownerCtx.settings.register(NS, AdapterConfig) },
+    })
+    await owner
+    try {
+      const original = ctx.settings.update.bind(ctx.settings)
+      vi.spyOn(ctx.settings, 'update').mockImplementationOnce(async (...args) => {
+        await original(...args)
+        await owner.dispose()
+      })
+      const api = createApiProxy(ctx, DEFAULTS)
+      const error = expectErr(await api.settings.update(request({ ns: NS, patch: { baseURL: 'https://synthetic.invalid' } })))
+      expect(error).toMatchObject({ code: 'internal', message: `settings namespace "${NS}" was disposed after the update` })
+      expect(ctx.settings.describe({ redactSecrets: true })).toEqual([])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it.each([new Error('synthetic write failure'), 'synthetic provider failure'])(
+    'reports preparation failures without opening a document (%s)', async (cause) => {
+      const ctx = await harness()
+      const openTextFile = vi.fn(() => Promise.resolve())
+      try {
+        const api = createApiProxy(ctx, { ...DEFAULTS, openTextFile })
+        vi.spyOn(ctx.settings, 'prepareDocument').mockRejectedValueOnce(cause)
+        const error = expectErr(await api.settings.openDocument(request({}), new AbortController().signal))
+        expect(error.code).toBe('internal')
+        expect(error.message).toBe(`settings document preparation failed: ${cause instanceof Error ? cause.message : cause}`)
+        expect(openTextFile).not.toHaveBeenCalled()
+      } finally {
+        await ctx.fiber.dispose()
+      }
+    },
+  )
+
+  it('prioritizes cancellation over a document-preparation rejection', async () => {
+    const ctx = await harness()
+    const controller = new AbortController()
+    const openTextFile = vi.fn(() => Promise.resolve())
+    try {
+      const api = createApiProxy(ctx, { ...DEFAULTS, openTextFile })
+      vi.spyOn(ctx.settings, 'prepareDocument').mockImplementationOnce(() => {
+        controller.abort()
+        return Promise.reject(new Error('synthetic preparation failure'))
+      })
+      const error = expectErr(await api.settings.openDocument(request({}), controller.signal))
+      expect(error).toMatchObject({ code: 'cancelled', message: 'settings document preparation was aborted' })
+      expect(openTextFile).not.toHaveBeenCalled()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('reports an actionable error when no settings provider is mounted', async () => {
     const ctx = await harness({ settings: false })
     const api = createApiProxy(ctx, DEFAULTS)
     const error = expectErr(await api.settings.describe(request({})))
     expect(error.code).toBe('internal')
     expect(error.message).toContain('dsh-settings-file')
+    expect(expectErr(await api.settings.openDocument(request({}), new AbortController().signal)).code).toBe('internal')
+    expect(expectErr(await api.settings.update(request({ ns: 'synthetic', patch: {} }))).code).toBe('internal')
+    await ctx.fiber.dispose()
   })
 
   it('describes layered redacted namespaces with their secret slots', async () => {
@@ -578,12 +654,30 @@ describe('settings domain', () => {
 })
 
 describe('credentials domain', () => {
+  it('maps non-Error write rejections for both set and unset', async () => {
+    const ctx = await harness()
+    try {
+      vi.spyOn(ctx.credentials, 'set').mockRejectedValueOnce('synthetic set failure')
+      vi.spyOn(ctx.credentials, 'unset').mockRejectedValueOnce('synthetic unset failure')
+      const api = createApiProxy(ctx, DEFAULTS)
+      expect(expectErr(await api.credentials.set(request({ ref: 'SYNTHETIC', value: 'synthetic' }))))
+        .toMatchObject({ code: 'credential-rejected', message: 'synthetic set failure' })
+      expect(expectErr(await api.credentials.unset(request({ ref: 'SYNTHETIC' }))))
+        .toMatchObject({ code: 'credential-rejected', message: 'synthetic unset failure' })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('reports an actionable error when no credential provider is mounted', async () => {
     const ctx = await harness({ credentials: false })
     const api = createApiProxy(ctx, DEFAULTS)
     const error = expectErr(await api.credentials.describe(request({ refs: ['A'] })))
     expect(error.code).toBe('internal')
     expect(error.message).toContain('dsh-credentials-local')
+    expect(expectErr(await api.credentials.set(request({ ref: 'SYNTHETIC', value: 'synthetic' }))).code).toBe('internal')
+    expect(expectErr(await api.credentials.unset(request({ ref: 'SYNTHETIC' }))).code).toBe('internal')
+    await ctx.fiber.dispose()
   })
 
   it('describes value-free views and flips state through set/unset with frames', async () => {
@@ -618,6 +712,29 @@ describe('credentials domain', () => {
 })
 
 describe('llm domain', () => {
+  it('preserves declared provider metadata and forwards cancellation to discovery without an endpoint', async () => {
+    const ctx = await harness({ configurableProviders: false })
+    try {
+      ctx.llm.registerConfigurableProviders([{
+        provider: 'synthetic', displayName: 'Synthetic', settingsNs: 'synthetic-provider', settingsPath: [], declared: true,
+      }])
+      const signal = new AbortController().signal
+      const seen: Array<AbortSignal | undefined> = []
+      const failure = vi.fn<() => Promise<never>>().mockRejectedValue('synthetic discovery failure')
+      ctx.llm.registerModelDiscovery('synthetic-provider', (options) => {
+        seen.push(options.signal)
+        return failure()
+      })
+      const api = createApiProxy(ctx, DEFAULTS)
+      expect(expectOk(await api.llm.providers(request({}))).providers.find(provider => provider.provider === 'synthetic')?.declared).toBe(true)
+      expect(expectErr(await api.llm.discoverModels(request({ settingsNs: 'synthetic-provider', provider: 'synthetic' }), signal)))
+        .toMatchObject({ code: 'model-discovery-failed', message: 'synthetic discovery failure', details: { settingsNs: 'synthetic-provider' } })
+      expect(seen).toEqual([signal])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('merges the configurable directory with live routes and appends undeclared ones', async () => {
     const ctx = await harness({ configurableProviders: false })
     ctx.llm.registerConfigurableProviders([

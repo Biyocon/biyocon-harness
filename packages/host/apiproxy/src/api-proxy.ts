@@ -1923,7 +1923,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           let providerCallCount = 0
           let providerPageLimit = SESSION_SEARCH_RESULT_LIMIT
           while (authorized.length <= SESSION_SEARCH_RESULT_LIMIT) {
-            if (isAborted(signal)) return cancelled()
             if (providerCallCount >= SESSION_SEARCH_PROVIDER_CALL_LIMIT) {
               throw new Error(
                 `session search provider exceeded the ${SESSION_SEARCH_PROVIDER_CALL_LIMIT}-call work budget`,
@@ -2987,11 +2986,12 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         }
         const queued = presetSwitches.get(sessionId) ?? Promise.resolve()
         const turn = queued.then(swap)
-        presetSwitches.set(sessionId, turn.catch(() => undefined))
+        const retained = turn.catch(() => undefined)
+        presetSwitches.set(sessionId, retained)
         try {
           return await turn
         } finally {
-          if (presetSwitches.get(sessionId) === turn) presetSwitches.delete(sessionId)
+          if (presetSwitches.get(sessionId) === retained) presetSwitches.delete(sessionId)
         }
       },
 

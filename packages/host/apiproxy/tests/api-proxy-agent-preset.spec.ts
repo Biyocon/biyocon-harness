@@ -5,7 +5,7 @@
  * rebuilding it differently would replay tool calls the new agent cannot make.
  */
 
-import { mkdtempSync, realpathSync } from 'node:fs'
+import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -16,12 +16,12 @@ import UserQuestionService from '@deepseek-ai/dsh-user-questions'
 import { RpcId, type RpcRequest } from '../src/api/rpc.ts'
 import type { HostFrame } from '../src/api/events.ts'
 import {
-  InvalidPresetIdError, PresetExistsError, resolveSessionPreset, UnknownPresetError,
+  InvalidPresetIdError, PresetExistsError, PresetMountError, resolveSessionPreset, UnknownPresetError,
 } from '@deepseek-ai/dsh-agent-presets'
 import type {} from '@deepseek-ai/dsh-agent-presets/types'
 import { GoalId } from '@deepseek-ai/dsh-goal'
 import { createApiProxy } from '../src/api-proxy.ts'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 let nextRpc = 0
 function request<P>(payload: P): RpcRequest<P> {
@@ -143,7 +143,327 @@ async function harness(
   return { api, ctx, cwd }
 }
 
+describe('blank session preset switching', () => {
+  it('preserves optional preset catalog and authoring descriptions', async () => {
+    const { api, ctx } = await harness(['standard'])
+    try {
+      const preset = {
+        ...await ctx.agentPresets.resolve('standard'), name: 'Synthetic preset',
+        description: 'Synthetic description', broken: 'Synthetic composition diagnostic',
+      }
+      vi.spyOn(ctx.agentPresets, 'list').mockResolvedValueOnce([preset])
+      expect((await api.agentPresets.list(request({}))).result).toMatchObject({ ok: true, value: { presets: [{
+        name: preset.name, description: preset.description, broken: preset.broken,
+      }] } })
+      vi.spyOn(ctx.agentPresets, 'resolve').mockResolvedValueOnce(preset)
+      expect((await api.agentPresets.read(request({ agentPreset: 'standard' }))).result).toMatchObject({
+        ok: true, value: { name: preset.name, description: preset.description },
+      })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('reports missing preset authoring capabilities without invoking a native opener', async () => {
+    const { api, ctx } = await harness()
+    try {
+      for (const response of [
+        await api.agentPresets.copy(request({ from: 'standard', agentPreset: 'synthetic', name: 'Synthetic' })),
+        await api.agentPresets.remove(request({ agentPreset: 'synthetic' })),
+        await api.agentPresets.openDocument(request({ agentPreset: 'synthetic' }), new AbortController().signal),
+      ]) {
+        expect(response.result).toMatchObject({ ok: false, error: { code: 'agent-preset-not-found' } })
+      }
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('maps an unexpected preset read failure and permits removal of a user preset', async () => {
+    const { api, ctx } = await harness(['standard'], undefined, { userIds: ['standard'] })
+    try {
+      vi.spyOn(ctx.agentPresets, 'read').mockRejectedValueOnce(new Error('synthetic read failure'))
+      expect((await api.agentPresets.read(request({ agentPreset: 'standard' }))).result)
+        .toMatchObject({ ok: false, error: { code: 'internal', message: 'agent preset "standard": Error: synthetic read failure' } })
+      expect((await api.agentPresets.remove(request({ agentPreset: 'standard' }))).result).toEqual({ ok: true, value: {} })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('serializes two choices for the same session and logs their committed order without replacing the agent', async () => {
+    const { api, ctx } = await harness(['standard', 'minimal'])
+    try {
+      const sessionId = SessionId('serial-switch')
+      expect((await api.sessions.create(request({ sessionId }))).result.ok).toBe(true)
+      const agent = ctx.agents.get(sessionId)
+      const gate = Promise.withResolvers<undefined>()
+      const recompose = vi.spyOn(ctx.agentPresets, 'recompose').mockImplementationOnce(async () => {
+        await gate.promise
+        return ctx.agentPresets.resolve('minimal')
+      })
+      const first = api.agentPresets.select(request({ sessionId, agentPreset: 'minimal' }))
+      const second = api.agentPresets.select(request({ sessionId, agentPreset: 'standard' }))
+      await vi.waitFor(() => { expect(recompose).toHaveBeenCalledOnce() })
+      gate.resolve(undefined)
+      expect((await first).result).toMatchObject({ ok: true, value: { agentPreset: 'minimal' } })
+      expect((await second).result).toMatchObject({ ok: true, value: { agentPreset: 'standard' } })
+      expect(ctx.agents.get(sessionId)).toBe(agent)
+      expect(ctx.sessions.get(sessionId)?.events.filter(event => event.type === 'agent-preset/selected')
+        .map(event => event.data.agentPreset)).toEqual(['minimal', 'standard'])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it.each([
+    { error: new UnknownPresetError('minimal', ['standard']), code: 'agent-preset-not-found' },
+    { error: new PresetMountError('minimal', 'synthetic mount failure'), code: 'agent-preset-invalid' },
+    { error: new Error('synthetic mount failure'), code: 'internal' },
+  ])('does not log a rejected $code switch and permits a later valid choice', async ({ error, code }) => {
+    const { api, ctx } = await harness(['standard', 'minimal'])
+    try {
+      const sessionId = SessionId('failed-switch')
+      expect((await api.sessions.create(request({ sessionId }))).result.ok).toBe(true)
+      vi.spyOn(ctx.agentPresets, 'recompose').mockRejectedValueOnce(error)
+      expect((await api.agentPresets.select(request({ sessionId, agentPreset: 'minimal' }))).result)
+        .toMatchObject({ ok: false, error: { code } })
+      expect(ctx.sessions.get(sessionId)?.events.filter(event => event.type === 'agent-preset/selected')).toEqual([])
+      expect((await api.agentPresets.select(request({ sessionId, agentPreset: 'minimal' }))).result.ok).toBe(true)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('recovers the serialization queue after a provider throws a non-stringifiable rejection', async () => {
+    const { api, ctx } = await harness(['standard', 'minimal'])
+    try {
+      const sessionId = SessionId('unexpected-switch-rejection')
+      expect((await api.sessions.create(request({ sessionId }))).result.ok).toBe(true)
+      vi.spyOn(ctx.agentPresets, 'recompose').mockRejectedValueOnce(Object.create(null) as unknown)
+      await expect(api.agentPresets.select(request({ sessionId, agentPreset: 'minimal' }))).rejects.toBeInstanceOf(TypeError)
+      expect((await api.agentPresets.select(request({ sessionId, agentPreset: 'minimal' }))).result.ok).toBe(true)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('does not recompose a started session or an unavailable session', async () => {
+    const { api, ctx } = await harness(['standard', 'minimal'])
+    try {
+      const sessionId = SessionId('started-switch')
+      expect((await api.sessions.create(request({ sessionId }))).result.ok).toBe(true)
+      ctx.sessions.get(sessionId)?.append('turn/start', { turn: 1 })
+      const recompose = vi.spyOn(ctx.agentPresets, 'recompose')
+      expect((await api.agentPresets.select(request({ sessionId, agentPreset: 'minimal' }))).result)
+        .toMatchObject({ ok: false, error: { code: 'agent-preset-locked' } })
+      expect((await api.agentPresets.select(request({ sessionId: SessionId('missing'), agentPreset: 'minimal' }))).result.ok)
+        .toBe(false)
+      expect(recompose).not.toHaveBeenCalled()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('maps an initial composition failure to the same invalid-preset response', async () => {
+    const { api, ctx } = await harness(['standard', 'minimal'])
+    try {
+      vi.spyOn(ctx.agentPresets, 'mount').mockRejectedValueOnce(new PresetMountError('minimal', 'synthetic mount failure'))
+      expect((await api.sessions.create(request({ sessionId: SessionId('bad-mount'), agentPreset: 'minimal' }))).result)
+        .toMatchObject({ ok: false, error: { code: 'agent-preset-invalid', details: { agentPreset: 'minimal' } } })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+})
+
 describe('session.create with an agent preset', () => {
+  it('mints a new identity without scanning persistence for an explicitly requested id', async () => {
+    const list = vi.fn(() => Promise.resolve([]))
+    const { api, ctx } = await harness(['standard'], { list })
+    try {
+      const response = await api.sessions.create(request({}))
+      expect(response.result.ok).toBe(true)
+      if (!response.result.ok) throw new Error('unexpected create refusal')
+      expect(response.result.value.sessionId).toMatch(/^session-[0-9a-f-]+$/)
+      expect(ctx.agents.get(response.result.value.sessionId)).toBeDefined()
+      expect(list).not.toHaveBeenCalled()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('coalesces simultaneous explicit-id creations into one provider call', async () => {
+    const { api, ctx } = await harness(['standard'])
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    try {
+      const original = ctx.agents.create.bind(ctx.agents)
+      const create = vi.spyOn(ctx.agents, 'create').mockImplementationOnce(async (options) => {
+        entered.resolve(undefined)
+        await release.promise
+        return original(options)
+      })
+      const payload = { sessionId: SessionId('same-inflight-id') }
+      const first = api.sessions.create(request(payload))
+      await entered.promise
+      const second = api.sessions.create(request(payload))
+      release.resolve(undefined)
+      expect((await first).result.ok).toBe(true)
+      expect((await second).result.ok).toBe(true)
+      expect(create).toHaveBeenCalledOnce()
+      expect(ctx.agents.list()).toHaveLength(1)
+    } finally {
+      release.resolve(undefined)
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('leaves a provider-published child owned by subagent routing', async () => {
+    const { api, ctx } = await harness(['standard'])
+    try {
+      const original = ctx.agents.create.bind(ctx.agents)
+      vi.spyOn(ctx.agents, 'create').mockImplementationOnce(options => original({
+        ...options, meta: { ...options.meta, origin: 'subagent', parentSession: SessionId('parent') },
+      }))
+      const sessionId = SessionId('provider-child')
+      expect((await api.sessions.create(request({ sessionId }))).result)
+        .toMatchObject({ ok: false, error: { code: 'agent-busy' } })
+      expect(ctx.agents.get(sessionId)?.session.header.origin).toBe('subagent')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('does not echo a disposed agent\'s preset after its creation promise settles', async () => {
+    const { api, ctx } = await harness(['standard'])
+    try {
+      const original = ctx.agents.create.bind(ctx.agents)
+      vi.spyOn(ctx.agents, 'create').mockImplementationOnce(async (options) => {
+        const handle = await original(options)
+        await handle.dispose()
+        return handle
+      })
+      const sessionId = SessionId('disposed-created-agent')
+      expect((await api.sessions.create(request({ sessionId }))).result)
+        .toEqual({ ok: true, value: { sessionId } })
+      expect(ctx.agents.get(sessionId)).toBeUndefined()
+      expect(ctx.sessions.get(sessionId)).toBeDefined()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('refuses an old stored identity with no project without inventing an existingCwd field', async () => {
+    const meta = { version: 0, id: SessionId('stored-without-project'), createdAt: 1 }
+    const { api, ctx } = await harness(['standard'], {
+      list: () => Promise.resolve([meta]), inspect: () => Promise.resolve({ meta, events: [] }),
+    })
+    try {
+      const response = await api.sessions.create(request({ sessionId: meta.id }))
+      expect(response.result).toMatchObject({ ok: false, error: { code: 'session-conflict' } })
+      if (response.result.ok) throw new Error('unexpected legacy adoption')
+      expect(Object.hasOwn(response.result.error.details, 'existingCwd')).toBe(false)
+      expect(ctx.agents.list()).toEqual([])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('rejects a provider that invokes setup without the scoped agent', async () => {
+    const { api, ctx } = await harness(['standard'])
+    try {
+      vi.spyOn(ctx.agents, 'create').mockImplementationOnce(async (options) => {
+        await options.setup?.(ctx)
+        throw new Error('unscoped setup must not return')
+      })
+      const response = await api.sessions.create(request({ sessionId: SessionId('unscoped-setup') }))
+      expect(response.result.ok).toBe(false)
+      if (response.result.ok) throw new Error('unexpected session creation')
+      expect(response.result.error.message).toContain('agent setup has no scoped agent')
+      expect(ctx.agents.list()).toEqual([])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('resumes a persisted identity using its stored project and preset, and refuses a different project', async () => {
+    const sessionId = SessionId('stored-adoption')
+    let storedCwd = ''
+    const header = () => ({ version: 0, id: sessionId, createdAt: 1, cwd: storedCwd, agentPreset: 'minimal' })
+    const { api, ctx, cwd } = await harness(['standard', 'minimal'], {
+      list: () => Promise.resolve([header()]),
+      inspect: () => Promise.resolve({ meta: header(), events: [] }),
+    })
+    storedCwd = cwd
+    try {
+      const resume = vi.spyOn(ctx.agents, 'resume').mockImplementationOnce(async (options) => {
+        const session = ctx.sessions.create(sessionId, { meta: header() })
+        const agent = stubAgent(session)
+        const agentCtx = ctx.extend({ agent })
+        Object.assign(agent, { ctx: agentCtx })
+        await options.setup?.(agentCtx)
+        const unregister = ctx.agents.register(agent)
+        return { agent, dispose: () => { unregister(); return Promise.resolve() } }
+      })
+      expect((await api.sessions.create(request({ sessionId, cwd: join(cwd, 'different'), agentPreset: 'minimal' }))).result)
+        .toMatchObject({ ok: false, error: { code: 'session-conflict' } })
+      expect(resume).not.toHaveBeenCalled()
+      expect((await api.sessions.create(request({ sessionId, cwd, agentPreset: 'minimal' }))).result.ok).toBe(true)
+      expect(resume).toHaveBeenCalledOnce()
+      expect(ctx.sessions.get(sessionId)?.header.agentPreset).toBe('minimal')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('reports a project path that is a file without publishing an agent', async () => {
+    const { api, ctx, cwd } = await harness(['standard'])
+    try {
+      const path = join(cwd, 'not-a-directory')
+      writeFileSync(path, 'synthetic file')
+      const sessionId = SessionId('failed-project')
+      expect((await api.sessions.create(request({ sessionId, cwd: path }))).result)
+        .toMatchObject({ ok: false, error: { code: 'internal' } })
+      expect(ctx.agents.get(sessionId)).toBeUndefined()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it.each(['root-agent', 'child-agent', 'child-session'] as const)(
+    'respects a competing %s publication during a failed create', async (publication) => {
+      const { api, ctx, cwd } = await harness(['standard'])
+      try {
+        const sessionId = SessionId('competing-adoption')
+        vi.spyOn(ctx.agents, 'create').mockImplementationOnce(async (options) => {
+          const session = ctx.sessions.create(sessionId, { meta: {
+            ...options.meta, cwd,
+            ...(publication === 'root-agent' ? {} : { origin: 'subagent' as const, parentSession: SessionId('parent') }),
+          } })
+          if (publication !== 'child-session') {
+            const agent = stubAgent(session)
+            const agentCtx = ctx.extend({ agent })
+            Object.assign(agent, { ctx: agentCtx })
+            await options.setup?.(agentCtx)
+            ctx.agents.register(agent)
+          }
+          throw new Error('synthetic losing creation')
+        })
+        const response = await api.sessions.create(request({ sessionId, cwd }))
+        if (publication === 'root-agent') {
+          expect(response.result.ok).toBe(true)
+          expect(ctx.agents.get(sessionId)?.session).toBe(ctx.sessions.get(sessionId))
+        } else {
+          expect(response.result).toMatchObject({ ok: false, error: { code: 'agent-busy' } })
+          expect(ctx.sessions.get(sessionId)?.header.origin).toBe('subagent')
+        }
+      } finally {
+        await ctx.fiber.dispose()
+      }
+    },
+  )
+
   it('records the resolved preset on the session header', async () => {
     const { api, ctx } = await harness(['standard', 'minimal'])
 
@@ -620,6 +940,42 @@ describe('opening a preset directory', () => {
 })
 
 describe('skills over the layered host registry', () => {
+  it('preserves a user-invocable skill\'s when-to-use guidance', async () => {
+    const { api, ctx } = await harness()
+    try {
+      ctx.provide('skills', { list: () => Promise.resolve([{
+        name: 'synthetic-skill', description: 'Synthetic skill', whenToUse: 'Use for synthetic questions.',
+        invocation: { userInvocable: true, modelInvocable: false },
+      }]) } as never)
+      const session = ctx.sessions.create(SessionId('skill-guidance'), { meta: { cwd: '/synthetic' } })
+      expect((await api.skills.list(request({ sessionId: session.id }))).result).toMatchObject({ ok: true, value: { skills: [{
+        name: 'synthetic-skill', whenToUse: 'Use for synthetic questions.', modelInvocable: false,
+      }] } })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('does not resume missing or project-less sessions and reports a skill provider failure', async () => {
+    const { api, ctx } = await harness()
+    const list = vi.fn(() => Promise.reject(new Error('synthetic skill failure')))
+    ctx.provide('skills', { list } as never)
+    try {
+      expect((await api.skills.list(request({ sessionId: SessionId('missing') }))).result)
+        .toMatchObject({ ok: false, error: { code: 'session-not-found' } })
+      const legacy = ctx.sessions.create(SessionId('legacy-without-project'))
+      expect((await api.skills.list(request({ sessionId: legacy.id }))).result)
+        .toMatchObject({ ok: false, error: { code: 'internal', message: `session "${legacy.id}" has no project cwd` } })
+      const project = ctx.sessions.create(SessionId('project-session'), { meta: { cwd: '/synthetic' } })
+      expect((await api.skills.list(request({ sessionId: project.id }))).result)
+        .toMatchObject({ ok: false, error: { code: 'internal', message: 'skill listing failed: Error: synthetic skill failure' } })
+      expect(list).toHaveBeenCalledOnce()
+      expect(ctx.agents.list()).toEqual([])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('passes the live agent as the view scope to the host registry', async () => {
     const { api, ctx } = await harness(['standard'])
     const seen: unknown[] = []
