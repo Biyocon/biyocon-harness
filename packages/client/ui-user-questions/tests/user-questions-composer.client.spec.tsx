@@ -73,6 +73,41 @@ function answeredEnvelope(rpcId: string, answers: object[]) {
 }
 
 describe('QuestionComposer', () => {
+  it('submits a completed batch from an option with Enter, but leaves incomplete batches and other keys alone', () => {
+    const respond = vi.fn(() => Promise.resolve<RpcReceipt>({ accepted: true }))
+    const carrier = new PendingWait('question', RpcId('keyboard-batch'), SID, {
+      questions: [
+        { id: 'first', question: 'First choice', options: [{ label: 'First' }] },
+        { id: 'second', question: 'Second choice', multiSelect: true, options: [{ label: 'Second' }] },
+      ],
+    }, respond)
+    render(<QuestionComposer matched={carrier} interactions={[carrier]} {...kit} />)
+    fireEvent.click(screen.getByRole('radio', { name: 'First' }))
+    const finalOption = screen.getByRole('checkbox', { name: 'Second' })
+    fireEvent.keyDown(finalOption, { key: 'Enter' })
+    expect(respond).not.toHaveBeenCalled()
+    fireEvent.click(finalOption)
+    fireEvent.keyDown(finalOption, { key: 'ArrowDown' })
+    expect(respond).not.toHaveBeenCalled()
+    const submitted = fireEvent.keyDown(finalOption, { key: 'Enter' })
+    expect(submitted).toBe(false)
+    expect(respond).toHaveBeenCalledExactlyOnceWith(answeredEnvelope('keyboard-batch', [
+      { id: 'first', selected: ['First'] },
+      { id: 'second', selected: ['Second'] },
+    ]))
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Indsender…' }).disabled).toBe(true)
+  })
+
+  it('shows a non-Error cancellation failure and lets the user retry', async () => {
+    const respond = vi.fn().mockRejectedValueOnce('connection unavailable')
+    const { carrier } = wait('cancel-failed', respond)
+    render(<QuestionComposer matched={carrier} interactions={[carrier]} {...kit} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Luk alle spørgsmål' }))
+    expect(await screen.findByText('connection unavailable')).toBeTruthy()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Luk alle spørgsmål' }).disabled).toBe(false)
+    expect(screen.getByRole('radio', { name: '研究潜力型' })).toBeTruthy()
+  })
+
   it('collects single, custom, and multi-select answers before one batch submit', () => {
     const { carrier, respond } = wait()
     render(<QuestionComposer matched={carrier} interactions={[carrier]} {...kit} />)
