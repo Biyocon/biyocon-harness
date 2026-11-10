@@ -95,11 +95,39 @@ function callTool(
 /** Wait until a child's Activation released its handle. */
 async function waitNoActivation(ctx: Context, childId: SessionId): Promise<void> {
   await vi.waitFor(() => {
-    expect(ctx.agents.get(childId)).toBeUndefined()
+    expect(ctx.agents.get(childId)?.id).toBeUndefined()
   }, { timeout: 5_000 })
 }
 
 describe('dsh-tool-subagent-control', () => {
+  it('reports a retained activation without formatting its scoped context', async () => {
+    const { ctx } = await setup([])
+    const handle = await ctx.agents.create({
+      sessionId: SessionId('diagnostic-retained'),
+      agentOptions: { provider: 'mock', model: 'mock' },
+    })
+    const waiting = vi.spyOn(vi, 'waitFor')
+    const pending = waitNoActivation(ctx, handle.agent.id)
+    try {
+      // Inspect the actual polling assertion while the target is still live;
+      // dispose it afterward so this regression does not wait for the timeout.
+      expect(waiting.mock.calls[0]![0]).toThrow(expect.objectContaining({
+        name: 'AssertionError',
+        actual: handle.agent.id,
+        expected: undefined,
+      }))
+      expect(waiting).toHaveBeenCalledWith(expect.any(Function), { timeout: 5_000 })
+    } finally {
+      try {
+        await handle.dispose()
+        await pending
+      } finally {
+        waiting.mockRestore()
+        await ctx.fiber.dispose()
+      }
+    }
+  })
+
   it('registers send_message once, globally, with the two required parameters', async () => {
     const { ctx } = await setup([])
     const schemas = ctx.tools.schemas().filter(schema => schema.name === 'send_message')
