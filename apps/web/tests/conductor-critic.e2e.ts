@@ -59,6 +59,7 @@ it.each([
     await catalog.click()
     const tree = page.getByRole('tree', { name: locale === 'da-DK' ? 'Underagentsessioner' : 'Subagent sessions', exact: true })
     const pendingText = locale === 'da-DK' ? 'kritik afventer' : 'challenge pending'
+    await tree.getByRole('treeitem', { name: new RegExp(pendingText) }).waitFor()
     await expect.poll(() => tree.textContent()).toContain(pendingText)
     expect(await tree.textContent()).toContain(locale === 'da-DK' ? 'producent' : 'producer')
     expect(await tree.textContent()).toContain(locale === 'da-DK' ? 'kritiker' : 'critic')
@@ -82,6 +83,12 @@ it.each([
     await expect.poll(() => events.filter(event => event.type === 'conductor/checkpoint' && event.data.record !== null)
       .map(event => event.type === 'conductor/checkpoint' ? JSON.parse(event.data.record!) as { status: string } : null)
       .at(-1)?.status).toBe(conclusion === 'escalated' ? 'escalated' : 'reported')
+    // The host checkpoint can precede the final child's WebSocket projection.
+    if (conclusion !== 'escalated') {
+      await tree.getByRole('treeitem', {
+        name: /^The Arbiter · (?:attempt 1 completed · Gate G: pass|forsøg 1 færdig · Gate G: bestået) · /,
+      }).waitFor()
+    }
     await compareOrRefreshGolden(join(GOLDENS, `${locale}-${conclusion}-settled.expected.md`),
       await captureStableAria(page, selector, scaffold.workspaceCwd), MODE)
     await page.reload()
