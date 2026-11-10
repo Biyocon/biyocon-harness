@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-11-10-preset-switch-queue-settlement.md
+2026-11-10-preset-switch-queue-settlement.md: af65b1fc1fd3479f17a25483bea694bad67a80dd
+2026-11-10-preset-switch-queue-settlement.zh.md: 9869812de00c0ad0aac34ed62fed17eddb016573

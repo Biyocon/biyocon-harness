@@ -2987,11 +2987,12 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         }
         const queued = presetSwitches.get(sessionId) ?? Promise.resolve()
         const turn = queued.then(swap)
-        presetSwitches.set(sessionId, turn.catch(() => undefined))
+        const retained = turn.catch(() => undefined)
+        presetSwitches.set(sessionId, retained)
         try {
           return await turn
         } finally {
-          if (presetSwitches.get(sessionId) === turn) presetSwitches.delete(sessionId)
+          if (presetSwitches.get(sessionId) === retained) presetSwitches.delete(sessionId)
         }
       },
 
