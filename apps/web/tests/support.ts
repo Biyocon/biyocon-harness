@@ -72,7 +72,7 @@ export function probeFreePort(): Promise<number> {
  * @param name - folder name staged and adopted as the workspace.
  */
 export async function connectFreshWorkspace(page: Page, root: string, name = 'workspace'): Promise<void> {
-  mkdirSync(join(root, name), { recursive: true })
+  mkdirSync(join(root, name, '.git'), { recursive: true })
   await page.getByRole('textbox', { name: 'Choose workspace' }).click()
   const dialog = page.getByRole('dialog', { name: 'Select Workspace Directory' })
   await dialog.waitFor({ timeout: 10_000 })
@@ -96,7 +96,7 @@ export async function connectFreshWorkspace(page: Page, root: string, name = 'wo
  * @param name - directory created under `root` and connected.
  */
 export async function connectFreshWorkspaceDa(page: Page, root: string, name = 'workspace'): Promise<void> {
-  mkdirSync(join(root, name), { recursive: true })
+  mkdirSync(join(root, name, '.git'), { recursive: true })
   await page.getByRole('textbox', { name: 'Vælg arbejdsområde' }).click()
   const dialog = page.getByRole('dialog', { name: 'Vælg arbejdsområdets mappe' })
   await dialog.waitFor({ timeout: 10_000 })

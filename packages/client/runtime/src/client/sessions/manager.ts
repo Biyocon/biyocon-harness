@@ -669,6 +669,14 @@ export class SessionManager {
       // synchronous markDirty keeps the list snapshot same-tick fresh (the
       // store's own any-key channel is microtask-batched).
       this.projectionStore(frame.sessionId).apply(frame.key, frame.value, frame.seq)
+      if (frame.key === 'subagent') {
+        const child = this.summaries.find(summary => summary.sessionId === frame.sessionId)
+        if (child?.origin === 'subagent' && child.parentSessionId !== undefined
+          && (this.selected === child.parentSessionId || this.openCatalogs.has(child.parentSessionId))) {
+          // Creation can publish before the descriptor makes this child enumerable.
+          this.scheduleCatalogRefresh(child.parentSessionId)
+        }
+      }
       this.notifier.markDirty()
       return
     }

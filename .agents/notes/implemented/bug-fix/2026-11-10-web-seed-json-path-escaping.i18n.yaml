@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-11-10-web-seed-json-path-escaping.md
+2026-11-10-web-seed-json-path-escaping.md: 5888b731552640185a7eb3cc842fbefcb10d1111
+2026-11-10-web-seed-json-path-escaping.zh.md: 99b428c16cd8bf0ac95b072abadaaef2a6350267

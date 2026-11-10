@@ -14,8 +14,9 @@
 // Composition divergences from `dsh web`, all deliberate, all via include
 // patches after the shipped bundle layers, over the SAME tree (never a
 // second yml): temp persistenceRoot; host-level skill roots confined to the
-// temp workspace while project skill discovery remains real; agent-instructions
-// disabled (recorded fixtures must not embed this repo's AGENTS.md);
+// temp workspace while project skill discovery remains real; deployment-level
+// agent-instructions disabled, preset instruction discovery bounded by a
+// workspace-local project marker (fixtures must not embed ancestor AGENTS.md);
 // session-title-llm disabled (its fire-and-forget title call would race the
 // loop for the session's replay cursor); webserver pinned to port 0 with the
 // built dist; ordinary keyless modes disable llm-deepseek and fill the open
@@ -352,6 +353,9 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
   Object.assign(process.env, skillRootEnvironment)
   let persistenceRoot: string
   try {
+    // Presets mount their own instruction loader beyond the host overlay's
+    // disabled row. Bound its ancestor walk without suppressing local files.
+    await mkdir(join(workspaceCwd, '.git'))
     persistenceRoot = await mkdtemp(join(tmpdir(), 'dsh-web-e2e-sessions-'))
   } catch (error) {
     const failures: unknown[] = [error]
@@ -695,19 +699,20 @@ export function fixtureUserPrompts(fixtureText: string): string[] {
  * scaffold's workspace. Idempotent, so a caller may realize early (e.g. to
  * price content exactly as the host will fold it) and still pass the result
  * through {@link seedSession}.
- * @param scaffold - the booted scaffold whose workspace the seed targets.
+ * @param scaffold - the workspace the seed targets.
  * @param fixtureText - the committed seed fixture text.
  * @param id - the session id the seed is realized for.
  * @returns the realized fixture text.
  */
-export function realizeSeedFixture(scaffold: WebScaffold, fixtureText: string, id: string): string {
+export function realizeSeedFixture(scaffold: Pick<WebScaffold, 'workspaceCwd'>, fixtureText: string, id: string): string {
+  const escapedCwd = JSON.stringify(scaffold.workspaceCwd).slice(1, -1)
   const realized = fixtureText
-    .split('{{sessionId}}').join(id)
-    .split('{{cwd}}').join(scaffold.workspaceCwd)
+    .split('{{sessionId}}').join(JSON.stringify(id).slice(1, -1))
+    .split('{{cwd}}').join(escapedCwd)
   const fixtureCwd = (JSON.parse(realized.split('\n', 1)[0]!) as { cwd?: string }).cwd
   return fixtureCwd === undefined
     ? realized
-    : realized.split(fixtureCwd).join(scaffold.workspaceCwd)
+    : realized.split(JSON.stringify(fixtureCwd).slice(1, -1)).join(escapedCwd)
 }
 
 export async function seedSession(

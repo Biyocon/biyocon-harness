@@ -9,6 +9,10 @@
 
 ## 这些是 Host 面的测试
 
+录制的种子路径按 JSON 字符串内容替换，包括转义后的 Windows 路径。[种子回归测试](seed-fixture.spec.ts)使用已提交的 seeded-history fixture，验证重复处理保持不变，且不启动浏览器。
+
+每个临时 scaffold 根及英语/丹麦语选择器 helper 创建的工作区都带有 `.git` 根标记。这限制交付 preset 的指令发现，并使项目 skill 发现在所选工作区内进行。工作区内的合成指令继续有效；[组合隔离测试](scaffold-hermetic.e2e.ts)验证真实回放轮次不包含祖先目录指令。需要 Git 操作的场景在该工作区内初始化仓库。
+
 它们在根 `tsconfig.host.json` 中做类型检查，而不在 Client aggregate 中，因为它们直接读取
 Host 服务：`ctx.apiProxy`、Host 侧 `SessionStore`、`ctx.sessionProjectionCache`。运行时驱动
 浏览器并不使一个文件成为 Client 程序的一部分——两个 face 在相同的键上以不同服务合并 cordis
