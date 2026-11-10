@@ -3,6 +3,7 @@
 $Port = 10822
 $StartTimeoutSeconds = 120
 $Checkout = 'C:\Users\Biyocon\biyocon-harness'
+$env:DSH_HOME = "$HOME\.dsh"
 $Url = "http://127.0.0.1:$Port"
 $Host.UI.RawUI.WindowTitle = 'Biyocon Harness Desktop'
 
@@ -32,6 +33,10 @@ function Get-ListenPort([int]$ProcessId) {
 
 if (-not $script:ownsMutex) {
     Exit-Launcher 'Another Biyocon Harness launcher is already starting the server.' 1
+}
+
+if (Get-Process -Name 'DeepSeek Harness' -ErrorAction SilentlyContinue) {
+    Write-Warning 'DeepSeek Harness is running. Both apps may use the same .dsh folder and overwrite credentials or session data. Close the official app before using Biyocon; this launcher does not stop it.'
 }
 
 Write-Host 'Checking if Biyocon Harness is already running...'

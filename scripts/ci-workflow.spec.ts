@@ -177,6 +177,12 @@ describe('CI workflow', () => {
       isRecord(step) && typeof step.run === 'string'
     ))
     expect(nativeCommandSteps.map(step => step.run)).toContain('pnpm run check:ci:windows-complete')
+    const launcherCheck = nativeCommandSteps.find(step => step.name === 'Check Biyocon launcher without starting apps')
+    expect(launcherCheck?.shell).toBe('pwsh')
+    expect(launcherCheck?.run).toContain('scripts/test-start-biyocon-server-detection.ps1')
+    expect(launcherCheck?.run).toContain('scripts/test-start-biyocon-home-warning.ps1')
+    expect(launcherCheck?.run).toContain('powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $test')
+    expect(launcherCheck?.run).toContain('if ($LASTEXITCODE -ne 0) { throw')
 
     // PRs resolve their own image; master seeds only its default-branch scope.
     expect(wineAptCache.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
