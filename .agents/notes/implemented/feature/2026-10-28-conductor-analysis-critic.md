@@ -65,6 +65,8 @@ The owner's two reported runs used 648K and 738K tokens across the four listed r
 
 ## Verification
 
+Browser snapshots await the descriptor-backed pending critic row and, for reported analyses, the completed Arbiter row. Host checkpoints and browser catalog hydration have separate completion times.
+
 Acceptance binds the latest candidate to its validated challenge, exact critic child and attempt, independent audit and Arbiter decision. Any new candidate requires a fresh critique and audit. Durable replay preserves this order, consumed Gate C/E and owner budgets, and the read-only authority of analysis; an owner answer cannot reset a budget or authorize implementation.
 
 The assembled application preserves each child's identity and verdict through live updates and reload. EN/DA text identifies mode, pending or escalated state, conclusion and finding severity without relying on color. Summary, claim and rationale are literal text from the validated challenge bound to that child; neither raw model output nor a previous attempt can supply them.
