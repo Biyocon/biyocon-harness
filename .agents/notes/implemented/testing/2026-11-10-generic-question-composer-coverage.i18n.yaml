@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/testing/2026-11-10-generic-question-composer-coverage.md
+2026-11-10-generic-question-composer-coverage.md: bd8c7cd42be12e79e4e0976b1eda078d7f0d935c
+2026-11-10-generic-question-composer-coverage.zh.md: caf51410b9be344911289efee1678f874c8f3960
