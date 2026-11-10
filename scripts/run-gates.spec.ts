@@ -259,6 +259,7 @@ describe('Node 24 lane ownership', () => {
 
     expect(subject.map(item => item.id)).not.toContain('build')
     expect(subject.map(item => item.id)).not.toContain('doc-typecheck')
+    expect(subject.find(item => item.id === 'rescope-vendor')?.args).toContain('rescope-vendor:check')
   })
 
   it('owns the build and orders its artifact consumers', () => {

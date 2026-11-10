@@ -5,10 +5,54 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { exactEditState } from './rescope-vendor.ts'
+import { exactEditState, rescopePackageTokens } from './rescope-vendor.ts'
 
 const ANCHOR = '\n## Sync procedure'
 const INSERTED = `\n15. **rescope**: one log entry.\n${ANCHOR}`
+
+describe('package names versus runtime identifiers', () => {
+  const labelFile = 'packages/extensions/ui-cordis/src/client/locales.ts'
+
+  it('preserves event declarations, filters, escaped signatures and UI namespaces', () => {
+    const text = [
+      "export const NS = 'cordis'",
+      "ctx.on('cordis/request-run', handler)",
+      "const visible = !name.startsWith('cordis/')",
+      String.raw`const signature = '\'cordis/dynamic-package\'(pkg: Package): void'`,
+    ].join('\n')
+    expect(rescopePackageTokens(text, labelFile)).toBe(text)
+  })
+
+  it.each([
+    "import { Context } from 'cordis'",
+    "export { Context } from\n  'cordis'",
+    "import 'cordis/request-run'",
+    "import /* side-effect module */ 'cordis/request-run'",
+    "import { Context } from\n/* module comment */ 'cordis'",
+    "const module = import(\n  'cordis/request-run')",
+    "const module = require('cordis/package.json')",
+    "const file = require.resolve('cordis/package.json')",
+    "declare module 'cordis' {}",
+  ])('still rewrites a module reference inside an identifier-bearing file: %s', (text) => {
+    const renamed = text.replaceAll("'cordis", "'@deepseek-ai/cordis")
+    expect(rescopePackageTokens(text, labelFile)).toBe(renamed)
+    expect(rescopePackageTokens(renamed, labelFile, true)).toBe(text)
+    expect(rescopePackageTokens(renamed, labelFile)).toBe(renamed)
+  })
+
+  it('preserves documented event namespaces while rewriting module examples', () => {
+    const text = "`cordis/*` events\n```ts\nimport { Context } from 'cordis'\nctx.on('cordis/request-run', handler)\n```\n"
+    expect(rescopePackageTokens(text, 'docs/subsystems/extensions.md'))
+      .toBe(text.replace("from 'cordis'", "from '@deepseek-ai/cordis'"))
+  })
+
+  it('keeps package manifests and unrelated package-name strings checked', () => {
+    expect(rescopePackageTokens('{"dependencies":{"cordis":"*"}}', 'package.json'))
+      .toBe('{"dependencies":{"@deepseek-ai/cordis":"*"}}')
+    expect(rescopePackageTokens("const pkg = 'cordis'", 'packages/example/source.ts'))
+      .toBe("const pkg = '@deepseek-ai/cordis'")
+  })
+})
 
 describe('exactEditState', () => {
   it('classifies an insertion by its target form, so a duplicate is invalid', () => {

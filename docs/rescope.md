@@ -2,6 +2,8 @@
 
 English | [中文](rescope.zh.md)
 
+The codemod preserves declared `cordis/*` event identities and file-specific UI/preset labels while continuing to rewrite module references in those files. [Identifier classification](../.agents/notes/implemented/bug-fix/2026-11-10-rescope-runtime-identifiers.md) owns the distinction; shared static CI runs `rescope-vendor:check`.
+
 The Cordis framework and its foundation libraries are vendored under [`vendor/`](../vendor/README.md) and published under the `@deepseek-ai` scope, because every harness package declares the framework as a peer dependency: publishing the harness publishes this layer with it, and under the upstream names that publication would squat them on the registry. This page is the name mapping; the decision and its consequences live in the [rescope Agent Note](../.agents/notes/implemented/process/2026-08-10-vendor-package-rescope.md), and the upstream commits in [`vendor/README.md`](../vendor/README.md).
 
 ## Name mapping
