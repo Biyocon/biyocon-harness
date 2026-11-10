@@ -695,19 +695,20 @@ export function fixtureUserPrompts(fixtureText: string): string[] {
  * scaffold's workspace. Idempotent, so a caller may realize early (e.g. to
  * price content exactly as the host will fold it) and still pass the result
  * through {@link seedSession}.
- * @param scaffold - the booted scaffold whose workspace the seed targets.
+ * @param scaffold - the workspace the seed targets.
  * @param fixtureText - the committed seed fixture text.
  * @param id - the session id the seed is realized for.
  * @returns the realized fixture text.
  */
-export function realizeSeedFixture(scaffold: WebScaffold, fixtureText: string, id: string): string {
+export function realizeSeedFixture(scaffold: Pick<WebScaffold, 'workspaceCwd'>, fixtureText: string, id: string): string {
+  const escapedCwd = JSON.stringify(scaffold.workspaceCwd).slice(1, -1)
   const realized = fixtureText
-    .split('{{sessionId}}').join(id)
-    .split('{{cwd}}').join(scaffold.workspaceCwd)
+    .split('{{sessionId}}').join(JSON.stringify(id).slice(1, -1))
+    .split('{{cwd}}').join(escapedCwd)
   const fixtureCwd = (JSON.parse(realized.split('\n', 1)[0]!) as { cwd?: string }).cwd
   return fixtureCwd === undefined
     ? realized
-    : realized.split(fixtureCwd).join(scaffold.workspaceCwd)
+    : realized.split(JSON.stringify(fixtureCwd).slice(1, -1)).join(escapedCwd)
 }
 
 export async function seedSession(
