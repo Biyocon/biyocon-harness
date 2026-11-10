@@ -11,6 +11,8 @@
 
 录制的种子路径按 JSON 字符串内容替换，包括转义后的 Windows 路径。[种子回归测试](seed-fixture.spec.ts)使用已提交的 seeded-history fixture，验证重复处理保持不变，且不启动浏览器。
 
+种子化的 [skill 展开场景](skill-tool-row.e2e.ts)保留原生会话元数据，并在录制的显示文本中使用正斜杠路径。先将完整的可见指令字符串与种子工具结果比较，再检查未更改的 ARIA golden；[fixture 决策](../../../.agents/notes/implemented/testing/2026-11-10-portable-skill-display-fixture.md)解释了这一平台区别。
+
 每个临时 scaffold 根及英语/丹麦语选择器 helper 创建的工作区都带有 `.git` 根标记。这限制交付 preset 的指令发现，并使项目 skill 发现在所选工作区内进行。工作区内的合成指令继续有效；[组合隔离测试](scaffold-hermetic.e2e.ts)验证真实回放轮次不包含祖先目录指令。需要 Git 操作的场景在该工作区内初始化仓库。
 
 它们在根 `tsconfig.host.json` 中做类型检查，而不在 Client aggregate 中，因为它们直接读取
