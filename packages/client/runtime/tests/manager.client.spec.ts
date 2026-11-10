@@ -330,6 +330,127 @@ describe('host frame routing', () => {
 })
 
 describe('subagent catalogs', () => {
+  it.each(['selected', 'open'] as const)('refreshes the %s parent after a late child identity arrives', async (visibility) => {
+    vi.useFakeTimers()
+    try {
+      const api = new FakeApiClient()
+      let described = false
+      api.onSubagentList = () => Promise.resolve(ok({
+        entries: described ? [{
+          kind: 'child', id: S2, mode: 'one-shot', label: 'late worker',
+          activity: 'running', hasChildren: false,
+        }] as never[] : [],
+        parentAvailable: true,
+      }))
+      const manager = new SessionManager(api, fakeRemote())
+      manager.handleHostEnvelope({
+        rpcId: 'parent' as never,
+        payload: { type: 'host/session-added', sessionId: S1, blank: false },
+      })
+      if (visibility === 'selected') manager.select(S1)
+      else manager.setSubagentCatalogOpen(S1, true)
+      manager.handleHostEnvelope({
+        rpcId: 'child-before-descriptor' as never,
+        payload: {
+          type: 'host/session-added', sessionId: S2, parentSessionId: S1,
+          origin: 'subagent', blank: false,
+        },
+      })
+      await vi.advanceTimersByTimeAsync(50)
+      expect(manager.getListSnapshot().subagentsByParent[S1]?.entries).toEqual([])
+      described = true
+      manager.handleMuxEnvelope({
+        rpcId: 'late-descriptor' as never,
+        payload: {
+          type: 'session/projection', sessionId: S2, key: 'subagent',
+          value: { mode: 'one-shot', label: 'late worker', seq: 1 }, seq: 1,
+        } as never,
+      })
+      await vi.advanceTimersByTimeAsync(50)
+      expect(manager.getListSnapshot().subagentsByParent[S1]?.entries).toMatchObject([
+        { kind: 'child', id: S2, label: 'late worker' },
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it.each(['closed', 'ordinary', 'unparented', 'unknown', 'title'] as const)(
+    'does not refetch child membership for a %s projection recipient', async (recipient) => {
+      vi.useFakeTimers()
+      try {
+        const api = new FakeApiClient()
+        const manager = new SessionManager(api, fakeRemote())
+        manager.handleHostEnvelope({
+          rpcId: 'parent' as never,
+          payload: { type: 'host/session-added', sessionId: S1, blank: false },
+        })
+        if (recipient !== 'closed') manager.select(S1)
+        if (recipient !== 'unknown') {
+          manager.handleHostEnvelope({
+            rpcId: 'child' as never,
+            payload: {
+              type: 'host/session-added', sessionId: S2, blank: false,
+              ...(recipient === 'unparented' ? {} : { parentSessionId: S1 }),
+              ...(recipient === 'ordinary' ? {} : { origin: 'subagent' }),
+            } as never,
+          })
+        }
+        await vi.advanceTimersByTimeAsync(50)
+        const baseline = api.callsOf('subagent.list').length
+        manager.handleMuxEnvelope({
+          rpcId: 'projection' as never,
+          payload: {
+            type: 'session/projection', sessionId: S2,
+            key: recipient === 'title' ? 'title' : 'subagent',
+            value: recipient === 'title' ? 'A title' : { mode: 'one-shot', seq: 1 }, seq: 1,
+          } as never,
+        })
+        await vi.advanceTimersByTimeAsync(50)
+        expect(api.callsOf('subagent.list')).toHaveLength(baseline)
+      } finally {
+        vi.useRealTimers()
+      }
+    },
+  )
+
+  it('rechecks membership when a child identity arrives during an older catalog request', async () => {
+    vi.useFakeTimers()
+    try {
+      const api = new FakeApiClient()
+      const initial = deferred<Awaited<ReturnType<typeof api.onSubagentList>>>()
+      api.onSubagentList = () => initial.promise
+      const manager = new SessionManager(api, fakeRemote())
+      manager.handleHostEnvelope({
+        rpcId: 'child' as never,
+        payload: {
+          type: 'host/session-added', sessionId: S2, parentSessionId: S1,
+          origin: 'subagent', blank: false,
+        },
+      })
+      manager.setSubagentCatalogOpen(S1, true)
+      manager.handleMuxEnvelope({
+        rpcId: 'identity' as never,
+        payload: {
+          type: 'session/projection', sessionId: S2, key: 'subagent',
+          value: { mode: 'one-shot', seq: 1 }, seq: 1,
+        } as never,
+      })
+      await vi.advanceTimersByTimeAsync(50)
+      expect(api.callsOf('subagent.list')).toHaveLength(1)
+      api.onSubagentList = () => Promise.resolve(ok({
+        entries: [{ kind: 'child', id: S2, mode: 'one-shot', activity: 'running', hasChildren: false }] as never[],
+        parentAvailable: true,
+      }))
+      initial.resolve(ok({ entries: [], parentAvailable: true }))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(api.callsOf('subagent.list')).toHaveLength(2)
+      expect(manager.getListSnapshot().subagentsByParent[S1]?.entries).toMatchObject([{ id: S2 }])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('keeps a catalog-discovered child address across ordinary selection and status frames', async () => {
     const api = new FakeApiClient()
     api.onList = () => Promise.resolve(ok({ items: [
