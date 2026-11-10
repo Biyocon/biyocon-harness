@@ -32,6 +32,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
 
 const root = resolve(import.meta.dirname, '..')
 
@@ -105,6 +106,26 @@ const GENERIC_SKIPS: readonly GenericSkip[] = [
   { file: 'scripts/gen-module-graph.ts', upstream: ['cordis'] },
   { file: 'scripts/gen-doc-graphs.ts', upstream: ['cordis'] },
 ]
+
+// Exact protocol values and UI/preset labels remain product identities;
+// imports in these files must still follow the package rename.
+const CORDIS_PROTOCOL_VALUES = new Set([
+  'cordis/', 'cordis/*', 'cordis/request-run', 'cordis/request-run-resolved',
+  'cordis/dynamic-package', 'cordis/dynamic-retract',
+  'cordis/inspect-query', 'cordis/inspect-query-resolved',
+])
+const CORDIS_LABEL_FILES = new Set([
+  'packages/client/ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.tsx',
+  'packages/client/ui-settings-plugin-inventory/src/client/locales.ts',
+  'packages/extensions/ui-cordis/src/client/CordisActionRow.tsx',
+  'packages/extensions/ui-cordis/src/client/CordisDefineRow.tsx',
+  'packages/extensions/ui-cordis/src/client/CordisPanel.tsx',
+  'packages/extensions/ui-cordis/src/client/CordisRunRow.tsx',
+  'packages/extensions/ui-cordis/src/client/index.ts',
+  'packages/extensions/ui-cordis/src/client/locales.ts',
+  'scripts/gen-cordis-catalog.ts',
+  'scripts/ui-locales.spec.ts',
+])
 
 /** A string that must appear exactly `count` times once the rescope has run. */
 interface PostCondition {
@@ -463,6 +484,7 @@ const VENDORED_LIBRARY = /^@deepseek-ai\\/(cosmokit|schemastery)(\\/|$)/
 /** Files the rescope must never rewrite. */
 function excluded(file: string): boolean {
   if (file === 'scripts/rescope-vendor.ts') return true // the mapping itself
+  if (file === 'scripts/rescope-vendor.spec.ts') return true // literal pre/post mapping examples
   if (file.startsWith('.agents/notes/')) return true // notes record what was true when written
   // Recorded model payloads quote documentation verbatim, so they must mirror the
   // sources on disk — including the notes this rescope leaves alone.
@@ -507,11 +529,33 @@ function skipped(file: string, pattern: Pattern): boolean {
   return GENERIC_SKIPS.some(skip => skip.file === file && skip.upstream.includes(pattern.upstream))
 }
 
-function rewriteLine(line: string, file: string, all: readonly Pattern[]): string {
+function endsAtModuleSpecifier(prefix: string, markdown: boolean): boolean {
+  if (markdown) return /(?:\bfrom|\bimport|\bdeclare\s+module)\s*$|\b(?:import|require(?:\.resolve)?)\(\s*$/.test(prefix)
+  const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, ts.LanguageVariant.Standard, prefix)
+  const tail: string[] = []
+  while (scanner.scan() !== ts.SyntaxKind.EndOfFileToken) {
+    tail.push(scanner.getTokenText())
+    if (tail.length > 4) tail.shift()
+  }
+  const last = tail.at(-1)
+  if (last === 'from' || last === 'import') return true
+  if (last === 'module' && tail.at(-2) === 'declare') return true
+  if (last !== '(') return false
+  return tail.at(-2) === 'import' || tail.at(-2) === 'require'
+    || tail.join(' ') === 'require . resolve ('
+}
+
+function rewriteLine(line: string, file: string, all: readonly Pattern[], preceding: string): string {
   let out = line
   for (const pattern of all) {
     if (skipped(file, pattern)) continue
-    out = out.replace(pattern.token, (_match, quote: string, subpath: string) => `${quote}${pattern.to}${subpath}${quote}`)
+    out = out.replace(pattern.token, (match: string, quote: string, subpath: string, offset: number) => {
+      const protocolValue = `cordis${subpath}`.replace(/\\+$/, '')
+      const runtimeIdentity = pattern.from === 'cordis'
+        && (CORDIS_PROTOCOL_VALUES.has(protocolValue) || (subpath === '' && CORDIS_LABEL_FILES.has(file)))
+      if (runtimeIdentity && !endsAtModuleSpecifier(preceding + out.slice(0, offset), file.endsWith('.md'))) return match
+      return `${quote}${pattern.to}${subpath}${quote}`
+    })
     out = out.replace(pattern.yamlName, (_match, prefix: string, suffix: string) => `${prefix}${pattern.to}${suffix}`)
   }
   return out
@@ -533,7 +577,10 @@ function rewrite(text: string, file: string, all: readonly Pattern[]): { text: s
   const prose = markdown && file.startsWith('docs/')
   let insideFence = false
   let lines = 0
+  let offset = 0
   const out = text.split('\n').map((line) => {
+    const preceding = text.slice(0, offset)
+    offset += line.length + 1
     if (markdown) {
       if (/^\s*```/.test(line)) {
         insideFence = !insideFence
@@ -541,11 +588,22 @@ function rewrite(text: string, file: string, all: readonly Pattern[]): { text: s
       }
       if (!insideFence && !prose) return line
     }
-    const next = rewriteLine(line, file, all)
+    const next = rewriteLine(line, file, all, preceding)
     if (next !== line) lines += 1
     return next
   })
   return { text: out.join('\n'), lines }
+}
+
+/**
+ * Rewrite eligible package tokens while preserving declared runtime identities.
+ * @param text - source text to classify.
+ * @param file - repository-relative path controlling documentation and identifier rules.
+ * @param reverse - whether to restore upstream package names.
+ * @returns text after the generic token pass, without applying exact edits.
+ */
+export function rescopePackageTokens(text: string, file: string, reverse = false): string {
+  return rewrite(text, file, patterns(reverse)).text
 }
 
 function classify(file: string): string {

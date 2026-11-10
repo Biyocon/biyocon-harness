@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-11-10-rescope-runtime-identifiers.md
+2026-11-10-rescope-runtime-identifiers.md: e7d4771705071cbb17c9f2c67037ddcf841d27e1
+2026-11-10-rescope-runtime-identifiers.zh.md: ecdd7c4a31f9a231300f477c462c4904851020f6
