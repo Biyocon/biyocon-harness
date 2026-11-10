@@ -2,13 +2,15 @@
 // persistence seam, renders through ui-skill's keyed toolview without a model
 // call. The disclosure proves replay-stable naming and exact durable output.
 import { readFile } from 'node:fs/promises'
+import { sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { parseSessionLog } from '@deepseek-ai/dsh-llm-replay'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
-  launchWebScaffold, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
+  launchWebScaffold, realizeSeedFixture, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
 import { newEnglishPage, saveFailureShot } from './support.ts'
 
@@ -24,12 +26,25 @@ describe.skipIf(MODE === 'record')('web e2e: dedicated Skill tool row', () => {
   let browser: Browser
   let page: Page
   let tripwire: ReturnType<typeof watchConsole>
+  let displayCwd: string
+  let recordedInstructions: string
 
   beforeAll(async () => {
     const fixture = await readFile(FIXTURE, 'utf8')
     expect(fixtureUserPrompts(fixture)).toEqual([PROMPT])
     scaffold = await launchWebScaffold({})
-    await seedSession(scaffold, fixture, SEED_ID)
+    displayCwd = scaffold.workspaceCwd.split(sep).join('/')
+    const nativeHeader = realizeSeedFixture(scaffold, fixture, SEED_ID).split('\n', 1)[0]!
+    const portableEvents = realizeSeedFixture({ workspaceCwd: displayCwd }, fixture, SEED_ID).split('\n').slice(1)
+    // Keep host ownership native; the recorded display paths use the same
+    // forward-slash spelling on every platform before ARIA quotes the text.
+    const seed = [nativeHeader, ...portableEvents].join('\n')
+    const result = parseSessionLog(seed).find(event => event.type === 'tool/result')
+    if (result?.type !== 'tool/result') throw new Error('skill fixture has no tool result')
+    const block = result.data.message.content.find(part => part.type === 'tool-result')
+    if (block?.type !== 'tool-result') throw new Error('skill fixture has no result content')
+    recordedInstructions = block.content.filter(part => part.type === 'text').map(part => part.text).join('\n')
+    await seedSession(scaffold, seed, SEED_ID)
     browser = await chromium.launch()
     page = await newEnglishPage(browser)
     tripwire = watchConsole(page)
@@ -64,9 +79,11 @@ describe.skipIf(MODE === 'record')('web e2e: dedicated Skill tool row', () => {
     await output.waitFor()
     expect(await output.textContent()).toContain('<skill_content name="snapshot-skill">')
     expect(await output.textContent()).toContain('Follow these snapshot-only instructions.')
+    expect(await output.textContent()).toBe(recordedInstructions)
+    expect(recordedInstructions).toContain(`Base directory for this skill: ${displayCwd}/.dsh/skills/snapshot-skill`)
     expect(await output.evaluate(element => getComputedStyle(element.parentElement!).maxHeight)).toBe('260px')
 
-    const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
+    const snapshot = (await captureStableAria(page, '[class*="centerCol"]', displayCwd))
       .replace(/\b\d{1,2}\/\d{1,2}(?= \{\{clock\}\})/g, '{{date}}')
       .split(SEED_ID).join('{{seededId}}')
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)

@@ -12,6 +12,8 @@ the deliberate composition divergences from `dsh web` — are documented in
 
 Recorded seed paths are substituted as JSON string contents, including escaped Windows paths. [Seed regression tests](seed-fixture.spec.ts) exercise the committed seeded-history fixture and idempotent realization without launching a browser.
 
+The seeded [skill disclosure scenario](skill-tool-row.e2e.ts) keeps native session metadata and uses forward-slash paths in recorded display text. It compares the entire visible instruction string to the seeded tool result before checking the unchanged ARIA golden; [the fixture decision](../../../.agents/notes/implemented/testing/2026-11-10-portable-skill-display-fixture.md) explains the platform distinction.
+
 Each temporary scaffold root and each workspace staged by the English/Danish picker helpers carries a `.git` root marker. This confines the shipped preset's instruction discovery and keeps project skill discovery rooted at the selected workspace. Local synthetic instructions remain active; [the assembled isolation test](scaffold-hermetic.e2e.ts) excludes an ancestor's instructions from an actual replay turn. Scenarios that need Git operations initialize a repository in that workspace.
 
 They type-check in the root `tsconfig.host.json`, not in the Client aggregate,
