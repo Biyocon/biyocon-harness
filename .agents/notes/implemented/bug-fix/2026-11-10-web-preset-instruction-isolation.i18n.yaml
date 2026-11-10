@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-11-10-web-preset-instruction-isolation.md
-2026-11-10-web-preset-instruction-isolation.md: 4deeb2adbcc1ac278613aed9228cc2babfbe7990
-2026-11-10-web-preset-instruction-isolation.zh.md: 72e892f12afd8c6bcf22cdf9a0790d40569f0f18
+2026-11-10-web-preset-instruction-isolation.md: 9d832eca87f94684b8fafaf19308b8c7773f349f
+2026-11-10-web-preset-instruction-isolation.zh.md: c18b410278dcda55053dc7bb0f89185696562c32

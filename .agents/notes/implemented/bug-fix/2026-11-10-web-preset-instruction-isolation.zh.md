@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-[浏览器 scaffold](../../../../apps/web/tests/scaffold.ts)在组合启动前，在其持有的临时工作区中创建 `.git` 项目根标记。preset 的现有指令加载器继续运行，在任何祖先项目之前找到该标记。其全局目录已限制为 scaffold 的合成 `DSH_HOME`。工作区内部的合成项目指令仍可使用，包括子目录。该标记不是已初始化的 Git 仓库，也不授予额外工具权限。
+[浏览器 scaffold](../../../../apps/web/tests/scaffold.ts)在组合启动前，在其持有的临时工作区中创建 `.git` 项目根标记。[英语/丹麦语选择器 helper](../../../../apps/web/tests/support.ts)也标记每个创建的工作区，使项目 skill 从所选工作区而非外层 scaffold 目录解析。preset 的现有指令加载器继续运行，在任何祖先项目之前找到本地标记。其全局目录已限制为 scaffold 的合成 `DSH_HOME`。工作区内部的合成项目指令仍可使用，包括子目录。该标记不是已初始化的 Git 仓库，也不授予额外工具权限。
 
 [浏览器测试说明](../testing/2026-07-24-web-gui-browser-e2e-lane.md)保留组合与回放决策，只更新指令隔离描述。产品指令发现、源文本归一化和已提交的浏览器 golden 均保持不变。
 
