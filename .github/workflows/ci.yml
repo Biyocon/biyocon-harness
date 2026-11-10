@@ -491,6 +491,14 @@ jobs:
         shell: pwsh
         run: pnpm install --frozen-lockfile
 
+      - name: Check Biyocon launcher without starting apps
+        shell: pwsh
+        run: |
+          foreach ($test in @('scripts/test-start-biyocon-server-detection.ps1', 'scripts/test-start-biyocon-home-warning.ps1')) {
+            powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $test
+            if ($LASTEXITCODE -ne 0) { throw "Launcher check failed: $test" }
+          }
+
       - name: Run complete native Windows gate inventory
         shell: pwsh
         run: pnpm run check:ci:windows-complete
