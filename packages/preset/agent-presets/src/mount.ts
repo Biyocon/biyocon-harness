@@ -184,7 +184,7 @@ function withinFiber(fiber: Fiber, root: Fiber): boolean {
  * is correctly absent here.
  * @param ctx - any context of the runtime whose service store is inspected.
  * @param mount - the mounted subtree's fiber.
- * @returns the leaked service names in lexical order.
+ * @returns the leaked service names in UTF-16 code-unit order.
  */
 export function leakedServices(ctx: Context, mount: Fiber): string[] {
   const store = ctx.reflect.store
@@ -199,7 +199,7 @@ export function leakedServices(ctx: Context, mount: Fiber): string[] {
     if (!withinFiber(impl.fiber, mount)) continue
     if (rootIsolate[impl.name] === key) leaked.push(impl.name)
   }
-  return leaked.sort((left, right) => left.localeCompare(right))
+  return leaked.sort()
 }
 
 /** A live standing mount located through one agent already joined to it. */

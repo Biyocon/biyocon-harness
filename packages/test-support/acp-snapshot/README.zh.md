@@ -63,13 +63,17 @@ defineAcpSnapshotSuite({
 
 约束：`suite.ts` 与 `harness.ts` 导入 vitest（harness 通过 `vi.waitFor` 轮询其持久边界等待），因此包入口只能在 vitest 运行中导入（启动器和规范化器没有此依赖，但从同一入口发布）。启动器和套件工厂按设计专用于 ACP，启动器使用 SDK 的 `ClientSideConnection`；规范化器是与传输无关的会话日志/文本辅助工具，还由 JSON-RPC 和 Web 快照录制器消费。输入脚本覆盖初始化、新建会话、文本提示简写、精确结构化 ACP 提示词块、取消、预期 RPC 失败和持久轮次边界等待。权限往返是选项类别选择（`allow_once`、`reject_once` 等）的 FIFO 队列，映射到 agent 发出的 `optionId`；缺少或耗尽的队列回答 `cancelled`，未提供类别会拒绝运行。
 
+会话日志收集先放主会话，再按 `createdAt` 排列子会话；平局按会话 ID 的 UTF-16 代码单元顺序处理。这与回放的子会话顺序一致，不受 host 区域设置影响。
+
+生成的工作区在复制 fixture 后、执行 `prepareWorkspace` 或启动 agent 前取得自有 `.git` 标记。保留已有标记文件或目录。标记限制项目指令发现；需要 Git 操作的场景仍自行初始化仓库。
+
 ## 模型体验
 
-无。该测试专用 harness 记录、规范化并比较 ACP transcript（文本记录），不会改变 agent 组装的模型请求。
+间接通过场景的指令及文件系统消费者产生影响，它们读取隔离的工作区；此 harness 不注册 prompt section 或 tool schema。
 
 #### KV Cache 影响
 
-无；该包既不组装也不发送提供方请求。
+工作区自身的项目标记排除祖先指令上下文；等价运行之间由 fixture 控制的上下文保持稳定，fixture 内容变化可能改变消费者的请求前缀。此 harness 本身不发送提供方请求。
 
 ## 已知限制与暂缓事项
 

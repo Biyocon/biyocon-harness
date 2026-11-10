@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { mkdir, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, stat, utimes, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { expect, it } from 'vitest'
@@ -443,6 +443,9 @@ const SCENARIOS: Scenario[] = [
     pinsChildToolSchemas: [1],
     pinsChildSystemPrompts: [1],
     configPath: SUBAGENT_CONTINUABLE_INHERITANCE_CONFIG,
+    prepareWorkspace: async (cwd) => {
+      expect((await stat(join(cwd, '.git'))).isDirectory()).toBe(true)
+    },
   },
   // The in-process child is published before its first follow-up fails. The
   // foreground tool retains both that run-result failure and an independent
