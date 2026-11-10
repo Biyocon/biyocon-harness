@@ -16,7 +16,7 @@
  * @module @deepseek-ai/dsh-acp-snapshot/harness
  */
 
-import { cp, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { existsSync, realpathSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
@@ -176,7 +176,8 @@ export interface RunOptions {
   workspaceDir?: string
   /**
    * Optional final workspace preparation, run after {@link workspaceDir} is
-   * copied and before the agent starts. This is for fixtures that cannot be
+   * copied and the workspace has its own project marker, before the agent starts.
+   * This is for fixtures that cannot be
    * represented portably in Git (for example, a POSIX-only filename that is
    * invalid on Windows); ordinary seeded files belong in `workspaceDir`.
    */
@@ -247,6 +248,8 @@ export async function runScenario(input: InputScript, opts: RunOptions): Promise
     if (opts.workspaceDir !== undefined && existsSync(opts.workspaceDir)) {
       await cp(opts.workspaceDir, cwd, { recursive: true })
     }
+    const marker = join(cwd, '.git')
+    if (!existsSync(marker)) await mkdir(marker)
     await opts.prepareWorkspace?.(cwd)
     const env: NodeJS.ProcessEnv = {
       ...opts.env,
@@ -775,17 +778,15 @@ async function harvestSessionLogs(root: string): Promise<HarvestedLog[]> {
     })
   }
   // Primary (no parentSession) first, then children by ascending createdAt. A
-  // scenario has exactly one top-level session. Subagent children are created
-  // synchronously and strictly sequentially, so their createdAt values are
-  // strictly ordered; the recordedId tiebreak only keeps a degenerate
-  // same-millisecond collision (unreachable here) deterministic. This harvest
+  // scenario has exactly one top-level session. A same-millisecond child tie
+  // is resolved by ordinal ID, independently of the host's locale. This harvest
   // order must match the replay load order in dsh-llm-replay's loadSessionScripts
   // so session.<n>.jsonl maps to the same child on record and replay — replay
   // re-sorts childFiles by the same key, so the two stay consistent.
   logs.sort((a, b) => {
     const ap = Number(a.parentSession !== undefined)
     const bp = Number(b.parentSession !== undefined)
-    return ap - bp || a.createdAt - b.createdAt || a.id.localeCompare(b.id)
+    return ap - bp || a.createdAt - b.createdAt || Number(a.id > b.id) - Number(a.id < b.id)
   })
   return logs
 }

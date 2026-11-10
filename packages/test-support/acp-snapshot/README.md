@@ -63,13 +63,17 @@ The example also ships a `cordis.snapshot.yml` replay overlay next to its `cordi
 
 Constraints: `suite.ts` and `harness.ts` import vitest (the harness polls its durable-boundary waits through `vi.waitFor`), so the package entry is importable only inside a vitest run (the launcher and normalizers have no such dependency but ship from the same entry). The launcher and suite factory are ACP-specific by design — the launcher speaks the SDK's `ClientSideConnection` — while the normalizers are transport-neutral session-log/text helpers also consumed by the JSON-RPC and Web snapshot recorders. Input scripts cover initialization, fresh-session creation, shorthand text prompts, exact structured ACP prompt blocks, cancellation, expected RPC failures, and durable turn-boundary waits. Permission round-trips are a FIFO queue of option-kind selections (`allow_once`, `reject_once`, …) mapped to the agent-issued `optionId`; an absent or exhausted queue answers `cancelled`, and an unoffered kind rejects the run.
 
+Session-log harvest places the primary first, then children by `createdAt`; ties use session ID in UTF-16 code-unit order. This matches replay's child order independently of the host locale.
+
+Generated workspaces receive an owned `.git` marker after fixture copying and before `prepareWorkspace` or agent launch. Existing marker files or directories are preserved. The marker bounds project instruction discovery; scenarios needing Git operations still initialize a repository themselves.
+
 ## Model Experience
 
-None, as this test-only harness records, normalizes, and compares ACP transcripts without changing the agent's assembled model request.
+Indirectly, through the scenario's instruction and filesystem consumers, which read the isolated workspace; this harness registers no prompt section or tool schema.
 
 #### KV Cache effect
 
-None; this package neither assembles nor sends a provider request.
+The owned project marker excludes ancestor instruction context; fixture-controlled context remains stable between equivalent runs, while changed fixture content can change the consumer's request prefix. This harness sends no provider request itself.
 
 ## Known Limitations and Deferred Work
 

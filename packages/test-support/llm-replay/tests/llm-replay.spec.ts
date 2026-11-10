@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { CompactionId } from '@deepseek-ai/dsh-compaction'
@@ -1007,18 +1007,22 @@ describe('loadSessionScripts', () => {
     expect(scripts[0]).toMatchObject({ recordedId: '', createdAt: 0, primary: true })
   })
 
-  it('orders two same-createdAt children deterministically after the primary', () => {
-    // Two children sharing a createdAt (both non-primary): exercises the sort
-    // tie-break\'s "both same primary-ness" arm and a non-primary-vs-primary arm.
-    const f = writeSession('session.jsonl', { id: 'parent', createdAt: 100 }, [TEXT_CHUNKS])
-    const c1 = writeSession('session.1.jsonl', { id: 'c1', createdAt: 100 }, [TEXT_CHUNKS])
-    const c2 = writeSession('session.2.jsonl', { id: 'c2', createdAt: 100 }, [TEXT_CHUNKS])
-    const scripts = loadSessionScripts({ file: f, childFiles: [c1, c2] })
-    // Primary first (its createdAt ties the children but primary wins); the two
-    // children keep a stable relative order.
-    expect(scripts[0]?.recordedId).toBe('parent')
-    expect(scripts.every(s => s.createdAt === 100)).toBe(true)
-    expect(scripts.map(s => s.primary)).toEqual([true, false, false])
+  it.each(['en', 'da'])('orders two same-createdAt children deterministically after the primary (%s host collation)', (hostLocale) => {
+    const collation = vi.spyOn(String.prototype, 'localeCompare').mockImplementation(function (this: string, other, locales, options) {
+      return new Intl.Collator(locales ?? hostLocale, options).compare(this, other)
+    })
+    try {
+      const f = writeSession('session.jsonl', { id: 'parent', createdAt: 100 }, [TEXT_CHUNKS])
+      const c1 = writeSession('session.1.jsonl', { id: 'cccccccc', createdAt: 100 }, [TEXT_CHUNKS])
+      const c2 = writeSession('session.2.jsonl', { id: 'aaaaaaaa', createdAt: 100 }, [TEXT_CHUNKS])
+      const scripts = loadSessionScripts({ file: f, childFiles: [c1, c2] })
+      expect(scripts[0]?.recordedId).toBe('parent')
+      expect(scripts.every(s => s.createdAt === 100)).toBe(true)
+      expect(scripts.map(s => s.primary)).toEqual([true, false, false])
+      expect(scripts.map(s => s.recordedId)).toEqual(['parent', 'aaaaaaaa', 'cccccccc'])
+    } finally {
+      collation.mockRestore()
+    }
   })
 
   it('keeps the primary first even when a child sorts BEFORE it in input order', () => {

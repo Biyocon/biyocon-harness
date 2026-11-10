@@ -22,6 +22,8 @@ A scenario where a parent agent delegates to in-process subagents records more t
 
 Replay keys every call by its calling session id (`GenerateOptions.sessionId`, stamped by the agent loop). Live session ids are freshly random each run and never equal the recorded ones, so a live session binds to a recorded script by **first-call order**: scripts are ordered by header `createdAt` (parent first — it streams before it can delegate), and the first live session to make any call claims the first script, the next new session the next, and so on. Each session then advances its own cursor. A call with no `sessionId` is one anonymous session bound to the primary script. More distinct live sessions than recorded scripts fails loud.
 
+Child scripts with the same `createdAt` use recorded session ID in UTF-16 code-unit order as their tiebreak. The recorder uses the same order, so host locale does not change script assignment.
+
 ## Config
 
 | Key | Type | Default | Notes |

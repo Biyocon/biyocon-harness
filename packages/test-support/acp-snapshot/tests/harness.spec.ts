@@ -483,7 +483,7 @@ describe('runScenario', () => {
       { steps: [...boot, { op: 'prompt', text: 'ls' }] },
       { agent: AGENT, mode: 'replay', fixtureFile, workspaceDir },
     )
-    expect(result.rawStdout).toContain('workspace:seeded.txt')
+    expect(result.rawStdout).toContain('workspace:.git,seeded.txt')
   })
 
   it('prepares the generated workspace after copying committed fixtures', { timeout: 20_000 }, async () => {
@@ -501,13 +501,29 @@ describe('runScenario', () => {
         fixtureFile,
         workspaceDir,
         prepareWorkspace: async (cwd) => {
+          const { stat } = await import('node:fs/promises')
+          expect((await stat(join(cwd, '.git'))).isDirectory()).toBe(true)
           expect(await readFile(join(cwd, 'committed.txt'), 'utf8')).toBe('committed')
           await writeFile(join(cwd, 'runtime.txt'), 'runtime')
         },
       },
     )
 
-    expect(result.rawStdout).toContain('workspace:committed.txt,runtime.txt')
+    expect(result.rawStdout).toContain('workspace:.git,committed.txt,runtime.txt')
+  })
+
+  it('preserves an existing project marker file copied from the fixture', async () => {
+    const { dir, fixtureFile } = await scenario({})
+    const workspaceDir = join(dir, 'workspace')
+    const { mkdir } = await import('node:fs/promises')
+    await mkdir(workspaceDir)
+    await writeFile(join(workspaceDir, '.git'), 'gitdir: synthetic-worktree')
+    await runScenario({ steps: boot }, {
+      agent: AGENT, mode: 'replay', fixtureFile, workspaceDir,
+      prepareWorkspace: async (cwd) => {
+        expect(await readFile(join(cwd, '.git'), 'utf8')).toBe('gitdir: synthetic-worktree')
+      },
+    })
   })
 
   it('creates the generated workspace under an explicit parent', { timeout: 20_000 }, async () => {
@@ -1227,32 +1243,36 @@ describe('runScenario', () => {
     )).rejects.toThrow(/unknown input op/)
   })
 
-  it('harvests all logs primary-first, children by createdAt then id, skipping filesystem noise', { timeout: 20_000 }, async () => {
-    const { fixtureFile } = await scenario({
-      strayRootFile: true,
-      strayBucketFile: true,
-      logs: [
-        // File names chosen so readdir feeds the sort children-first AND
-        // parent-in-the-middle: the comparator then sees a parent on both
-        // sides of a pair, plus the same-createdAt (localeCompare) tiebreak.
-        { file: 'b1/aa-child-c/session.jsonl', lines: [{ type: 'session', id: 'cccccccc-0000-4000-8000-000000000000', createdAt: 500, parentSession: '{{SID}}' }] },
-        { file: 'b1/bb-parent/session.jsonl', lines: [{ type: 'session', id: '{{SID}}', createdAt: 900 }] },
-        { file: 'b1/cc-child-a/session.jsonl', lines: [{ type: 'session', id: 'aaaaaaaa-0000-4000-8000-000000000000', createdAt: 500, parentSession: '{{SID}}' }] },
-        // Missing id/createdAt fall back to ''/0; earliest child by createdAt.
-        { file: 'b2/orphan/session.jsonl', lines: [{ type: 'session', parentSession: '{{SID}}' }] },
-      ],
+  it.each(['en', 'da'])('harvests all logs primary-first, children by createdAt then id, skipping filesystem noise (%s host collation)', { timeout: 20_000 }, async (hostLocale) => {
+    const collation = vi.spyOn(String.prototype, 'localeCompare').mockImplementation(function (this: string, other, locales, options) {
+      return new Intl.Collator(locales ?? hostLocale, options).compare(this, other)
     })
-    const result = await runScenario(
-      { steps: [...boot, { op: 'prompt', text: 'go' }] },
-      { agent: AGENT, mode: 'replay', fixtureFile },
-    )
-    expect(result.sessionLogs.map(l => [l.id, l.createdAt])).toEqual([
-      [result.sessionId, 900],
-      ['', 0],
-      ['aaaaaaaa-0000-4000-8000-000000000000', 500],
-      ['cccccccc-0000-4000-8000-000000000000', 500],
-    ])
-    expect(result.sessionLogs[1]?.parentSession).toBe(result.sessionId)
+    try {
+      const { fixtureFile } = await scenario({
+        strayRootFile: true,
+        strayBucketFile: true,
+        logs: [
+          // Filesystem enumeration differs from the canonical header order.
+          { file: 'b1/aa-child-c/session.jsonl', lines: [{ type: 'session', id: 'cccccccc-0000-4000-8000-000000000000', createdAt: 500, parentSession: '{{SID}}' }] },
+          { file: 'b1/bb-parent/session.jsonl', lines: [{ type: 'session', id: '{{SID}}', createdAt: 900 }] },
+          { file: 'b1/cc-child-a/session.jsonl', lines: [{ type: 'session', id: 'aaaaaaaa-0000-4000-8000-000000000000', createdAt: 500, parentSession: '{{SID}}' }] },
+          { file: 'b2/orphan/session.jsonl', lines: [{ type: 'session', parentSession: '{{SID}}' }] },
+        ],
+      })
+      const result = await runScenario(
+        { steps: [...boot, { op: 'prompt', text: 'go' }] },
+        { agent: AGENT, mode: 'replay', fixtureFile },
+      )
+      expect(result.sessionLogs.map(l => [l.id, l.createdAt])).toEqual([
+        [result.sessionId, 900],
+        ['', 0],
+        ['aaaaaaaa-0000-4000-8000-000000000000', 500],
+        ['cccccccc-0000-4000-8000-000000000000', 500],
+      ])
+      expect(result.sessionLogs[1]?.parentSession).toBe(result.sessionId)
+    } finally {
+      collation.mockRestore()
+    }
   })
 
   it('treats an empty log file as a header-less primary with default fields', { timeout: 20_000 }, async () => {
