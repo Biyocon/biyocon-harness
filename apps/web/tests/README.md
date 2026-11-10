@@ -12,6 +12,8 @@ the deliberate composition divergences from `dsh web` — are documented in
 
 Recorded seed paths are substituted as JSON string contents, including escaped Windows paths. [Seed regression tests](seed-fixture.spec.ts) exercise the committed seeded-history fixture and idempotent realization without launching a browser.
 
+Each temporary scaffold root and each workspace staged by the English/Danish picker helpers carries a `.git` root marker. This confines the shipped preset's instruction discovery and keeps project skill discovery rooted at the selected workspace. Local synthetic instructions remain active; [the assembled isolation test](scaffold-hermetic.e2e.ts) excludes an ancestor's instructions from an actual replay turn. Scenarios that need Git operations initialize a repository in that workspace.
+
 They type-check in the root `tsconfig.host.json`, not in the Client aggregate,
 because they read Host services directly: `ctx.apiProxy`, the Host
 `SessionStore`, `ctx.sessionProjectionCache`. Driving a browser at runtime does

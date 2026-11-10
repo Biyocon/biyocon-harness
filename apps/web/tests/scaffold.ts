@@ -14,8 +14,9 @@
 // Composition divergences from `dsh web`, all deliberate, all via include
 // patches after the shipped bundle layers, over the SAME tree (never a
 // second yml): temp persistenceRoot; host-level skill roots confined to the
-// temp workspace while project skill discovery remains real; agent-instructions
-// disabled (recorded fixtures must not embed this repo's AGENTS.md);
+// temp workspace while project skill discovery remains real; deployment-level
+// agent-instructions disabled, preset instruction discovery bounded by a
+// workspace-local project marker (fixtures must not embed ancestor AGENTS.md);
 // session-title-llm disabled (its fire-and-forget title call would race the
 // loop for the session's replay cursor); webserver pinned to port 0 with the
 // built dist; ordinary keyless modes disable llm-deepseek and fill the open
@@ -352,6 +353,9 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
   Object.assign(process.env, skillRootEnvironment)
   let persistenceRoot: string
   try {
+    // Presets mount their own instruction loader beyond the host overlay's
+    // disabled row. Bound its ancestor walk without suppressing local files.
+    await mkdir(join(workspaceCwd, '.git'))
     persistenceRoot = await mkdtemp(join(tmpdir(), 'dsh-web-e2e-sessions-'))
   } catch (error) {
     const failures: unknown[] = [error]
