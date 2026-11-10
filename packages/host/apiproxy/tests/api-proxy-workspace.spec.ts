@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import AgentRegistry, { Inbox } from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { agentEvents, Inbox } from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentFactory } from '@deepseek-ai/dsh-agent'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { Session } from '@deepseek-ai/dsh-session'
@@ -119,6 +119,17 @@ function stageDir(root: string, name: string): string {
 }
 
 describe('host.pickDirectory', () => {
+  it('maps a non-Error chooser rejection to an internal response', async () => {
+    const pick = vi.fn<Extract<DirectoryPickerCapability, { kind: 'native' }>['pick']>().mockRejectedValue('synthetic chooser failure')
+    const { api, ctx } = await harness(undefined, { kind: 'native', pick })
+    try {
+      expect((await api.host.pickDirectory(request({}), new AbortController().signal)).result)
+        .toMatchObject({ ok: false, error: { code: 'internal', message: 'directory picker failed: synthetic chooser failure' } })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('returns a selected path or explicit cancellation from the native capability', async () => {
     const selected = await harness(undefined, { kind: 'native', pick: async () => '/tmp/project' })
     expect((await selected.api.host.pickDirectory(request({}), new AbortController().signal)).result)
@@ -180,6 +191,17 @@ const BROWSE_STUB: DirectoryPickerCapability = {
 }
 
 describe('host.listDirectory / host.createDirectory', () => {
+  it('maps a non-Error browse rejection without exposing a native chooser', async () => {
+    const list = vi.fn<Extract<DirectoryPickerCapability, { kind: 'browse' }>['list']>().mockRejectedValue('synthetic listing failure')
+    const { api, ctx } = await harness(undefined, { ...BROWSE_STUB, list })
+    try {
+      expect((await api.host.listDirectory(request({ path: '/synthetic' }), new AbortController().signal)).result)
+        .toMatchObject({ ok: false, error: { code: 'internal', message: 'synthetic listing failure' } })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('serves listings and creation through the browse capability, defaulting to home', async () => {
     const { api } = await harness(undefined, BROWSE_STUB)
     const home = await api.host.listDirectory(request({}), new AbortController().signal)
@@ -229,6 +251,21 @@ describe('host.listDirectory / host.createDirectory', () => {
 })
 
 describe('host.openPath', () => {
+  it.each([new Error('synthetic opener failure'), 'synthetic opener rejection'])(
+    'reports an opener failure without treating it as cancellation (%s)', async (failure) => {
+      const openPath = vi.fn<(path: string, signal: AbortSignal) => Promise<void>>().mockRejectedValue(failure)
+      const { api, ctx } = await harness(undefined, undefined, { openPath })
+      try {
+        expect((await api.host.openPath(request({ path: '/synthetic/report.txt' }), new AbortController().signal)).result)
+          .toMatchObject({ ok: false, error: {
+            code: 'internal', message: `path open failed: ${failure instanceof Error ? failure.message : failure}`,
+          } })
+      } finally {
+        await ctx.fiber.dispose()
+      }
+    },
+  )
+
   it('describes whether this deployment can reach a user-visible native desktop', async () => {
     const visible = await harness(undefined, undefined, { canOpenPath: () => true })
     const headless = await harness(undefined, undefined, { canOpenPath: () => false })
@@ -316,6 +353,107 @@ describe('workspace.create', () => {
     expect(secondResult.workspace.workspaceId).not.toBe(firstResult.workspace.workspaceId)
     expect(expectOk(await api.workspace.list(request({}))).items.map(workspace => workspace.path))
       .toEqual([second, first])
+  })
+})
+
+describe('workspace rename and session order', () => {
+  it('distinguishes unexpected storage failures from invalid path, order and archive identities', async () => {
+    const { api, ctx, root } = await harness()
+    try {
+      vi.spyOn(ctx.workspaceRegistry, 'create').mockRejectedValueOnce('synthetic registry failure')
+      const failedPath = stageDir(root, 'failed-registry')
+      expect((await api.workspace.create(request({ path: failedPath }))).result).toMatchObject({
+        ok: false, error: { code: 'workspace-invalid-path', message: `cannot create a workspace at "${failedPath}": synthetic registry failure` },
+      })
+      const created = expectOk(await api.workspace.create(request({ path: stageDir(root, 'project') }))).workspace
+      const failure = new Error('synthetic storage failure')
+      vi.spyOn(ctx.workspaceRegistry, 'insertBefore').mockRejectedValueOnce(failure)
+      await expect(api.workspace.insertBefore(request({ workspaceId: created.workspaceId }))).rejects.toBe(failure)
+      vi.spyOn(ctx.workspaceRegistry, 'archiveSession').mockRejectedValueOnce(failure)
+      await expect(api.workspace.archiveSession(request({ sessionId: SessionId('pending-archive') }))).rejects.toBe(failure)
+      expect(ctx.workspaceRegistry.archivedSessionIds).toEqual([])
+      expect(ctx.workspaceRegistry.list().map(item => item.id)).toEqual([created.workspaceId])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('treats the current title as a no-op and rejects a conflicting title without changing either workspace', async () => {
+    const { api, ctx, root } = await harness()
+    try {
+      const first = expectOk(await api.workspace.create(request({ path: stageDir(root, 'first') }))).workspace
+      const second = expectOk(await api.workspace.create(request({ path: stageDir(root, 'second') }))).workspace
+      const workspace = ctx.workspaceRegistry.list().find(item => item.id === first.workspaceId)
+      if (workspace === undefined) throw new Error('first workspace is missing')
+      const setTitle = vi.spyOn(workspace, 'setTitle')
+      expectOk(await api.workspace.rename(request({ workspaceId: first.workspaceId, title: ' first ' })))
+      expect(setTitle).not.toHaveBeenCalled()
+      expect((await api.workspace.rename(request({ workspaceId: first.workspaceId, title: second.title }))).result)
+        .toMatchObject({ ok: false, error: { code: 'workspace-name-conflict', details: { name: second.title } } })
+      expect(workspace.title).toBe(first.title)
+      expect((await api.workspace.rename(request({ workspaceId: 'missing' as WorkspaceId, title: 'Available' }))).result)
+        .toMatchObject({ ok: false, error: { code: 'workspace-not-found' } })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('does not poison later workspace operations after a title or deletion storage failure', async () => {
+    const { api, ctx, root } = await harness()
+    try {
+      const created = expectOk(await api.workspace.create(request({ path: stageDir(root, 'project') }))).workspace
+      const workspace = ctx.workspaceRegistry.list()[0]
+      if (workspace === undefined) throw new Error('workspace is missing')
+      const failure = new Error('synthetic persistence failure')
+      vi.spyOn(workspace, 'setTitle').mockRejectedValueOnce(failure)
+      await expect(api.workspace.rename(request({ workspaceId: created.workspaceId, title: 'Rename' }))).rejects.toBe(failure)
+      expectOk(await api.workspace.rename(request({ workspaceId: created.workspaceId, title: 'Rename' })))
+      vi.spyOn(ctx.workspaceRegistry, 'delete').mockRejectedValueOnce(failure)
+      await expect(api.workspace.delete(request({ workspaceId: created.workspaceId }))).rejects.toBe(failure)
+      expect(expectOk(await api.workspace.list(request({}))).items).toHaveLength(1)
+      expect(expectOk(await api.workspace.delete(request({ workspaceId: created.workspaceId })))).toEqual({ deleted: true })
+      expect(existsSync(created.path)).toBe(true)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('moves a known session before an anchor or to the end and maps missing members', async () => {
+    const { api, ctx, root } = await harness()
+    try {
+      const created = expectOk(await api.workspace.create(request({ path: stageDir(root, 'project') }))).workspace
+      for (const id of ['first-session', 'second-session']) {
+        expectOk(await api.sessions.create(request({ workspaceId: created.workspaceId, sessionId: SessionId(id) })))
+      }
+      const workspace = ctx.workspaceRegistry.list()[0]
+      if (workspace === undefined) throw new Error('workspace is missing')
+      const [leading, trailing] = workspace.sessionIds
+      if (leading === undefined || trailing === undefined) throw new Error('workspace lacks its two sessions')
+      expect(expectOk(await api.workspace.insertSessionBefore(request({
+        workspaceId: created.workspaceId, sessionId: trailing, beforeSessionId: leading,
+      }))).workspace.sessionIds).toEqual([trailing, leading])
+      expect(expectOk(await api.workspace.insertSessionBefore(request({
+        workspaceId: created.workspaceId, sessionId: trailing,
+      }))).workspace.sessionIds).toEqual([leading, trailing])
+      for (const payload of [
+        { workspaceId: created.workspaceId, sessionId: SessionId('not-a-member') },
+        { workspaceId: created.workspaceId, sessionId: leading, beforeSessionId: SessionId('missing-anchor') },
+      ]) {
+        expect((await api.workspace.insertSessionBefore(request(payload))).result)
+          .toMatchObject({ ok: false, error: { code: 'workspace-move-invalid' } })
+      }
+      expect((await api.workspace.insertSessionBefore(request({
+        workspaceId: 'missing-workspace' as WorkspaceId, sessionId: leading,
+      }))).result).toMatchObject({ ok: false, error: { code: 'workspace-not-found' } })
+      const failure = new Error('synthetic order storage failure')
+      vi.spyOn(workspace, 'insertSessionBefore').mockRejectedValueOnce(failure)
+      await expect(api.workspace.insertSessionBefore(request({
+        workspaceId: created.workspaceId, sessionId: leading,
+      }))).rejects.toBe(failure)
+      expect(workspace.sessionIds).toEqual([leading, trailing])
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 })
 
@@ -412,6 +550,120 @@ describe('session creation and Workspace membership', () => {
 })
 
 describe('Host Workspace increments', () => {
+  it('ignores unrelated domains, unsupported tables and uncommitted deletion notifications', async () => {
+    const { api, ctx, root } = await harness()
+    const abort = new AbortController()
+    try {
+      const workspace = expectOk(await api.workspace.create(request({ path: stageDir(root, 'project') }))).workspace
+      const stream = api.events.host(request({}), abort.signal)[Symbol.asyncIterator]()
+      const marker = nextHostFrame(stream)
+      ctx.emit('domain/changed', { domain: 'unrelated', table: '', key: '', operation: 'put', value: {} })
+      ctx.emit('domain/changed', { domain: 'workspace', table: '', key: '', operation: 'deleted' })
+      ctx.emit('domain/changed', { domain: 'workspace', table: 'unrelated', key: 'a', operation: 'put', value: {} })
+      ctx.emit('domain/changed', { domain: 'workspace', table: 'workspaces', key: 'uncommitted', operation: 'deleted' })
+      expectOk(await api.workspace.rename(request({ workspaceId: workspace.workspaceId, title: 'Marker' })))
+      expect((await marker).payload).toMatchObject({
+        type: 'host/workspace-changed', workspace: { workspaceId: workspace.workspaceId, title: 'Marker' },
+      })
+      expect(ctx.workspaceRegistry.list()).toHaveLength(1)
+    } finally {
+      abort.abort()
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('rejects a committed registry notification that refers to a missing workspace', async () => {
+    const { api, ctx } = await harness()
+    const abort = new AbortController()
+    try {
+      const stream = api.events.host(request({}), abort.signal)[Symbol.asyncIterator]()
+      const pending = stream.next()
+      expect(() => { ctx.emit('domain/changed', {
+        domain: 'workspace', table: '', key: '', operation: 'put',
+        value: { initialized: true, workspaceIds: ['missing-workspace'], archivedSessionIds: [] },
+      }) }).toThrow('committed workspace registry references missing workspace "missing-workspace"')
+      abort.abort()
+      expect(await pending).toEqual({ done: true, value: undefined })
+    } finally {
+      abort.abort()
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('does not repeat an unchanged archive snapshot when the workspace registry gains another member', async () => {
+    const { api, ctx, root } = await harness()
+    const abort = new AbortController()
+    try {
+      const first = expectOk(await api.workspace.create(request({ path: stageDir(root, 'first') }))).workspace
+      const sessionId = SessionId('archived-baseline')
+      expectOk(await api.sessions.create(request({ workspaceId: first.workspaceId, sessionId })))
+      expectOk(await api.workspace.archiveSession(request({ sessionId })))
+      const stream = api.events.host(request({}), abort.signal)[Symbol.asyncIterator]()
+      const created = nextHostFrame(stream)
+      const second = expectOk(await api.workspace.create(request({ path: stageDir(root, 'second') }))).workspace
+      expect((await created).payload).toMatchObject({ type: 'host/workspace-changed', workspace: { workspaceId: second.workspaceId } })
+      const marker = nextHostFrame(stream)
+      expectOk(await api.workspace.rename(request({ workspaceId: second.workspaceId, title: 'Marker after registry write' })))
+      expect((await marker).payload).toMatchObject({
+        type: 'host/workspace-changed', workspace: { workspaceId: second.workspaceId, title: 'Marker after registry write' },
+      })
+      expect(ctx.workspaceRegistry.archivedSessionIds).toEqual([sessionId])
+    } finally {
+      abort.abort()
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('does not deliver an event whose earlier observer cancels the host stream', async () => {
+    const { api, ctx } = await harness()
+    const abort = new AbortController()
+    try {
+      ctx.on('agent/status', () => { abort.abort() })
+      const stream = api.events.host(request({}), abort.signal)[Symbol.asyncIterator]()
+      const pending = stream.next()
+      const session = ctx.sessions.prepare(SessionId('cancelled-status'), { meta: { cwd: '/synthetic' } })
+      agentEvents(ctx, stubAgent(session)).emit('agent/status', { status: 'running' })
+      expect(await pending).toEqual({ done: true, value: undefined })
+    } finally {
+      abort.abort()
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('streams paired session disposal and agent status/error notifications', async () => {
+    const { api, ctx } = await harness()
+    const abort = new AbortController()
+    const stream = api.events.host(request({}), abort.signal)[Symbol.asyncIterator]()
+    let detach = () => {}
+    try {
+      const session = ctx.sessions.prepare(SessionId('lifecycle-session'), { meta: { cwd: '/synthetic' } })
+      detach = ctx.sessions.enter(session)
+      const creation = nextHostFrame(stream)
+      ctx.sessions.announce(session)
+      expect((await creation).payload).toMatchObject({ type: 'host/session-added', sessionId: session.id })
+      const agent = stubAgent(session)
+      const events = agentEvents(ctx, agent)
+      const status = nextHostFrame(stream)
+      events.emit('agent/status', { status: 'running' })
+      expect((await status).payload).toEqual({ type: 'host/session-status', sessionId: session.id, running: true })
+      const failure = nextHostFrame(stream)
+      events.emit('agent/error', { turn: 1, step: 1, error: new Error('synthetic turn error') })
+      const frame = (await failure).payload
+      expect(frame.type).toBe('host/agent-error')
+      if (frame.type !== 'host/agent-error') throw new Error('missing error frame')
+      expect(frame.sessionId).toBe(session.id)
+      expect(frame.message).toContain('synthetic turn error')
+      const disposed = nextHostFrame(stream)
+      detach()
+      expect((await disposed).payload).toEqual({ type: 'host/session-removed', sessionId: session.id })
+      expect(ctx.sessions.get(session.id)).toBeUndefined()
+    } finally {
+      abort.abort()
+      detach()
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('projects subagent origin in attached summaries and creation increments', async () => {
     const { api, ctx } = await harness()
     const abort = new AbortController()

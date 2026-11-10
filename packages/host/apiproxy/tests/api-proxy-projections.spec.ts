@@ -72,6 +72,23 @@ function seedMessages(session: Session, count: number): void {
 const api = (ctx: Context) => createApiProxy(ctx, { defaultModelSelection: () => ({ provider: 'p', model: 'm' }), cwd: '/tmp' })
 
 describe('session.history projections block', () => {
+  it('serves a restored cold tail projection without creating an agent', async () => {
+    const { ctx, session } = await harness(true)
+    try {
+      ctx.sessionProjections.register(lastUserUnit())
+      seedMessages(session, 1)
+      const meta = { version: 0, id: SessionId('cold-tail'), createdAt: 1, cwd: '/synthetic' }
+      const inspect = vi.fn(() => Promise.resolve({ meta, events: [...session.events] }))
+      ctx.provide('sessionPersistence', { list: () => Promise.resolve([meta]), inspect } as never)
+      expect((await api(ctx).sessions.history(request({ sessionId: meta.id }))).result)
+        .toMatchObject({ ok: true, value: { projections: { values: { 'test/last-user': { text: 'm0' } } } } })
+      expect(inspect).toHaveBeenCalledOnce()
+      expect(ctx.agents.get(meta.id)).toBeUndefined()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('serves the unit value on the tail page with asOfSeq = last event seq', async () => {
     const { ctx, session } = await harness(true)
     ctx.sessionProjections.register(lastUserUnit())

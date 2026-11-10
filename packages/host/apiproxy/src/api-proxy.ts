@@ -1923,7 +1923,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           let providerCallCount = 0
           let providerPageLimit = SESSION_SEARCH_RESULT_LIMIT
           while (authorized.length <= SESSION_SEARCH_RESULT_LIMIT) {
-            if (isAborted(signal)) return cancelled()
             if (providerCallCount >= SESSION_SEARCH_PROVIDER_CALL_LIMIT) {
               throw new Error(
                 `session search provider exceeded the ${SESSION_SEARCH_PROVIDER_CALL_LIMIT}-call work budget`,

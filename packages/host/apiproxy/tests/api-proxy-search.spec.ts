@@ -68,6 +68,52 @@ async function baseContext(): Promise<Context> {
 }
 
 describe('session.search', () => {
+  it('honors cancellation after the visibility snapshot settles and before querying the provider', async () => {
+    const ctx = await baseContext()
+    const controller = new AbortController()
+    const searchSessions = vi.fn(() => Promise.resolve({ items: [] }))
+    ctx.provide('sessionQuery', { searchSessions } as never)
+    try {
+      const list = ctx.sessions.list.bind(ctx.sessions)
+      vi.spyOn(ctx.sessions, 'list').mockImplementationOnce(() => {
+        const items = list()
+        queueMicrotask(() => { controller.abort() })
+        return items
+      })
+      expect((await createApiProxy(ctx, defaults).sessions.search(request('synthetic'), controller.signal)).result)
+        .toMatchObject({ ok: false, error: { code: 'cancelled' } })
+      expect(searchSessions).not.toHaveBeenCalled()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('ignores the remainder of a valid provider page after finding the one-hit overfetch boundary', async () => {
+    const ctx = await baseContext()
+    const items = Array.from({ length: 40 }, (_, index) => hit(`overflow-${index}`))
+    for (const item of items) {
+      ctx.sessions.create(item.header.id, { meta: item.header }).append('user/message', createUserMessage({
+        source: { kind: 'user' }, content: [{ type: 'text', text: 'synthetic match' }],
+      }), { surfaceOp: 'append' })
+    }
+    let page = 0
+    const searchSessions = vi.fn(() => {
+      const offset = page++ * 20
+      return Promise.resolve({ items: items.slice(offset, offset + 20), ...(page === 1 ? { nextCursor: 'second-page' } : {}) })
+    })
+    ctx.provide('sessionQuery', { searchSessions } as never)
+    try {
+      const response = await createApiProxy(ctx, defaults).sessions.search(request('synthetic'), new AbortController().signal)
+      expect(response.result.ok).toBe(true)
+      if (!response.result.ok) throw new Error('unexpected search refusal')
+      expect(response.result.value.hasMore).toBe(true)
+      expect(response.result.value.items.map(item => item.sessionId)).toEqual(items.slice(0, 20).map(item => item.header.id))
+      expect(searchSessions).toHaveBeenCalledTimes(2)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('searches only list-visible ids and current conversation-message events', async () => {
     const ctx = await baseContext()
     const live = ctx.sessions.create(sid('live'), { meta: header('live', '/live') })

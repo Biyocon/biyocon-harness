@@ -332,6 +332,97 @@ describe('subagent gateway', () => {
     })
   })
 
+  it.each([
+    ['NOT_RESUMABLE', 'subagent-not-resumable'],
+    ['UNAUTHORIZED', 'subagent-unauthorized'],
+    ['ACTIVATION_CLOSING', 'subagent-delivery-unavailable'],
+    ['CONTINUATION_UNAVAILABLE', 'subagent-delivery-unavailable'],
+    ['PERSISTENCE_UNAVAILABLE', 'subagent-delivery-unavailable'],
+    ['MAX_DEPTH_EXCEEDED', 'internal'],
+  ] as const)('maps the provider continuation failure %s without its private details', async (code, expected) => {
+    const { api, followup } = bench({ followupError: new SubagentError('synthetic provider detail', code) })
+    const response = await api.subagents.prompt(request({
+      parentSessionId: PARENT, childSessionId: CHILD, mode: 'continuable', content: [],
+    }), new AbortController().signal)
+    expect(response.result).toMatchObject({ ok: false, error: { code: expected } })
+    expect(JSON.stringify(response)).not.toContain('synthetic provider detail')
+    expect(followup).toHaveBeenCalledOnce()
+  })
+
+  it('reports cancellation when the signal aborts during continuation delivery', async () => {
+    const controller = new AbortController()
+    const { api, followup } = bench()
+    followup.mockImplementationOnce(() => {
+      controller.abort()
+      return Promise.reject(new Error('synthetic delivery detail'))
+    })
+    expect((await api.subagents.prompt(request({
+      parentSessionId: PARENT, childSessionId: CHILD, mode: 'continuable', content: [],
+    }), controller.signal)).result).toMatchObject({
+      ok: false, error: { code: 'cancelled', message: 'subagent prompt was cancelled' },
+    })
+    expect(followup).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    { failure: new SubagentError('synthetic cancellation', 'CANCELLED'), code: 'cancelled' },
+    { failure: new Error('synthetic lookup failure'), code: 'internal' },
+  ])('maps a $code catalog failure consistently for list, history and prompt', async ({ failure, code }) => {
+    const { api, followup } = bench({ listError: failure })
+    const signal = new AbortController().signal
+    for (const response of [
+      await api.subagents.list(request({ parentSessionId: PARENT }), signal),
+      await api.subagents.history(request({ parentSessionId: PARENT, childSessionId: CHILD, mode: 'continuable' }), signal),
+      await api.subagents.prompt(request({ parentSessionId: PARENT, childSessionId: CHILD, mode: 'continuable', content: [] }), signal),
+    ]) {
+      expect(response.result).toMatchObject({ ok: false, error: { code } })
+      expect(JSON.stringify(response)).not.toContain('synthetic')
+    }
+    expect(followup).not.toHaveBeenCalled()
+  })
+
+  it.each(['reject', 'resolve'] as const)('reports cancellation when a cold history read aborts before it can %s', async (settlement) => {
+    const { api, inspect } = bench()
+    const controller = new AbortController()
+    const read = inspect.getMockImplementation()
+    if (read === undefined) throw new Error('missing persistence fixture')
+    inspect.mockImplementationOnce(() => {
+      controller.abort()
+      return settlement === 'reject' ? Promise.reject(new Error('synthetic interrupted read')) : read()
+    })
+    expect((await api.subagents.history(request({
+      parentSessionId: PARENT, childSessionId: CHILD, mode: 'continuable',
+    }), controller.signal)).result).toMatchObject({
+      ok: false, error: { code: 'cancelled', message: 'subagent history read was cancelled' },
+    })
+  })
+
+  it('rejects a changed history parent and hides an unexpected cold-reader failure', async () => {
+    const crossed = bench({ historyParent: sid('other-parent') })
+    expect((await crossed.api.subagents.history(request({
+      parentSessionId: PARENT, childSessionId: CHILD, mode: 'continuable',
+    }))).result).toMatchObject({ ok: false, error: { code: 'subagent-unauthorized' } })
+    const broken = bench()
+    broken.inspect.mockRejectedValueOnce(new Error('synthetic storage detail'))
+    const response = await broken.api.subagents.history(request({
+      parentSessionId: PARENT, childSessionId: CHILD, mode: 'continuable',
+    }))
+    expect(response.result).toMatchObject({ ok: false, error: { code: 'internal', message: 'subagent history read failed' } })
+    expect(JSON.stringify(response)).not.toContain('synthetic storage detail')
+  })
+
+  it.each(['live', 'cold'] as const)('does not attach a tail projection to an older %s history page', async (source) => {
+    const { api, snapshot, restore } = bench(source === 'live' ? { liveChild: true } : {})
+    const response = await api.subagents.history(request({
+      parentSessionId: PARENT, childSessionId: CHILD, mode: 'continuable', beforeSeq: 1,
+    }))
+    expect(response.result.ok).toBe(true)
+    if (!response.result.ok) throw new Error('unexpected history refusal')
+    expect(Object.hasOwn(response.result.value, 'projections')).toBe(false)
+    expect(snapshot).not.toHaveBeenCalled()
+    expect(restore).not.toHaveBeenCalled()
+  })
+
   it('maps history disappearance and hides unexpected backend details', async () => {
     const disappeared = bench({ storedChild: false })
     expect((await disappeared.api.subagents.history(request({

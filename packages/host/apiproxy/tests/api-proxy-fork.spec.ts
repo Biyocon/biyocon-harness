@@ -87,6 +87,107 @@ const api = (ctx: Context) => createApiProxy(ctx, {
 })
 
 describe('sessions.fork', () => {
+  it('refuses a source with no completed turn before creating a child', async () => {
+    const ctx = await composed()
+    try {
+      const source = liveAgent(ctx, 'empty-source', 0)
+      const create = vi.spyOn(ctx.agents, 'create')
+      expect((await api(ctx).sessions.fork(request({ sessionId: source.id }))).result).toMatchObject({
+        ok: false, error: { code: 'fork-unavailable', message: `session "${source.id}" has no completed turn to fork from` },
+      })
+      expect(create).not.toHaveBeenCalled()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('mounts and records the source\'s explicit preset on the fork', async () => {
+    const ctx = await composed()
+    try {
+      const source = ctx.sessions.create(sid('preset-source'), { meta: { cwd: '/synthetic', agentPreset: 'minimal' } })
+      source.append('turn/start', { turn: 1 })
+      source.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+      ctx.agents.register({ id: source.id, session: source, ctx, status: 'idle' } as Agent)
+      const preset = { id: 'minimal', trust: 'system', path: '/synthetic/agent.cordis.yml' }
+      const mount = vi.fn(() => Promise.resolve(preset))
+      ctx.provide('agentPresets', { resolve: () => Promise.resolve(preset), mount } as never)
+      const response = await api(ctx).sessions.fork(request({ sessionId: source.id }))
+      expect(response.result.ok).toBe(true)
+      if (!response.result.ok) throw new Error('unexpected fork refusal')
+      expect(ctx.sessions.get(response.result.value.sessionId)?.header.agentPreset).toBe('minimal')
+      expect(mount).toHaveBeenCalledOnce()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('reports a lineage lookup failure before publishing an ordinary fork', async () => {
+    const ctx = await composed()
+    try {
+      const source = liveAgent(ctx, 'subagent-source', 1, 'none', { origin: 'subagent', parentSession: sid('parent') })
+      ctx.provide('sessionQuery', { traceSession: () => Promise.reject(new Error('synthetic lineage failure')) } as never)
+      expect((await api(ctx).sessions.fork(request({ sessionId: source.id }))).result)
+        .toMatchObject({ ok: false, error: { code: 'internal' } })
+      expect(ctx.agents.list()).toHaveLength(1)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('reports a failed child creation without changing the source log', async () => {
+    const ctx = await composed()
+    try {
+      const source = liveAgent(ctx, 'source-create-failure', 1)
+      const events = [...source.events]
+      vi.spyOn(ctx.agents, 'create').mockRejectedValueOnce(new Error('synthetic factory failure'))
+      expect((await api(ctx).sessions.fork(request({ sessionId: source.id }))).result)
+        .toMatchObject({ ok: false, error: { code: 'internal' } })
+      expect(source.events).toEqual(events)
+      expect(ctx.agents.list()).toHaveLength(1)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('reports an accounting failure while retaining the already published fork', async () => {
+    const members: SessionId[] = []
+    const workspace = {
+      id: 'synthetic-workspace' as Workspace['id'], sessionIds: members,
+      attachSession: () => Promise.reject(new Error('synthetic accounting failure')),
+    } as unknown as Workspace
+    const ctx = await composed([workspace])
+    try {
+      const source = liveAgent(ctx, 'source-attach-failure', 1)
+      members.push(source.id)
+      const response = await api(ctx).sessions.fork(request({ sessionId: source.id }))
+      expect(response.result).toMatchObject({
+        ok: false, error: { code: 'workspace-attach-failed', details: { workspaceId: workspace.id } },
+      })
+      expect(ctx.agents.list()).toHaveLength(2)
+      expect(members).toEqual([source.id])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('preserves an attached source without project metadata rather than inventing a project on the fork', async () => {
+    const ctx = await composed()
+    try {
+      const source = ctx.sessions.create(sid('project-less-source'))
+      source.append('turn/start', { turn: 1 })
+      source.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+      ctx.agents.register({ id: source.id, session: source, ctx, status: 'idle' } as Agent)
+      const response = await api(ctx).sessions.fork(request({ sessionId: source.id }))
+      expect(response.result.ok).toBe(true)
+      if (!response.result.ok) throw new Error('unexpected fork refusal')
+      const fork = ctx.sessions.get(response.result.value.sessionId)
+      expect(fork?.header.parentSession).toBe(source.id)
+      expect(fork?.header.cwd).toBeUndefined()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('cuts at the anchored completed turn and records lineage and cwd', async () => {
     const ctx = await composed()
     const source = liveAgent(ctx, 'session-source', 2)
