@@ -21,6 +21,8 @@ Conductor 运行引擎已分为可复用的软件包，但已安装的产品还�
 | [`ui-user-questions`](../../../../packages/client/ui-user-questions/README.md) 与 [`apiproxy`](../../../../packages/host/apiproxy/README.md) | 将 Conductor 卡片与回执移至可选 UI 插件。保留通用、类型化的所有者意图注册及服务端验证路径；外部客户端不能仅靠模型文字或猜出的 question id 伪造批准。 |
 | [`known-event-types.ts`](../../../../packages/core/session/src/known-event-types.ts) | 会话读取器必须在回放前识别已安装 Conductor 的必需事件。用经验证的已安装包事件声明或等效的组装目录输入，替代只扫描仓库路径的生成器假设。未知的必需事件仍须拒绝；不可用的旧 Conductor 运行不能遮蔽无关聊天历史。 |
 
+第一项拆分交付是打包的宿主 bundle 与 preset，不包含客户端适配器或 record 变更。[`composeProfile`](../../../../apps/cli/src/profile-boot.ts) 目前在组合 bundle 之后，用 CLI 自带目录覆盖 `agent-presets.roots`，因此 bundle patch 无法注册自己的 preset。增加可选的 `dsh.bundle.presetRoot`，相对于各已安装 bundle；宿主在包内解析并授予 system 信任。须在同一变更中把 Conductor 从 CLI 自带目录及基础 bundle 移入新 bundle，再把它列入 Biyocon 的 profiles。保留明确的 system 优先于 user 的顺序，遇到 system 目录之间重复的 id 时拒绝，而不是静默遮蔽。在移动 UI 或所有者 API 前，用实际打包产物验证安装、组合、缺失资源、重复 id 和未安装 bundle 的情形。
+
 bundle 的公开包名必须位于发布者控制的命名空间。现有 `@deepseek-ai/*` 名称和指向上游的 repository 字段，不能视为在该命名空间发布的许可。公开 tarball 前须确定并验证发布身份；本地原型可使用未发布的包说明符。Cordis 与共享 Harness 服务须保持 peer 身份，避免安装 bundle 时加载第二套核心。上游[插件安装指南](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.md)说明 `dsh plugin --profile <name> add <package>` 及 bundle 组合；测试须使用选定目标版本的实际命令和打包产物。固定受支持的宿主版本；每个更新的上游版本都要做显式兼容性检查。Biyocon Harness 本身继续使用 rc.7。
 
 ### Host security and lifecycle
