@@ -2414,7 +2414,7 @@ export interface Config {
 
 ```ts config-catalog
 /** Deployment policy for the Conductor tool. */
-export interface Config extends DetectiveSearchSettings {
+export interface Config extends DetectiveSearchSettings, DetectiveCaptureSettings {
   /** Maximum explicitly cited workspace files per intake (default 16). */
   maxMaterialFiles?: number
   /** Maximum bytes in one complete text input (default 65536). */
@@ -2457,6 +2457,14 @@ export interface DetectiveSearchSettings {
   readonly detectiveSearchSnapshotMaxBytes?: number
   /** Role-specific entry, preview and process settings; defaults follow the search tools. */
   readonly detectiveSearch?: DetectiveSearchExecutionConfig
+}
+
+/** Deployment limits for the Detective's saved-source reader. */
+export interface DetectiveCaptureSettings {
+  /** Complete result character limit, including metadata (default 4000, minimum 512). */
+  readonly detectiveCaptureMaxResultChars?: number
+  /** Default and maximum requested lines per call (default 200). */
+  readonly detectiveCaptureMaxLines?: number
 }
 
 /** Configured exact-argv quality command. */
@@ -2506,7 +2514,7 @@ export interface DetectiveSearchExecutionConfig {
 
 依赖： [`QualityPolicyStage`](../packages/conductor/conductor/src/index.ts)
 
-来源： [`packages/conductor/tool-conductor/src/index.ts:91`](../packages/conductor/tool-conductor/src/index.ts)
+来源： [`packages/conductor/tool-conductor/src/index.ts:93`](../packages/conductor/tool-conductor/src/index.ts)
 
 <a id="deepseek-aidsh-tool-fs"></a>
 

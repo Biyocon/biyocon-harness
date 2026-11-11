@@ -32,6 +32,12 @@ Detective alone receives scoped `glob`/`grep` pages. `detectiveGlobMaxResultChar
 
 `detectiveSearch` owns independent item, line-preview, raw-output and process limits, with the search tools' numeric defaults; `sampleOverCapGlobResults` defaults to true. `detectiveSearchSnapshotRoot` defaults to `storages/conductor-search` under DSH_HOME and must be absolute when configured. `detectiveSearchSnapshotMaxBytes` defaults to 40000000 serialized bytes. Private artifacts are bound to run/child. Continuations validate saved results instead of reading changed files; missing or invalid artifacts fail explicitly. Preserve this directory for cold continuation; no automatic cleanup occurs. See the [decision](../../../.agents/notes/implemented/feature/2026-11-11-detective-search-pages.md).
 
+## Detective saved-source reads
+
+When admission contains files, Detective receives the current request and an ordered file index with id, selector, SHA-256, UTF-8 byte length and line count. File bodies stay in the v5 checkpoint. Only this child receives `conductor_read_capture`; it reads that saved text, never the workspace. Supply the indexed `material_id`, `sha256`, `selector`, optional one-based `start_line` and `line_count`. Unknown or mismatched identities and invalid ranges fail explicitly.
+
+`detectiveCaptureMaxResultChars` defaults to 4000 Unicode characters for complete JSON output and must be a safe integer of at least 512. `detectiveCaptureMaxLines` defaults to 200 and must be a positive safe integer. Results give inclusive start/end lines, complete line text, `truncated` and `next_start_line`. A line plus metadata that cannot fit fails without returning source. Follow the next line to inspect omissions. Critic excerpt validation and Auditor retain the complete capture; other roles' tools and prompts remain unchanged. Indexing reduces initial file input but adds reader calls; no price saving is guaranteed. See the [capture decision](../../../.agents/notes/implemented/feature/2026-11-11-detective-capture-index.md).
+
 ## Known Limitations and Deferred Work
 
 Skill lookup selects the parent agent's scope key, so its preset's installed role and protocol providers remain visible independently of the task workspace. The shipped preset validates these resources before mounting; a custom composition must provide its own complete skill catalog.

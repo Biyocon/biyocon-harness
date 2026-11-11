@@ -1,7 +1,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { CallId, LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
-import type { CapturedReport, ConductorAdmission, GateRecord } from '@deepseek-ai/dsh-conductor'
+import type { CapturedReport, ConductorAdmission, GateRecord, IntakeMaterial } from '@deepseek-ai/dsh-conductor'
 import { installDetectiveSearchWorldChanges, nextDetectiveSearchPage } from './detective-search-world.ts'
+import { installDetectiveCaptureWorldChanges, nextDetectiveCaptureRead } from './detective-capture-world.ts'
+import type { IndexedFixtureMaterial } from './detective-capture-world.ts'
 
 function* call(name: string, value: unknown, outputTokens?: number): Generator<StreamChunk> {
   const id = CallId(`installed-${name}`)
@@ -203,7 +205,7 @@ export class InstalledConductorAdapter extends LlmAdapter {
       const input = JSON.parse(json) as {
         run_id: string
         stage: string
-        admission: ConductorAdmission
+        admission: Omit<ConductorAdmission, 'materials'> & { materials: Array<IntakeMaterial | IndexedFixtureMaterial> }
         current_report: CapturedReport | null
         report: CapturedReport
         audit_hash: string
@@ -225,8 +227,15 @@ export class InstalledConductorAdapter extends LlmAdapter {
         return
       }
       if (input.admission.purpose !== 'analysis') throw new Error('Fixture expects an analysis dispatch')
+      if (input.stage === 'detective') {
+        const next = nextDetectiveCaptureRead(options, input.admission.materials)
+        if (next !== undefined) {
+          yield* call('conductor_read_capture', next)
+          return
+        }
+      }
       if (scenario === 'detective-search-pages' && input.stage === 'detective') {
-        const next = nextDetectiveSearchPage(result)
+        const next = nextDetectiveSearchPage(result?.toolCallId === 'installed-conductor_read_capture' ? undefined : result)
         if (next !== undefined) {
           yield* call(next.name, next.args)
           return
@@ -255,6 +264,7 @@ export class InstalledConductorAdapter extends LlmAdapter {
       }
       const ids = input.admission.materials.map(material => material.id)
       const materialSpans = input.admission.materials.map((material) => {
+        if (!('content' in material)) return { material_id: material.id, start_line: 1, end_line: material.line_count }
         const lines = material.content.split(/\r\n|\n|\r/)
         return { material_id: material.id, start_line: 1,
           end_line: lines.length - (lines.at(-1) === '' ? 1 : 0) }
@@ -292,9 +302,11 @@ export class InstalledConductorAdapter extends LlmAdapter {
         ...input.stage === 'auditor' ? { candidate_hash: input.current_report!.hash } : {},
         ...input.stage === producer && !rework && !blocked ? { candidate: {
           version: `report-${++this.reportVersions}`, deliverable: input.admission.deliverable,
-          content: input.admission.deliverable === 'recommendations'
-            ? '1. Document ownership first because it removes ambiguity. 2. Add examples next because they make the plan reviewable.'
-            : 'The supplied plan has a clear scope but needs explicit ownership. This is a report, not implementation approval.',
+          content: scenario === 'detective-capture-pages'
+            ? 'The captured plan has no rollback (LATE_ADVERSE_FINDING). This report uses the saved source, not the later workspace replacement.'
+            : input.admission.deliverable === 'recommendations'
+              ? '1. Document ownership first because it removes ambiguity. 2. Add examples next because they make the plan reviewable.'
+              : 'The supplied plan has a clear scope but needs explicit ownership. This is a report, not implementation approval.',
           criteria: criteria.map(criterion => ({ criterion, outcome: 'Assessed from the captured input.' })),
           material_ids: ids, material_spans: materialSpans,
           assumptions: [], limitations: ['No implementation or test verification was performed.'],
@@ -371,4 +383,5 @@ export const inject = ['llm']
 export function apply(ctx: Context): void {
   ctx.llm.registerAdapter(['conductor-installed'], new InstalledConductorAdapter())
   if (process.env.DSH_CONDUCTOR_INTAKE_SCENARIO === 'detective-search-pages') installDetectiveSearchWorldChanges(ctx)
+  if (process.env.DSH_CONDUCTOR_INTAKE_SCENARIO === 'detective-capture-pages') installDetectiveCaptureWorldChanges(ctx)
 }

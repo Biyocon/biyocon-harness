@@ -23,6 +23,9 @@ import { canonicalAbsolute, containsPath } from './path-policy.ts'
 /** Global read/search tool names a read-only specialist keeps visible. */
 export const READ_TOOLS = ['read', 'read_image', 'grep', 'glob'] as const
 
+/** Trusted saved-capture reader, installed only for a Detective with captured files. */
+export const DETECTIVE_CAPTURE_READ_TOOL = 'conductor_read_capture'
+
 /** Global write/edit tool names the Integrator keeps alongside the read tools. */
 export const WRITE_TOOLS = ['write', 'edit'] as const
 
@@ -70,6 +73,14 @@ export function toolRestrictionForStage(
  */
 export const analysisToolGuard: ToolGuard = exec => [...READ_TOOLS, 'structured_output'].includes(exec.name)
   ? undefined : 'Conductor analysis is read-only; writing, commands, approval and external actions are prohibited.'
+
+/**
+ * Admit the trusted capture reader without widening other analysis roles.
+ * @param exec - actual attempted Detective tool execution.
+ * @returns the ordinary analysis denial unless a permitted read is attempted.
+ */
+export const detectiveCaptureToolGuard: ToolGuard = exec => exec.name === DETECTIVE_CAPTURE_READ_TOOL
+  ? undefined : analysisToolGuard(exec)
 
 /**
  * Build the argument-aware write guard for one specialist child. Reads are

@@ -50,13 +50,15 @@ import type {
   CapturedReport,
   ReportDecision,
 } from '@deepseek-ai/dsh-conductor'
-import { toolGuardForStage, toolRestrictionForStage } from './capability.ts'
+import { detectiveCaptureToolGuard, toolGuardForStage, toolRestrictionForStage } from './capability.ts'
 import { captureMaterials } from './materials.ts'
 import type { MaterialLimits } from './materials.ts'
 import { ANALYSIS_CHALLENGE_OUTPUT_SCHEMA, ANALYSIS_CRITERIA_INSTRUCTION, REPORT_DECISION_SCHEMA } from './analysis-schema.ts'
 import { dispatchAnalysisChild } from './analysis-dispatch.ts'
 import { detectiveSearchConfigFields, detectiveSearchContribution, resolveDetectiveSearchPolicy } from './detective-search.ts'
 import type { DetectiveSearchPolicy, DetectiveSearchSettings } from './detective-search.ts'
+import { detectiveCaptureConfigFields, prepareDetectiveCapture, resolveDetectiveCapturePolicy } from './detective-capture.ts'
+import type { DetectiveCapturePolicy, DetectiveCaptureSettings, DetectiveIndexedAdmission } from './detective-capture.ts'
 import { criticBudgetReservation } from './critic-budget.ts'
 import { ralphDirective } from './ralph.ts'
 import { observeConductorChildren, publishChildGates } from './children.ts'
@@ -88,7 +90,7 @@ export const name = 'tool-conductor'
 export const inject = ['tools', 'systemPrompt', 'agents', 'subagents', 'skills', 'sessions', 'workflowEngine', 'sandbox', 'subprocess']
 
 /** Deployment policy for the Conductor tool. */
-export interface Config extends DetectiveSearchSettings {
+export interface Config extends DetectiveSearchSettings, DetectiveCaptureSettings {
   /** Maximum explicitly cited workspace files per intake (default 16). */
   maxMaterialFiles?: number
   /** Maximum bytes in one complete text input (default 65536). */
@@ -121,6 +123,8 @@ export interface Config extends DetectiveSearchSettings {
 
 /** Schemastery configuration for the Conductor tool. */
 export const Config: z<Config> = z.object({
+  detectiveCaptureMaxResultChars: detectiveCaptureConfigFields.detectiveCaptureMaxResultChars,
+  detectiveCaptureMaxLines: detectiveCaptureConfigFields.detectiveCaptureMaxLines,
   detectiveGlobMaxResultChars: detectiveSearchConfigFields.detectiveGlobMaxResultChars,
   detectiveGrepMaxResultChars: detectiveSearchConfigFields.detectiveGrepMaxResultChars,
   detectiveSearchSnapshotRoot: detectiveSearchConfigFields.detectiveSearchSnapshotRoot,
@@ -154,6 +158,7 @@ export const Config: z<Config> = z.object({
 })
 
 interface ResolvedConfig extends MaterialLimits {
+  readonly detectiveCapture: DetectiveCapturePolicy
   readonly detectiveSearch: DetectiveSearchPolicy
   readonly subagentProvider: string
   readonly maxReworkPerGate: number
@@ -333,6 +338,7 @@ function resolveConfig(config: Config): ResolvedConfig {
   const maxRalphHandoffChars = config.maxRalphHandoffChars ?? 16_384
   const qualityCommands = resolveQualityCatalog(config.qualityCommands ?? [])
   const detectiveSearch = resolveDetectiveSearchPolicy(config)
+  const detectiveCapture = resolveDetectiveCapturePolicy(config)
   const limits: MaterialLimits = {
     maxMaterialFiles: config.maxMaterialFiles ?? 16,
     maxMaterialBytes: config.maxMaterialBytes ?? 65_536,
@@ -365,7 +371,7 @@ function resolveConfig(config: Config): ResolvedConfig {
   }
   return { subagentProvider, maxReworkPerGate, maxOwnerReassessmentsPerGate,
     maxCriticInputTokensPerAttempt, maxCriticOutputTokensPerAttempt, maxCriticTokensPerRun,
-    maxRalphRounds, maxRalphHandoffChars, qualityCommands, detectiveSearch, ...limits }
+    maxRalphRounds, maxRalphHandoffChars, qualityCommands, detectiveSearch, detectiveCapture, ...limits }
 }
 
 /** Require a genuinely fresh structured-output provider for specialists. */
@@ -435,6 +441,7 @@ function composeSpecialistPrompt(
   catalog: ReadonlyMap<string, QualityCommandDefinition>,
   qualityExecutions: readonly QualityExecutionRecord[],
   ralphResult?: unknown,
+  indexedAdmission?: DetectiveIndexedAdmission,
 ): string {
   const stageActions = [
     'read',
@@ -446,7 +453,7 @@ function composeSpecialistPrompt(
     'Dispatch package:\n' + JSON.stringify({
       run_id: run.runId,
       stage,
-      admission: run.admission,
+      admission: indexedAdmission ?? run.admission,
       owner_ledger: run.ownerLedger,
       owner_revision: run.ownerRevision,
       effective_owner_mandate: effectiveOwnerMandate(run),
@@ -639,6 +646,7 @@ async function runSpecialist(
   maxRalphHandoffChars: number,
   catalog: ReadonlyMap<string, QualityCommandDefinition>,
   detectiveSearch: DetectiveSearchPolicy,
+  detectiveCapture: DetectiveCapturePolicy,
 ): Promise<SpecialistDispatchResult | AnalysisEnvelope> {
   const roleName = ROLE_SKILL[stage]
   /* v8 ignore next -- runSpecialist receives only stages covered by the complete ROLE_SKILL mapping. */
@@ -656,10 +664,17 @@ async function runSpecialist(
   }
   const persona = [roleBody, specialistBody, ralphBody].filter(value => value !== undefined).join('\n\n')
   const searchContribution = stage === 'detective' ? detectiveSearchContribution(ctx, run.runId, detectiveSearch) : undefined
+  const capture = searchContribution !== undefined && run.admission.materials.some(material => material.kind === 'file')
+    ? prepareDetectiveCapture(run.admission, detectiveCapture, searchContribution) : undefined
+  const detectiveContribution = capture?.childToolContribution ?? searchContribution
+  const capturePolicy = capture === undefined ? undefined : {
+    childToolGuard: detectiveCaptureToolGuard,
+  }
   if (run.admission.purpose === 'analysis') {
     return await dispatchAnalysisChild({ mode: 'producer', ctx, providerName, parent, signal, stage, run,
-      prompt: composeSpecialistPrompt(stage, run, new Map(), []), persona,
-      ...searchContribution === undefined ? {} : { childToolContribution: searchContribution } }) as AnalysisEnvelope
+      prompt: composeSpecialistPrompt(stage, run, new Map(), [], undefined, capture?.admission), persona,
+      ...capturePolicy,
+      ...detectiveContribution === undefined ? {} : { childToolContribution: detectiveContribution } }) as AnalysisEnvelope
   }
   assertCatalogBindings(run, catalog)
   const qualityExecutions: QualityExecutionRecord[] = []
@@ -749,8 +764,8 @@ async function runSpecialist(
       : undefined
     const structured = await runWorkflowChild(
       ctx, providerName, parent, signal, stage, run,
-      composeSpecialistPrompt(stage, run, catalog, qualityExecutions, ralphOutcome?.result), ENVELOPE_SCHEMA, persona,
-      headsmanContribution ?? auditorContribution ?? searchContribution,
+      composeSpecialistPrompt(stage, run, catalog, qualityExecutions, ralphOutcome?.result, capture?.admission), ENVELOPE_SCHEMA, persona,
+      headsmanContribution ?? auditorContribution ?? detectiveContribution, capturePolicy,
     )
     const resolved = resolveSpecialistEnvelope(structured, stage, run, catalog)
     return { ...resolved, qualityExecutions, requiredQualityCommands }
@@ -1106,14 +1121,14 @@ export function apply(ctx: Context, config: Config): void {
           async dispatchSpecialist(stage: ConductorStage, current: ConductorRun) {
             const result = await runSpecialist(
               ctx, resolved.subagentProvider, parent, exec.signal, stage, current, resolved.maxRalphHandoffChars,
-              resolved.qualityCommands, resolved.detectiveSearch,
+              resolved.qualityCommands, resolved.detectiveSearch, resolved.detectiveCapture,
             )
             observeReport(current, 'envelope' in result ? result.envelope : result)
             return result
           },
           async dispatchAnalysisProducer(stage: ConductorStage, current: ConductorRun) {
             const value = await runSpecialist(ctx, resolved.subagentProvider, parent, exec.signal, stage, current,
-              resolved.maxRalphHandoffChars, resolved.qualityCommands, resolved.detectiveSearch)
+              resolved.maxRalphHandoffChars, resolved.qualityCommands, resolved.detectiveSearch, resolved.detectiveCapture)
             observeReport(current, value)
             const child = parent.session.events.findLast(event => event.type === 'conductor/child'
               && event.data.runId === current.runId && event.data.role === stage
