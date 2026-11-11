@@ -6,7 +6,7 @@ Status: proposed
 
 ## Problem
 
-Conductor 运行引擎已分为可复用的软件包，但已安装的产品还不是独立插件。CLI 拥有 `conductor` preset，并在启动前从仓库复制角色和协议文件。基础与 Web bundle 无条件安装 Conductor，通用问题 UI 和宿主 API 也包含 Conductor 专属的所有者交互。因此，只把当前 `dsh-conductor-presets` 包安装到另一个 DeepSeek Harness fork，并不会安装 preset、指令和全部必需的宿主行为。所有者需要一套完整的 Conductor 运行时，供 Biyocon Harness 和另一个 Harness fork 安装；随后提供其他桌面及 CLI 客户端的适配器，并在今后经单独批准后公开发布。
+Conductor 运行引擎已分为可复用的软件包，但已安装的产品还不是独立插件。CLI 拥有 `conductor` preset，并在启动前从仓库复制角色和协议文件。`npm pack --dry-run --json --ignore-scripts` 检查显示，`dsh-conductor-presets` 包只有八个文件，没有角色或协议资源，而 CLI 包含 29 个 Conductor preset 文件。基础与 Web bundle 无条件安装 Conductor，通用问题 UI 和宿主 API 也包含 Conductor 专属的所有者交互。因此，只把当前 `dsh-conductor-presets` 包安装到另一个 DeepSeek Harness fork，并不会安装 preset、指令和全部必需的宿主行为。所有者需要一套完整的 Conductor 运行时，供 Biyocon Harness 和另一个 Harness fork 安装；随后提供其他桌面及 CLI 客户端的适配器，并在今后经单独批准后公开发布。
 
 ## Proposal
 
