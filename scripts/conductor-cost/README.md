@@ -98,4 +98,21 @@ Capture is **9.67% more expensive**, with all six reports passing the named sour
 
 Output is the largest candidate component; its increase exceeds both input savings. Candidate capture/search results remain within 3,998 characters. Capture completion rises from the first study's 2/3 to this study's 3/3, but different controls, unpinned weights, cache state and small samples prevent attributing that change to guidance alone. The discovery branch has no admitted files and does not use capture guidance.
 
-The two studies do not establish stable net savings for phase A or price acceptance for A2. Preserve both results for design review before another runtime change or experiment; neither an output ceiling nor excluding failed attempts demonstrates efficiency. Semantic claim verification remains outside this oracle's scope.
+### Role attribution and break-even
+
+Summing the follow-up metadata's per-call usage by role reproduces these capture totals across all three attempts per arm. Each call is priced once using the rates above; reasoning stays inside output. These are descriptive allocations, not causal estimates.
+
+| Role | Baseline model calls | Candidate model calls | Baseline USD | Candidate USD |
+|---|---:|---:|---:|---:|
+| Parent | 6 | 6 | 0.008851500 | 0.009779850 |
+| Detective | 44 | 39 | 0.077682300 | 0.072234234 |
+| Critic | 6 | 6 | 0.024675840 | 0.037931640 |
+| Auditor | 16 | 16 | 0.041038962 | 0.047193342 |
+| Arbiter | 11 | 8 | 0.038731134 | 0.042302622 |
+| Total | 83 | 75 | 0.190979736 | 0.209441688 |
+
+The candidate costs USD 0.018461952 more despite eight fewer model calls. Input savings total USD 0.010810248, while 48,787 extra output tokens cost USD 0.029272200; 40,370 of those extra tokens are reported reasoning. More tool calls and fewer model calls can coexist through parallel tool requests. The experiment does not isolate page size or establish that pagination causes the downstream output difference.
+
+Holding all other usage and completion outcomes fixed, matching baseline requires at least 30,770 fewer output tokens, 16.66% of candidate output. Alternatively, input-only savings confined to Detective require 79.90% of that role's entire USD 0.023105034 input bill, including system/prompt input, not just removable results. These are arithmetic counterfactuals, not achievable savings or permission to weaken evidence. Eliminating every role's cache-read charge saves only USD 0.006761088, 3.23% of candidate price, and cannot close this observed gap alone. Result character counts cannot assign provider tokens or cache prices.
+
+The two studies do not establish stable net savings for phase A or price acceptance for A2. Preserve both results for design review before another runtime change or experiment; neither an output ceiling nor excluding failed attempts demonstrates efficiency. A page-size experiment must vary only the declared Config limits on one pinned candidate, preserve its separate controls and retain every attempt. No page-size benefit follows from these observations. Semantic claim verification remains outside this oracle's scope.

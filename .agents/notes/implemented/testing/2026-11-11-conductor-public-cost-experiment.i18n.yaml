@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/testing/2026-11-11-conductor-public-cost-experiment.md
-2026-11-11-conductor-public-cost-experiment.md: c27196914c7db78553abe2cd2ac10c91097baab3
-2026-11-11-conductor-public-cost-experiment.zh.md: 61da01e4ec8b153e373a6d7813148f93e7c14244
+2026-11-11-conductor-public-cost-experiment.md: 2283db432b3dbfa976572d6b1dad6a64bdacd876
+2026-11-11-conductor-public-cost-experiment.zh.md: 9a9fb91abb4440f1f7260fe6946937bc1d2f743d
