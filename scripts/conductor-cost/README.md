@@ -74,3 +74,28 @@ Discovery is **27.23% cheaper** on this metric; no files are admitted, so the ca
 Capture is **26.72% more expensive** per qualified report despite lower mean attempt price. One candidate parks at owner escalation after structural span errors and critic rework; its USD 0.036620082 is included. Lower uncached input is offset by higher output and fewer completions. Candidate Detective search/capture results stay at or below 3,998 characters. The three known positive findings and saved spans are supported in both accepted candidate reports; the independent checks do not certify their other assertions.
 
 This sample supports further evaluation of source caps and exposes a capture-heavy failure case. It does not establish general quality equivalence, validate the historical 12.58% number, or satisfy a blanket price acceptance for A2. Review the span/rework and completeness-language failures before changing guidance or defaults, then measure any revised candidate as a separately identified experiment without rewriting this result.
+
+## Guidance follow-up: 2026-11-11
+
+The [separate metadata](results/2026-11-11-guidance.json) compares the same baseline with candidate `adad7ff3f91025cf231417c624ce239c79a167b3`. The candidate clarifies current-request, non-overlapping saved spans and limits on completeness claims; validators, gates and rework budgets are unchanged. Both source hashes, tasks, model configuration and the frozen observer match the initial study. These are twelve fresh trials, not replacement attempts or pooled controls. All 289 calls reconcile with logs, source inventories/hashes are unchanged, and no usage is unpriced. Total standard off-peak equivalent is USD 0.615930048.
+
+| Case / arm | Qualified / attempts | Model calls | All-attempt USD | USD / qualified report |
+|---|---:|---:|---:|---:|
+| Discovery / baseline | 2 / 3 | 45 | 0.085958973 | 0.0429794865 |
+| Discovery / candidate | 3 / 3 | 86 | 0.129549651 | 0.043183217 |
+| Capture / baseline | 3 / 3 | 83 | 0.190979736 | 0.063659912 |
+| Capture / candidate | 3 / 3 | 75 | 0.209441688 | 0.069813896 |
+
+Discovery is **0.47% more expensive** per qualified report. Baseline repetition three never starts a Conductor run; its two model calls and USD 0.000933597 remain charged to the denominator's two successful reports. It is not retried. Candidate search results stay within 3,943 characters, but that bound alone does not ensure a lower completed-run price.
+
+Capture is **9.67% more expensive**, with all six reports passing the named source/span checks. Candidate Detective costs USD 0.072234234 versus baseline USD 0.077682300, while the other roles together cost USD 0.137207454 versus USD 0.113297436. These are observed call costs, not proof that the guidance caused a downstream change.
+
+| Capture price component, all three trials | Baseline USD | Candidate USD |
+|---|---:|---:|
+| Uncached input | 0.097294800 | 0.091849800 |
+| Cache-read | 0.012126336 | 0.006761088 |
+| Output, including reasoning | 0.081558600 | 0.110830800 |
+
+Output is the largest candidate component; its increase exceeds both input savings. Candidate capture/search results remain within 3,998 characters. Capture completion rises from the first study's 2/3 to this study's 3/3, but different controls, unpinned weights, cache state and small samples prevent attributing that change to guidance alone. The discovery branch has no admitted files and does not use capture guidance.
+
+The two studies do not establish stable net savings for phase A or price acceptance for A2. Preserve both results for design review before another runtime change or experiment; neither an output ceiling nor excluding failed attempts demonstrates efficiency. Semantic claim verification remains outside this oracle's scope.
