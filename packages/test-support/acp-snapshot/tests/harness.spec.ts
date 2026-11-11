@@ -8,13 +8,36 @@ import { PROTOCOL_VERSION } from '@agentclientprotocol/sdk'
 import { runScenario, snapshotSpillRoot, type AgentUnderTest, type InputStep } from '../src/harness.ts'
 import { launchAcpTestAgent } from '../src/launcher.ts'
 
-const fsControl = vi.hoisted(() => ({ cleanupFailure: undefined as Error | undefined }))
+const fsControl = vi.hoisted(() => ({
+  cleanupFailure: undefined as Error | undefined,
+  closedTurnReadDelayMs: 0,
+  pendingRead: undefined as Promise<void> | undefined,
+  readInFlight: false,
+  cleanupDuringRead: false,
+}))
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
   return {
     ...actual,
+    async readFile(...args: Parameters<typeof actual.readFile>) {
+      const content = await actual.readFile(...args)
+      if (fsControl.closedTurnReadDelayMs > 0 && typeof args[0] === 'string' && args[0].endsWith('session.jsonl')
+        && String(content).includes('"type":"turn/end"')) {
+        const delay = fsControl.closedTurnReadDelayMs
+        fsControl.closedTurnReadDelayMs = 0
+        fsControl.pendingRead = new Promise<void>(resolve => setTimeout(resolve, delay))
+        fsControl.readInFlight = true
+        try {
+          await fsControl.pendingRead
+        } finally {
+          fsControl.readInFlight = false
+        }
+      }
+      return content
+    },
     async rm(...args: Parameters<typeof actual.rm>): Promise<void> {
+      if (String(args[0]).includes('acp-snap-') && fsControl.readInFlight) fsControl.cleanupDuringRead = true
       if (String(args[0]).includes('acp-snap-cwd-') && fsControl.cleanupFailure !== undefined) {
         const failure = fsControl.cleanupFailure
         fsControl.cleanupFailure = undefined
@@ -483,7 +506,7 @@ describe('runScenario', () => {
       { steps: [...boot, { op: 'prompt', text: 'ls' }] },
       { agent: AGENT, mode: 'replay', fixtureFile, workspaceDir },
     )
-    expect(result.rawStdout).toContain('workspace:seeded.txt')
+    expect(result.rawStdout).toContain('workspace:.git,seeded.txt')
   })
 
   it('prepares the generated workspace after copying committed fixtures', { timeout: 20_000 }, async () => {
@@ -501,13 +524,29 @@ describe('runScenario', () => {
         fixtureFile,
         workspaceDir,
         prepareWorkspace: async (cwd) => {
+          const { stat } = await import('node:fs/promises')
+          expect((await stat(join(cwd, '.git'))).isDirectory()).toBe(true)
           expect(await readFile(join(cwd, 'committed.txt'), 'utf8')).toBe('committed')
           await writeFile(join(cwd, 'runtime.txt'), 'runtime')
         },
       },
     )
 
-    expect(result.rawStdout).toContain('workspace:committed.txt,runtime.txt')
+    expect(result.rawStdout).toContain('workspace:.git,committed.txt,runtime.txt')
+  })
+
+  it('preserves an existing project marker file copied from the fixture', async () => {
+    const { dir, fixtureFile } = await scenario({})
+    const workspaceDir = join(dir, 'workspace')
+    const { mkdir } = await import('node:fs/promises')
+    await mkdir(workspaceDir)
+    await writeFile(join(workspaceDir, '.git'), 'gitdir: synthetic-worktree')
+    await runScenario({ steps: boot }, {
+      agent: AGENT, mode: 'replay', fixtureFile, workspaceDir,
+      prepareWorkspace: async (cwd) => {
+        expect(await readFile(join(cwd, '.git'), 'utf8')).toBe('gitdir: synthetic-worktree')
+      },
+    })
   })
 
   it('creates the generated workspace under an explicit parent', { timeout: 20_000 }, async () => {
@@ -628,6 +667,37 @@ describe('runScenario', () => {
       { agent: AGENT, mode: 'replay', fixtureFile },
     )
     expect(result.sessionLogs[0]?.content).toContain('"data":{"turn":2,"reason":{"kind":"stop"}}')
+  })
+
+  it.each([1, 2])('waitForTurnEnd rejects a late first read of closed turn %s with its own diagnostic', async (turn) => {
+    const { fixtureFile } = await scenario({
+      prompt: 'hang-until-cancel',
+      persistLogsOnCancel: true,
+      logs: [{
+        file: 'project/main/session.jsonl',
+        lines: [
+          { type: 'session', version: 0, id: '{{SID}}', createdAt: 1, delegationDepth: 0 },
+          { type: 'turn/start', seq: 0, time: 1, data: { turn } },
+          { type: 'turn/end', seq: 1, time: 2, data: { turn, reason: { kind: 'stop' } } },
+        ],
+      }],
+    })
+    fsControl.closedTurnReadDelayMs = 50
+    fsControl.cleanupDuringRead = false
+    try {
+      await expect(runScenario({
+        steps: [...boot, { op: 'promptAndCancel', text: 'hang' },
+          { op: 'waitForTurnEnd', minimumTurn: 2, timeoutMs: 20 }],
+      }, { agent: AGENT, mode: 'replay', fixtureFile }))
+        .rejects.toThrow(/did not persist closed turn 2 within 20ms/)
+      expect(fsControl.closedTurnReadDelayMs).toBe(0)
+      expect(fsControl.readInFlight).toBe(false)
+      expect(fsControl.cleanupDuringRead).toBe(false)
+    } finally {
+      fsControl.closedTurnReadDelayMs = 0
+      await fsControl.pendingRead
+      fsControl.pendingRead = undefined
+    }
   })
 
   it.each([false, true])('waitForTurnEnd rejects an earlier closed turn when the requested turn is open: %s', async (open) => {
@@ -1227,32 +1297,36 @@ describe('runScenario', () => {
     )).rejects.toThrow(/unknown input op/)
   })
 
-  it('harvests all logs primary-first, children by createdAt then id, skipping filesystem noise', { timeout: 20_000 }, async () => {
-    const { fixtureFile } = await scenario({
-      strayRootFile: true,
-      strayBucketFile: true,
-      logs: [
-        // File names chosen so readdir feeds the sort children-first AND
-        // parent-in-the-middle: the comparator then sees a parent on both
-        // sides of a pair, plus the same-createdAt (localeCompare) tiebreak.
-        { file: 'b1/aa-child-c/session.jsonl', lines: [{ type: 'session', id: 'cccccccc-0000-4000-8000-000000000000', createdAt: 500, parentSession: '{{SID}}' }] },
-        { file: 'b1/bb-parent/session.jsonl', lines: [{ type: 'session', id: '{{SID}}', createdAt: 900 }] },
-        { file: 'b1/cc-child-a/session.jsonl', lines: [{ type: 'session', id: 'aaaaaaaa-0000-4000-8000-000000000000', createdAt: 500, parentSession: '{{SID}}' }] },
-        // Missing id/createdAt fall back to ''/0; earliest child by createdAt.
-        { file: 'b2/orphan/session.jsonl', lines: [{ type: 'session', parentSession: '{{SID}}' }] },
-      ],
+  it.each(['en', 'da'])('harvests all logs primary-first, children by createdAt then id, skipping filesystem noise (%s host collation)', { timeout: 20_000 }, async (hostLocale) => {
+    const collation = vi.spyOn(String.prototype, 'localeCompare').mockImplementation(function (this: string, other, locales, options) {
+      return new Intl.Collator(locales ?? hostLocale, options).compare(this, other)
     })
-    const result = await runScenario(
-      { steps: [...boot, { op: 'prompt', text: 'go' }] },
-      { agent: AGENT, mode: 'replay', fixtureFile },
-    )
-    expect(result.sessionLogs.map(l => [l.id, l.createdAt])).toEqual([
-      [result.sessionId, 900],
-      ['', 0],
-      ['aaaaaaaa-0000-4000-8000-000000000000', 500],
-      ['cccccccc-0000-4000-8000-000000000000', 500],
-    ])
-    expect(result.sessionLogs[1]?.parentSession).toBe(result.sessionId)
+    try {
+      const { fixtureFile } = await scenario({
+        strayRootFile: true,
+        strayBucketFile: true,
+        logs: [
+          // Filesystem enumeration differs from the canonical header order.
+          { file: 'b1/aa-child-c/session.jsonl', lines: [{ type: 'session', id: 'cccccccc-0000-4000-8000-000000000000', createdAt: 500, parentSession: '{{SID}}' }] },
+          { file: 'b1/bb-parent/session.jsonl', lines: [{ type: 'session', id: '{{SID}}', createdAt: 900 }] },
+          { file: 'b1/cc-child-a/session.jsonl', lines: [{ type: 'session', id: 'aaaaaaaa-0000-4000-8000-000000000000', createdAt: 500, parentSession: '{{SID}}' }] },
+          { file: 'b2/orphan/session.jsonl', lines: [{ type: 'session', parentSession: '{{SID}}' }] },
+        ],
+      })
+      const result = await runScenario(
+        { steps: [...boot, { op: 'prompt', text: 'go' }] },
+        { agent: AGENT, mode: 'replay', fixtureFile },
+      )
+      expect(result.sessionLogs.map(l => [l.id, l.createdAt])).toEqual([
+        [result.sessionId, 900],
+        ['', 0],
+        ['aaaaaaaa-0000-4000-8000-000000000000', 500],
+        ['cccccccc-0000-4000-8000-000000000000', 500],
+      ])
+      expect(result.sessionLogs[1]?.parentSession).toBe(result.sessionId)
+    } finally {
+      collation.mockRestore()
+    }
   })
 
   it('treats an empty log file as a header-less primary with default fields', { timeout: 20_000 }, async () => {

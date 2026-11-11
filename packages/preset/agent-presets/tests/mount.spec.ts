@@ -253,14 +253,21 @@ describe('rejecting a composition that cannot be used', () => {
       .rejects.toThrow(/waiting for serviceThatDoesNotExist/)
   })
 
-  it('rejects a row that publishes a process-global service', async () => {
-    await expect(agentOn(ctx, 'sess-leaky', 'leaky'))
-      .rejects.toThrow(/process-global service\(s\) \[aaaFixtureLeakedSvc, zzzFixtureLeakedSvc\]/)
+  it.each(['en', 'da'])('rejects a row that publishes a process-global service (%s host collation)', async (hostLocale) => {
+    const collation = vi.spyOn(String.prototype, 'localeCompare').mockImplementation(function (this: string, other, locales, options) {
+      return new Intl.Collator(locales ?? hostLocale, options).compare(this, other)
+    })
+    try {
+      await expect(agentOn(ctx, 'sess-leaky', 'leaky'))
+        .rejects.toThrow(/process-global service\(s\) \[aaaFixtureLeakedSvc, zzzFixtureLeakedSvc\]/)
 
-    // The rejected subtree is fully unwound, so its registrations are gone from
-    // the store rather than merely unreachable.
-    expect(providedServiceNames(ctx)).not.toContain('aaaFixtureLeakedSvc')
-    expect(providedServiceNames(ctx)).not.toContain('zzzFixtureLeakedSvc')
+      // The rejected subtree is fully unwound, so its registrations are gone from
+      // the store rather than merely unreachable.
+      expect(providedServiceNames(ctx)).not.toContain('aaaFixtureLeakedSvc')
+      expect(providedServiceNames(ctx)).not.toContain('zzzFixtureLeakedSvc')
+    } finally {
+      collation.mockRestore()
+    }
   })
 
   it('accepts the same provider behind an isolate realm', async () => {

@@ -295,6 +295,7 @@ describe('workspace context instruction discovery', () => {
     const root = await tempRepo()
     const homeFile = join(root, 'not-a-directory')
     try {
+      await mkdir(join(root, '.git'))
       await writeFile(homeFile, 'file')
 
       const files = await discoverBaselineInstructionFiles({ cwd: root, dshHome: homeFile })
@@ -574,7 +575,7 @@ describe('workspace context instruction discovery', () => {
     }
   })
 
-  it('defaults dshHome and uses cwd itself as root when no project marker exists', async () => {
+  it('defaults dshHome and uses cwd itself when project marker discovery is disabled', async () => {
     const root = await tempRepo()
     const emptyHome = await tempRepo()
     // Isolate the default-home fallback: blank DSH_HOME is treated as unset, and
@@ -585,12 +586,13 @@ describe('workspace context instruction discovery', () => {
     vi.stubEnv('HOME', emptyHome)
     if (process.platform === 'win32') vi.stubEnv('USERPROFILE', emptyHome)
     try {
+      await mkdir(join(root, '.git'))
       const cwd = join(root, 'child')
       await mkdir(cwd, { recursive: true })
       await write(join(root, 'AGENTS.md'), 'parent without marker')
       await write(join(cwd, 'AGENTS.md'), 'cwd without marker')
 
-      const files = await discoverBaselineInstructionFiles({ cwd })
+      const files = await discoverBaselineInstructionFiles({ cwd, projectRootMarkers: [] })
 
       expect(files.map(file => file.displayPath)).toEqual(['AGENTS.md'])
       expect(files.map(file => file.absolutePath)).toEqual([join(cwd, 'AGENTS.md')])
@@ -605,6 +607,7 @@ describe('workspace context instruction discovery', () => {
     const root = await tempRepo()
     const envHome = await tempRepo()
     try {
+      await mkdir(join(root, '.git'))
       await write(join(envHome, 'AGENTS.md'), 'env global rule')
       vi.stubEnv('DSH_HOME', envHome)
 
@@ -622,6 +625,7 @@ describe('workspace context instruction discovery', () => {
     const root = await tempRepo()
     const home = await tempRepo()
     try {
+      await mkdir(join(root, '.git'))
       await write(join(home, '.dsh/AGENTS.md'), 'global default rule')
 
       // A set DSH_HOME would override the homedir default and relabel the home.
@@ -645,6 +649,7 @@ describe('workspace context instruction discovery', () => {
     const root = await tempRepo()
     const home = await tempRepo()
     try {
+      await mkdir(join(root, '.git'))
       await write(join(home, '.dsh/AGENTS.md'), 'global tilde rule')
 
       vi.resetModules()
@@ -2410,6 +2415,7 @@ describe('workspace context request injection', () => {
     const root = await tempRepo()
     const home = await tempRepo()
     try {
+      await mkdir(join(root, '.git'))
       await write(join(home, 'AGENTS.md'), 'global custom rule')
       const files = await discoverBaselineInstructionFiles({ cwd: root, dshHome: home })
 

@@ -31,7 +31,7 @@ Live session ids are freshly random every run and never equal the recorded ones,
 
 This keys by WHO calls, not by global call order — so it stays correct even if subagents ever run concurrently or in the background (a global cursor would interleave them). A call carrying no `sessionId` (a direct unit-test `stream()`) is treated as one anonymous session bound to the primary script, so the single-session path is byte-for-byte the old behavior. More distinct live sessions than recorded scripts is a fail-loud error (an unrecorded subagent appeared), never a silent mis-route.
 
-Child fixtures sort by `createdAt`, which matches call order while siblings run strictly sequentially. The id tiebreak only makes degenerate collisions deterministic. Concurrent or background children must introduce an explicit first-call ordinal instead of relying on timestamps.
+Child fixtures sort by `createdAt`, which matches call order while siblings run strictly sequentially. The ID tiebreak uses [UTF-16 code-unit order](../bug-fix/2026-11-10-ordinal-replay-and-service-order.md) to make collisions deterministic across host locales. Concurrent or background children must introduce an explicit first-call ordinal instead of relying on timestamps.
 
 ## Alternatives considered
 
