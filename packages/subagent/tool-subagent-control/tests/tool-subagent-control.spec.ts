@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -46,12 +46,47 @@ class GatedAdapter extends LlmAdapter {
 const testToolSignal = new AbortController().signal
 
 const roots: string[] = []
-afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
-})
+const contexts: Context[] = []
+const gateReleases: (() => void)[] = []
+
+function fixtureContext(): Context {
+  const ctx = new Context()
+  contexts.push(ctx)
+  return ctx
+}
+
+/** Hold a scripted request until the test or fixture teardown releases it. */
+function fixtureGate(): PromiseWithResolvers<undefined> {
+  const gate = Promise.withResolvers<undefined>()
+  gateReleases.push(() => { gate.resolve(undefined) })
+  return gate
+}
+
+function removeFixtureRoot(root: string): void {
+  rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+}
+
+/** Keep scratch data until every context and held model request is quiescent. */
+async function cleanupFixtures(removeRoot: (root: string) => void = removeFixtureRoot): Promise<void> {
+  const owners = contexts.splice(0)
+  const closing = owners.map(async ctx => ctx.fiber.dispose())
+  for (const release of gateReleases.splice(0)) release()
+  const failures: unknown[] = []
+  for (const [index, outcome] of (await Promise.allSettled(closing)).entries()) {
+    if (outcome.status === 'rejected') {
+      contexts.push(owners[index]!)
+      failures.push(outcome.reason)
+    }
+  }
+  if (failures.length > 0) throw new AggregateError(failures, 'fixture context teardown failed; scratch data retained')
+  for (const root of roots) removeRoot(root)
+  roots.length = 0
+}
+
+afterEach(() => cleanupFixtures())
 
 async function setupWith(adapter: MockAdapter | GatedAdapter) {
-  const ctx = new Context()
+  const ctx = fixtureContext()
   await mountAgentLoopTestDependencies(ctx)
   const root = mkdtempSync(join(tmpdir(), 'dsh-tool-subagent-control-'))
   roots.push(root)
@@ -64,7 +99,7 @@ async function setupWith(adapter: MockAdapter | GatedAdapter) {
   ctx.llm.registerAdapter(['mock'], adapter)
   const parent = ctx.agentLoop.create(SessionId('parent'), { provider: 'mock', model: 'mock' })
   parkParent(ctx, parent)
-  return { ctx, parent, adapter }
+  return { ctx, parent, adapter, root }
 }
 
 async function setup(script: ConstructorParameters<typeof MockAdapter>[0]) {
@@ -100,6 +135,57 @@ async function waitNoActivation(ctx: Context, childId: SessionId): Promise<void>
 }
 
 describe('dsh-tool-subagent-control', () => {
+  it('drains a held child and unregisters agents before removing fixture data', async () => {
+    const held = fixtureGate()
+    const adapter = new GatedAdapter([{ chunks: textResponse('held'), gate: held.promise }])
+    const { ctx, parent, root } = await setupWith(adapter)
+    const registry = ctx.agents
+    await ctx.subagents.startContinuable({
+      provider: 'spawn',
+      label: 'held cleanup proof',
+      request: { prompt: [{ type: 'text', text: 'held until teardown' }], parent },
+      signal: testToolSignal,
+    })
+    await vi.waitFor(() => { expect(adapter.requests).toHaveLength(1) })
+    expect(registry.list()).toHaveLength(2)
+
+    await cleanupFixtures((directory) => {
+      expect(directory).toBe(root)
+      expect(registry.list()).toHaveLength(0)
+      expect(existsSync(directory)).toBe(true)
+      removeFixtureRoot(directory)
+    })
+
+    expect(existsSync(root)).toBe(false)
+    expect(registry.list()).toHaveLength(0)
+    expect(adapter.requests).toHaveLength(1)
+  })
+
+  it('drains other contexts and retains scratch data when one context fails to close', async () => {
+    const first = await setup([])
+    const second = await setup([])
+    const secondRegistry = second.ctx.agents
+    const close = first.ctx.fiber.dispose.bind(first.ctx.fiber)
+    const failure = new Error('synthetic fixture close failure')
+    const dispose = vi.spyOn(first.ctx.fiber, 'dispose').mockRejectedValueOnce(failure)
+    try {
+      await expect(cleanupFixtures()).rejects.toMatchObject({
+        name: 'AggregateError', errors: [failure],
+        message: 'fixture context teardown failed; scratch data retained',
+      })
+      expect(secondRegistry.list()).toHaveLength(0)
+      expect(existsSync(first.root)).toBe(true)
+      expect(existsSync(second.root)).toBe(true)
+      dispose.mockRestore()
+      await cleanupFixtures()
+      expect(existsSync(first.root)).toBe(false)
+      expect(existsSync(second.root)).toBe(false)
+    } finally {
+      dispose.mockRestore()
+      await close()
+    }
+  })
+
   it('reports a retained activation without formatting its scoped context', async () => {
     const { ctx } = await setup([])
     const handle = await ctx.agents.create({
@@ -232,7 +318,7 @@ describe('dsh-tool-subagent-control', () => {
   })
 
   it('unregisters with its plugin fiber (HMR safety)', async () => {
-    const ctx = new Context()
+    const ctx = fixtureContext()
     await mountAgentLoopTestDependencies(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
     await ctx.plugin(SubagentRuntime)
@@ -264,7 +350,7 @@ describe('dsh-tool-subagent-control interrupt_agent', () => {
   })
 
   it('interrupts a running direct child with the parent cause, parking its queue', async () => {
-    const releaseFirst = Promise.withResolvers<undefined>()
+    const releaseFirst = fixtureGate()
     const adapter = new GatedAdapter([
       { chunks: textResponse('held'), gate: releaseFirst.promise },
       { chunks: textResponse('parked answer') },
@@ -311,8 +397,8 @@ describe('dsh-tool-subagent-control interrupt_agent', () => {
   })
 
   it('lets a deep live ancestor interrupt a descendant it did not directly create', async () => {
-    const releaseChild = Promise.withResolvers<undefined>()
-    const releaseGrandchild = Promise.withResolvers<undefined>()
+    const releaseChild = fixtureGate()
+    const releaseGrandchild = fixtureGate()
     const adapter = new GatedAdapter([
       { chunks: textResponse('child'), gate: releaseChild.promise },
       { chunks: textResponse('grandchild'), gate: releaseGrandchild.promise },
@@ -347,8 +433,8 @@ describe('dsh-tool-subagent-control interrupt_agent', () => {
   })
 
   it('rejects self, sibling, and unrelated callers without touching the target', async () => {
-    const releaseA = Promise.withResolvers<undefined>()
-    const releaseB = Promise.withResolvers<undefined>()
+    const releaseA = fixtureGate()
+    const releaseB = fixtureGate()
     const adapter = new GatedAdapter([
       { chunks: textResponse('a'), gate: releaseA.promise },
       { chunks: textResponse('b'), gate: releaseB.promise },
