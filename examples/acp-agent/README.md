@@ -15,6 +15,8 @@ The leaf loads the ACP app, DeepSeek adapter, sandboxed bash and filesystem stac
 
 Stdout carries only newline-delimited ACP JSON-RPC. `@deepseek-ai/dsh-acp-demo` installs no stdout logger; leaf additions must use stderr for diagnostics.
 
+The goal lifecycle snapshots retain raw stderr and accept only silence or one exact Node SQLite startup notice, as defined in the [diagnostic policy](../../.agents/notes/implemented/testing/2026-11-11-goal-snapshot-startup-diagnostics.md). Unexpected diagnostics still fail the snapshots.
+
 The automation contract — supported methods, baseline prompt content, committed-text output, and the intentionally absent UI surfaces — lives in [`@deepseek-ai/dsh-acp`](../../packages/acp/acp/README.md).
 
 ## Session workspaces and permissions

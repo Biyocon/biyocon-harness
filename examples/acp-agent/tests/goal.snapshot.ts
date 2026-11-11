@@ -24,6 +24,13 @@ const sessionExpected = join(scenarioDir, 'session.expected.jsonl')
 const wrapupDir = join(dirname(fileURLToPath(import.meta.url)), 'goal-snapshots/goal-wrapup')
 const refreshing = process.env.DSH_SNAPSHOT === 'refresh'
 
+// The shipped ACP app opens its derived SQLite index. Some supported Node
+// versions emit this startup notice; every other raw stderr byte still fails.
+const goalStartupStderr = new RegExp(
+  '^(?:\\(node:[1-9]\\d*\\) ExperimentalWarning: SQLite is an experimental feature and might change at any time\\r?\\n'
+  + '\\(Use `node --trace-warnings \\.\\.\\.` to show where the warning was created\\)\\r?\\n)?(?![\\s\\S])',
+)
+
 const agent: AgentUnderTest = {
   binScript: fileURLToPath(new URL('../../../packages/examples/acp-demo/src/bin.ts', import.meta.url)),
   configPath: fileURLToPath(new URL('../cordis.yml', import.meta.url)),
@@ -64,6 +71,32 @@ function normalizeGoalLog(content: string, context: NormalizeContext): string {
     .join('\n') + '\n'
 }
 
+describe('goal snapshot startup diagnostics', () => {
+  const warning = '(node:4242) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n'
+    + '(Use `node --trace-warnings ...` to show where the warning was created)\n'
+
+  it.each([
+    { name: 'no warning', stderr: '' },
+    { name: 'the SQLite notice with LF', stderr: warning },
+    { name: 'the SQLite notice with CRLF', stderr: warning.replaceAll('\n', '\r\n') },
+  ])('accepts $name', ({ stderr }) => {
+    expect(stderr).toMatch(goalStartupStderr)
+  })
+
+  it.each([
+    { name: 'an unrelated warning', stderr: '(node:4242) ExperimentalWarning: unrelated feature\n' },
+    { name: 'a changed SQLite notice', stderr: warning.replace('experimental feature', 'different feature') },
+    { name: 'a truncated notice', stderr: warning.slice(0, warning.indexOf('\n') + 1) },
+    { name: 'a duplicate notice', stderr: warning + warning },
+    { name: 'an error before the notice', stderr: 'Error: startup failed\n' + warning },
+    { name: 'an error after the notice', stderr: warning + 'Error: startup failed\n' },
+    { name: 'a trailing stack frame', stderr: warning + '    at start (file:///synthetic/bin.js:1:1)\n' },
+    { name: 'an extra trailing newline', stderr: warning + '\n' },
+  ])('rejects $name', ({ stderr }) => {
+    expect(stderr).not.toMatch(goalStartupStderr)
+  })
+})
+
 describe('same-session goal snapshot through the ACP automation driver', () => {
   it('runs exact automatic rounds in the shipped application and persists cancellation', async () => {
     const input = JSON.parse(await readFile(join(scenarioDir, 'input.json'), 'utf8')) as InputScript
@@ -75,7 +108,7 @@ describe('same-session goal snapshot through the ACP automation driver', () => {
       configPath: agent.configPath,
     })
 
-    expect(result.stderr).toBe('')
+    expect(result.stderr).toMatch(goalStartupStderr)
     expect(result.sessionLogs).toHaveLength(1)
     const log = result.sessionLogs[0]
     if (log === undefined) throw new Error('goal snapshot did not persist its session')
@@ -124,7 +157,7 @@ describe('same-session goal snapshot through the ACP automation driver', () => {
       configPath: agent.configPath,
     })
 
-    expect(result.stderr).toBe('')
+    expect(result.stderr).toMatch(goalStartupStderr)
     expect(result.sessionLogs).toHaveLength(1)
     const log = result.sessionLogs[0]
     if (log === undefined) throw new Error('goal wrap-up snapshot did not persist its session')

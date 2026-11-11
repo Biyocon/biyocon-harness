@@ -15,6 +15,8 @@ pnpm run demo:code-mode       # same protocol with the Code Mode tool transport
 
 Stdout 只携带以换行分隔的 ACP JSON-RPC。`@deepseek-ai/dsh-acp-demo` 不安装 stdout logger；该叶节点新增的组件必须使用 stderr 输出诊断信息。
 
+目标生命周期快照保留原始 stderr，仅接受无输出或一条精确的 Node SQLite 启动提示，具体规则见[诊断策略](../../.agents/notes/implemented/testing/2026-11-11-goal-snapshot-startup-diagnostics.md)。任何非预期诊断仍会使快照测试失败。
+
 自动化约定（支持的方法、基线提示词内容、已提交文本输出，以及有意缺少的 UI 界面）位于 [`@deepseek-ai/dsh-acp`](../../packages/acp/acp/README.md)。
 
 ## 会话 workspace 与权限
