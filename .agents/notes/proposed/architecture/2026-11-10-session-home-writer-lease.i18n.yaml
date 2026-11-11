@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-11-10-session-home-writer-lease.md
-2026-11-10-session-home-writer-lease.md: 36d775bf24b2a9e970eb03fd0bdfb59e90ceccf0
-2026-11-10-session-home-writer-lease.zh.md: d54fa79426185215210fb20757592ec8ff745ed9
+2026-11-10-session-home-writer-lease.md: abecc4d2fd4ee61bccf04d34eddadf1d6c5bf070
+2026-11-10-session-home-writer-lease.zh.md: 39961e8b72c417d24bc776b1bff5a6b7537647f2

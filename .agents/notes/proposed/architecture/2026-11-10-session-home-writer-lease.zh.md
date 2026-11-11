@@ -1,4 +1,4 @@
-# Agent Note: 每个主目录与会话存储只允许一个写入者
+# Agent Note: 每个主目录与存储只允许一个主机写入者
 
 Status: proposed
 
@@ -6,54 +6,78 @@ Status: proposed
 
 ## Problem
 
-[#51](https://github.com/Biyocon/biyocon-harness/issues/51)要求在会话追加或修复之前持有独占主机所有权。[JSONL 后端](../../../../packages/session/session-persistence-jsonl/src/index.ts)只解析一次根目录，[协调器](../../../../packages/session/session-persistence/src/coordinator.ts)在可选后端 `close()` 之前排空写入，但协调仅限当前实例。两个主机仍能修改同一存储。启动器警告不能阻止另一个参与协议的主机，也不能迫使官方桌面应用遵守新锁。
+[#51](https://github.com/Biyocon/biyocon-harness/issues/51)要求在持久修改或修复前取得独占所有权。[JSONL 后端](../../../../packages/session/session-persistence-jsonl/src/index.ts)、[SQLite 后端](../../../../packages/session/session-persistence-sqlite/src/index.ts)和[协调器](../../../../packages/session/session-persistence/src/coordinator.ts)只协调单个实例，不能协调独立主机。仅在 JSONL 加锁也保护不了使用其他后端、但共享 home 的进程。启动器警告无法迫使官方桌面应用遵守新锁。
 
 ## Proposal
 
-### Scope and primitive
+### 主机范围与原语
 
-同时对解析后的 Harness 主目录和配置的会话根目录持有生命周期租约。主目录标识阻止两个主机在同一 home 下使用不同会话子目录；存储标识阻止两个 home 指向同一会话目录。主目录与存储均不同的实例保持独立。此机制保护遵守协议的会话写入者，不保护 settings、credentials 或忽略租约的应用。
+boot/host 在挂载任何可写 home 服务前，持有规范 DSH_HOME 的生命周期租约，不依赖 persistence 后端。每个持久后端还须在发布 persistence、打开会话数据库、追加或修复前取得主机拥有的存储租约。JSONL 使用规范根目录；SQLite 使用数据库文件所在的规范目录，同目录数据库有意串行化。内存后端也不能绕过可写 home 的所有权。home 与存储目录均不同的实例保持独立。
 
-建议每个资源使用独立 SQLite 锁文件，设置 `PRAGMA busy_timeout=0`，并在回滚日志模式下保持 `BEGIN EXCLUSIVE` 事务。使用仓库其他位置已采用的内置 [Node 22.19 DatabaseSync](https://nodejs.org/download/release/v22.19.0/docs/api/sqlite.html)，不依赖更新的 API。[SQLite 事务语义](https://www.sqlite.org/lang_transaction.html)与[操作系统文件锁](https://www.sqlite.org/lockingv3.html)提供竞争排斥及进程退出释放。整个写入者生命周期保持连接；不使用周期计时器、PID 存活推断、增加超时、重试或自动删除陈旧锁。会话仍为 JSONL/Zstandard，记录格式不变。
+使用不导入 Conductor 的通用 acquire/close 服务。[公共 boot](../../../../packages/boot/app-boot/src/index.ts)在插件启动前获取 home 所有权；绕过该入口的 host launcher 也须在 home 写入前使用同一服务。provider 向该 host 请求存储所有权。home 与存储为同一资源时复用主机连接，不能重新打开锁文件。进程内注册表在第二个句柄打开前拒绝另一个 host 或重复存储 provider。直接构造 provider 的测试显式挂载所有权，并使用独立 home。
 
-在每个规范目录中使用 `.session-writer-lease.sqlite`；home 与存储相同时只获取一次。持久锁文件是协调状态，不能证明写入者存活。正常获取与释放不得删除、重命名、替换、迁移或重置它。数据库损坏或日志模式不符合预期时明确拒绝。关闭或回滚连接释放所有权。锁数据库不保存会话内容、密钥、prompt 或所有者 PID 元数据。
+建议每个资源使用独立 SQLite 锁数据库 `.session-writer-lease.sqlite`，通过内置 [Node 22.19 DatabaseSync](https://nodejs.org/download/release/v22.19.0/docs/api/sqlite.html)、回滚日志模式、`PRAGMA busy_timeout=0` 和持续 `BEGIN EXCLUSIVE` 实现。[SQLite 事务语义](https://www.sqlite.org/lang_transaction.html)提供即时竞争拒绝和操作系统退出释放。整个所有权周期保持连接。锁数据库初始创建后，不再写入、更新元数据、记录 heartbeat/owner/PID 或改变日志模式；只以持有事务作为信号。会话 JSONL/Zstandard 和 SQLite 数据格式保持不变。
 
-### Canonical paths and acquisition
+进程中除拥有锁的 SQLite 连接外，任何代码都不得打开该锁文件。身份检查尤其禁止 `open`、`readFile`、`fstat`、文件头探测、备份复制或临时 fd。锁文件身份和链接数只能通过路径 `lstat`/`stat` 检查。[SQLite 的 POSIX 警告](https://www.sqlite.org/howtocorrupt.html#_posix_advisory_locks_canceled_by_a_separate_thread_doing_close_)说明，为同一文件关闭另一个 fd 会释放进程的锁。此禁止也覆盖辅助线程和诊断代码，不只是租约 helper。
 
-通过现有 home-path 工具解析主目录，并基于启动 cwd 一次性解析存储。创建不存在的目录后，对每个根执行 `realpath` 再选择锁文件。目录与锁文件可以在获取所有权前创建，但两项租约都成功前不得改变会话日志或执行修复。symlink/junction 别名必须归一到同一资源。路径比较应适应平台，不能在区分大小写的文件系统上统一转小写；独占性依赖文件系统标识，而非传入路径的哈希。
+持久锁文件是协调状态，不是存活证明。获取/释放时不得删除、重命名、替换、迁移或重置。数据库结构只能经拥有锁的 SQLite 连接验证；日志模式不符或损坏则拒绝。锁数据库不保存会话内容、密钥或 prompt。暂停但仍存活的进程无限期保持锁；不依靠 PID 推断、加长超时、重试或自动接管陈旧锁。
 
-按确定顺序获取不同资源。busy/locked 立即失败；后一个资源失败时关闭此前获得的所有连接。进程内注册表按规范资源标识阻止重复后端，避免再打开已拥有锁的 SQLite 句柄。拒绝锁文件 symlink 和多个硬链接，保留文件/目录标识；观察到替换或根变化导致所有权失效时，后续操作必须失败。旧写入仍可能执行时不得静默重新获取。
+### 路径与尽力而为的网络拒绝
 
-支持经 OS 测试矩阵验证锁语义的本地文件系统。SQLite 明确记录了[文件系统与锁文件替换风险](https://www.sqlite.org/howtocorrupt.html)。网络文件系统不在保证范围内。实现获批之前，必须明确各平台如何识别并拒绝远程或不支持的根；仅看路径拼写无法识别挂载共享。主机运行时手动替换锁文件或目录不受支持，不能宣称安全。
+通过现有 home-path 工具解析主目录，存储配置相对启动 cwd 一次性解析。创建缺失的协调目录后，对资源执行 `realpath` 再选择锁文件。持久 home/会话修改不能早于相应租约；目录/锁初始化是明确例外。symlink/junction 别名归一；比较必须尊重区分大小写的文件系统。拒绝锁文件 symlink/多个硬链接，以及硬链接的 SQLite 数据文件。保留通过路径观察的目录/文件身份；检测到替换时使后续操作失效，不静默重新获取。运行期间手动替换仍不受支持。
 
-### Lifecycle and package ownership
+挂载服务前先获取 home，随后按确定顺序获取存储租约。竞争不等待；启动失败时，要等所有已启动操作排空后才释放已有租约。第二个 host 不隐式降级为只读，也不静默选择其他 home。
 
-实现一个通用会话租约 helper，提供显式 acquire/close API，不导入 Conductor。JSONL provider 在发布可写 persistence service 或构造写入协调器之前同步获取租约；配置无效或初始化失败时释放已获取资源。租约绑定精确的 provider 实例。第二个主机不隐式降级为只读；检查可以使用当前运行主机的 API。
+所有者批准的是**尽力而为**检测，不是完整网络文件系统识别。Linux 对每个解析后的资源调用 [`fs.statfsSync(path).type`](https://nodejs.org/download/release/v22.19.0/docs/api/fs.html#fsstatfssyncpath-options)，将无符号文件系统类型与[内核常量](https://github.com/torvalds/linux/blob/master/include/uapi/linux/magic.h)比较：NFS `0x6969`；CIFS/SMB `0xFF534D42`、`0xFE534D42`、`0x517B`；FUSE `0x65735546`。所有这些类型均拒绝，包括看起来是本地路径的 FUSE 挂载；检查失败也拒绝启动。Windows 在 `realpath` 后拒绝 UNC，包括扩展 UNC 路径。macOS 上的网络文件系统和映射网络驱动器不受支持，可能无法被这些检查识别。未知类型或非 UNC 拼写不能证明是本地存储，也不能证明锁有效。支持范围限于 OS 矩阵已验证的本地文件系统；其他远程文件系统和忽略本协议的应用没有保证。
 
-关闭时先停止接收新操作，排空写入、修复及活动存储操作，再通过协调器现有 backend `close()` 顺序释放租约。必须验证所有直接 API 操作均参与排空；如现有协调器遗漏某项，只做最小通用生命周期修正。排空失败时，只要仍有操作存活就不能释放租约。OS 终止进程后会释放 SQLite 锁；新所有者随后可在自身租约下执行现有崩溃修复。暂停但仍存活的进程无限期保有所有权。
+### 参与进程
 
-预计实现文件为 `packages/session/` 下的新通用 helper、JSONL provider 的 Config/获取/close、对应 README 双语文件，以及 persistence coordinator 中经证实缺失的操作跟踪。默认 home 解析仍属于 `home-paths`。如 Conductor 依赖这些公共能力，应在其依赖清单登记实际文件与 PR 编号。不计划修改 agent-loop、模型、工具策略、会话事件或 Conductor record。
+所有能写 home 的主机都参与，包括从 agent bash 工具启动的进程。端口、后端、传输或父进程不同都不是豁免。主机不终止另一个所有者，也不静默选择临时 home。
 
-目前在活动存储上创建第二个后端的测试与种子工具，应改用主机 persistence API，或等原实例完全释放。尤其浏览器 scaffold 的独立 seed context 不能绕过租约。同一 home 的跨端口测试应验证第二个写入者被拒绝，而非同时写入。诊断只说明选定 home/store 已被使用，建议关闭另一个 Biyocon 主机或选择独立 home，不终止它，也不暴露存储内容。
+| Web host 已占用 home 时的进程 | 决策 |
+|---|---|
+| Web host | 持有 home/store 租约直到所有可写服务排空。另一个使用任一资源的 web host 被拒绝。 |
+| Headless CLI，包括 agent bash 启动 | 拒绝继承的已占用 home。独立运行必须显式选择不同 home/store；对现有 home 的操作改用活动 host API。 |
+| ACP CLI，包括 agent bash 启动 | 相同拒绝和显式独立 home 规则。ACP 传输不授权第二个本地写入者。 |
+| 继承 DSH_HOME 的 [subagent-acp 子进程](../../../../packages/subagent/subagent-acp/README.md) | 启动/dispatch 前拒绝共享 home 子进程。支持的子进程须显式配置不同 home/store，并在 resume 时固定；父子协调走 ACP，不在父存储创建第二个后端。不复制 home 凭据，也不随机制造 resume 身份。 |
+| SDK server | 独立 server 拥有自身租约，资源被占用时拒绝。连接现有 host API 的 SDK client 不获取写入租约，也不构造后端。 |
+| [Python runtime](../../../../python/sdk-runtime/README.md) | 自动启动 server 并继承已占用 home 时拒绝。独立 runtime 必须配置不同 home/store，或通过已支持的 client 连接活动 host API。不能假定尚未实现的 attach 模式已经存在。 |
+| Seeder 与直接后端测试 | 使用所属 host persistence API，或等待 host 完全关闭。独立 browser seed context 和共享 home 的跨端口写入者不能绕过租约。 |
 
-### Evidence and implementation test plan
+实现必须按表逐项审计 launcher、环境继承和后端工厂。不打开本地 home 的远程 client 不是额外本地写入者；同一 host 内已有的 worker-thread 子 agent 复用主机所有权，不获取竞争租约。
 
-未提交的 Windows/Node 24 合成探针验证了：竞争进程被拒绝、不同锁文件保持独立、正常关闭和终止所有者之后可获取。这只是原语级证据，不证明集成或其他平台。未使用所有者 home 或应用。
+### 生命周期与诊断
 
-实现需要通过真实子进程入口和确定性 IPC 屏障验证：同时获取恰好一个胜者；失败者不改变会话文件；独立 home/store 可并行；规范别名冲突；不同 home 共享存储冲突；同进程重复实例失败；正常关闭在延迟写入/修复完成前保持所有权；崩溃终止后允许现有尾部恢复；初始化失败释放先前租约。还需覆盖损坏/替换的锁文件、文件系统权限拒绝和不支持的远程根，且不接管锁。通过真实可运行示例做无密钥 snapshot，覆盖拒绝和成功重启，确认失败主机没有模型调用。执行聚焦 unit coverage、构建后 provider 冒烟、doc-sync，并在原生 Windows、Linux、macOS 上运行跨进程场景；若现有工作流未覆盖 macOS，则增加针对该场景的任务。
+所有权位于 boot/host，不再局限于 JSONL provider。两个持久 provider 都须在初始化前证明 host/store 所有权，并参与主机关闭。先停止接收新操作，再排空写入、修复、会触发修复的直接读取及活动存储操作，经协调器关闭后端数据库，最后依次释放 store 和 home 租约。排空失败时，只要还有活动操作就不能释放所有权。初始化失败遵循同一顺序。OS 终止进程会释放 SQLite 锁；新所有者在自身租约下进行现有崩溃恢复。
+
+预计修改通用所有权 helper、公共 boot/host 生命周期、两个 persistence provider、参与的 CLI/ACP/SDK/Python 启动路径和 seeder、对应 README 双语文件，以及经证实缺失的 coordinator 跟踪。默认 home 解析仍归 home-paths。必要时在 Conductor 清单登记实际通用依赖和实现 PR。核心从不导入 Conductor；本提案不修改 agent-loop、模型策略、会话事件或 Conductor record。
+
+拒绝只指出所选资源，并解释 **“En anden proces bruger datamappen. En proces på pause beholder låsen. Luk den anden vært, eller vælg en separat datamappe.” / “Another process owns this data directory. A paused process retains the lock. Close the other host or choose a separate home.”** 不披露存储内容，不根据时间称锁为陈旧，不终止进程，也不宣称能防护官方桌面应用。
+
+### 证据与实现测试计划
+
+保留的 Windows/Node 24 合成探针证明原语级竞争、独立锁文件、正常关闭和终止所有者释放。它不证明 host 集成或跨平台支持；没有使用所有者 home/app。
+
+在原生 Windows、Linux、macOS 上，通过真实子进程入口和确定性 IPC 屏障测试：恰好一个获取胜者，失败者数据不变，独立 home/store，规范别名，不同 home/后端共享存储，同进程重复实例，延迟写入/修复排空，初始化失败和崩溃恢复。覆盖 JSONL/SQLite 和表中每项参与者，包括 bash 启动 headless/ACP，以及 subagent-acp 继承 home 的拒绝。SDK/Python client 场景必须走实际支持的传输。
+
+Linux 和 macOS 获取租约后，执行所有路径身份/链接/替换检查，再证明原连接保持打开时另一个进程仍被拒绝。仪器化 helper，证明这些检查从不另开锁数据库 fd，并在重复检查后验证此不变量。通过拥有锁的 SQLite 连接实际执行的操作，以及路径上的大小/mtime 检查，验证创建后不可修改，不能为此打开额外 fd。覆盖全部列出的 Linux 类型、statfs 错误、Windows realpath 后的 UNC 变体及已记录的不支持情况。暂停的存活所有者仍排斥竞争者；恢复它不能产生第二个所有者。
+
+增加真实可运行示例的无密钥拒绝/重启 snapshot，证明被拒绝 host 没有模型调用；运行聚焦 coverage、构建后 provider 冒烟和 doc-sync。如现有任务未执行要求的 POSIX 场景，则增加针对性的 macOS CI lane。
 
 ## Alternatives considered
 
-**PID 文件或按陈旧时间恢复的独占目录。** PID 可复用，暂停的存活写入者也可能超过 heartbeat 时间。删除其锁会允许并发写入；永久拒绝陈旧文件则每次崩溃都需要手动恢复。
+**仅由 JSONL provider 拥有租约。** 拒绝：其他后端和 boot 时 home 服务会绕过协议。主机与存储所有权分别覆盖两类资源。
 
-**原生 flock/LockFileEx addon。** 可实现生命周期锁，但增加原生构建与平台发布维护。如果 SQLite 原语或本地文件系统检测无法通过要求的测试，再重新评估。
+**PID 文件或 heartbeat 接管。** 拒绝：PID 重用和暂停写入者使自动删除不安全。
 
-**只锁 home。** 不同 home 仍能指向同一会话根。**只锁存储**则允许两个主机在同一 home 使用不同存储。双资源规则覆盖两项标识要求。
+**原生 flock/LockFileEx addon。** 仅在 SQLite 原语无法通过平台测试时重新评估；它增加原生发布维护。
+
+**完整识别网络驱动器。** 不作承诺。获批识别器拒绝已知类型；未识别远程文件系统仍不受支持。
 
 ## Acceptance criteria
 
-两项租约都持有前不得修改会话。关闭时停止接收新操作，并在保持所有权期间完成已接收工作。每个规范 home/store 只有一个参与协议的 provider；第二个实例明确拒绝且不改变日志。上述每项实现测试都要在指定平台有证据，包括 macOS。helper 不引入重试、陈旧接管、格式迁移、内容泄露或 Conductor 依赖。实现通过审查之前，必须解决远程根检测并证明所有存储操作均排空。
+任何参与 host/backend 都不能在没有所需所有权时修改持久状态。两个 provider 和进程表全部场景满足其决策。关闭时持续持有 home/store 所有权，直到完全排空。Linux/macOS 身份检查不能额外打开锁文件 fd，且仍保持竞争拒绝。锁数据库创建后不可修改。网络拒绝符合已批准的尽力而为策略；暂停所有者诊断明确。三个 OS 的测试证明所支持本地文件系统场景。不引入陈旧接管、格式迁移、私人内容或 Conductor 依赖。
 
 ## Risks
 
-SQLite 与文件锁依赖底层平台；路径并不证明正确的锁语义。意外替换锁文件可能破坏协作，观察到时必须明确失败。现有测试假设重复后端访问，需要有意转换。启动时创建协调目录改变后端延迟创建根目录的行为，必须记录。官方桌面应用仍是不遵守协议的写入者，启动器警告仍然必要。
+建议锁不能阻止不合作应用或任意文件系统写入。未识别网络存储、外部文件替换和不支持文件系统均无保证。目录初始化改变延迟启动；同目录 SQLite 存储有意串行化。现有重复后端测试、继承 home 的子进程和 launcher 需要有意转换。启动器警告仍然必要。
