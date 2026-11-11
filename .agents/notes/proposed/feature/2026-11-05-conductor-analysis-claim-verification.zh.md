@@ -34,7 +34,7 @@ Status: proposed
 
 一旦存在任何准入来源材料，即使用 `source_backed`，即使材料不足或无关。结论依赖的重要陈述未核实时，宿主拒绝 `accept`；重要性由 Auditor 独立判断。被接受的附带未核实陈述不能支持结论。宿主在每项此类陈述的准确出现位置渲染 “Unverified / Ikke verificeret”，并将呈现绑定到候选/审计哈希；任一必需标签缺失或位置错误时，拒绝接受。所有已接受的显示/导出/最终回复均保留此带标签的呈现。若可通过准入证据、删除陈述或缩小结论修复，则用 `revise`；关键核验需要不可访问来源或授权外操作时用 `blocked`。新增证据须经过新的授权 intake，不能暗改捕获。Arbiter 接收准确候选、批评、审计及逐项判定；来源模式下的接受仅说明已核实范围。
 
-把陈述清单、审计判定、宿主选择的证据模式及接受条件存入 Conductor 运行记录，以哈希绑定准确的候选报告及审计。这些必需字段与终态语义需要下一个单调递增的记录版本，不能重新解释 v5。与 [#30 第二阶段](https://github.com/Biyocon/biyocon-harness/issues/30)及 [#58 阶段 B](2026-11-05-conductor-detective-evidence-budget.md)协调版本；实施前由所有者为三个工作流指定唯一 schema/版本负责人。该负责人依据已合并 master 串行协调分配 schema：一个版本只有一种布局，绝不能并行定义不兼容的 v6。若 v6 已交付，负责人检查已合并 schema 后分配下一版本，并在合并前再次验证分配；这不意味着提供兼容迁移。所有模型可见的指令、来源摘录、工具拒绝反馈及返回判定，都须能从会话日志重建。保留既有 Conductor 路线的七个角色、必经批评、只读分析及 Gate C/GO 权限。
+把陈述清单、审计判定、宿主选择的证据模式及接受条件存入 Conductor 运行记录，以哈希绑定准确的候选报告及审计。这些必需字段与终态语义需要下一个单调递增的记录版本，不能重新解释 v5。与 [#30 第二阶段](https://github.com/Biyocon/biyocon-harness/issues/30)及 [#58 阶段 B](2026-11-05-conductor-detective-evidence-budget.md)协调版本；Codex 已被所有者指定为共同 schema 与版本负责人；[统一 v6 提案](2026-11-11-conductor-v6-evidence-verification-and-budgets.md)管理三个工作流的合并字段和验收规则，实施前由 Claude review。第一阶段及本文独立理由继续有效。该负责人依据已合并 master 串行协调分配 schema：一个版本只有一种布局，绝不能并行定义不兼容的 v6。若 v6 已交付，负责人检查已合并 schema 后分配下一版本，并在合并前再次验证分配；这不意味着提供兼容迁移。所有模型可见的指令、来源摘录、工具拒绝反馈及返回判定，都须能从会话日志重建。保留既有 Conductor 路线的七个角色、必经批评、只读分析及 Gate C/GO 权限。
 
 ## Alternatives considered
 
