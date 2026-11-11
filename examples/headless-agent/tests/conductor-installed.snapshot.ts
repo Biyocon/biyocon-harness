@@ -576,6 +576,16 @@ describe('installed Conductor through the headless example', () => {
         }
         if (scenario === 'detective-capture-pages') {
           const detective = decoded[1]!
+          // The general transcript scrubber removes system text; pin this child-only guidance from the actual logged requests.
+          const guidance = Object.fromEntries(decoded.slice(1).map((child, index) => [stages[index]!, [...new Set(child.events
+            .flatMap(event => event.type === 'request/header' ? (event.data.header.system ?? '').split('\n\n') : [])
+            .filter(paragraph => paragraph.startsWith('Captured files are indexed without their bodies.')))]] as const))
+          expect(guidance.detective).toHaveLength(1)
+          for (const stage of stages.filter(stage => stage !== 'detective')) expect(guidance[stage]).toEqual([])
+          const guidanceSnapshot = JSON.stringify(guidance, null, 2) + '\n'
+          const guidancePath = join(root, 'examples/headless-agent/tests/snapshots/conductor-intake', scenario, 'guidance.expected.json')
+          if (process.env.DSH_SNAPSHOT === 'refresh') await writeFile(guidancePath, guidanceSnapshot)
+          expect(guidanceSnapshot).toBe(await readFile(guidancePath, 'utf8'))
           const dispatch = detective.events.flatMap(event => event.type === 'user/message' ? event.data.content : [])
             .find(block => block.type === 'text' && block.text.includes('Dispatch package:'))
           expect(dispatch?.type === 'text' ? dispatch.text : '').toContain('"line_count": 4')

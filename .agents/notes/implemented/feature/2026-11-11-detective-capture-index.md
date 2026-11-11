@@ -10,9 +10,11 @@ The approved [Detective cost design](../../proposed/feature/2026-11-05-conductor
 
 ## Decision
 
-Detective receives the unchanged current request plus an ordered file index derived from existing material identity, selector, SHA-256 and content. UTF-8 byte length and cited-line count are calculated without durable fields. Complete file bodies remain in the checkpoint. Other specialists, critic excerpt validation and Auditor retain their existing full source access.
+Detective receives the unchanged request and an ordered index from captured identity, selector, SHA-256 and content, with derived UTF-8 byte and cited-line counts. Complete bodies remain in the v5 checkpoint. Other specialists, critic excerpt validation and Auditor retain their full existing source access.
 
-A trusted child contribution installs `conductor_read_capture` beside Detective search tools. Only Detective with captured files receives this definition and guidance. The installer closes over the exact captured text, checks selector-bound identity and content hash on every read, and rejects unknown identities, excessive ranges and changed hashes. It never accesses the workspace. New children after run resumption rebuild the reader from the saved admission; no private spill or continuable-child protocol is needed.
+A trusted contribution installs `conductor_read_capture` beside search only for Detective with files. It closes over captured text, checks selector-bound identity and hash on every read, and rejects unknown identities, excessive ranges and changed hashes without workspace access. New children after resumption rebuild the reader from saved admission; no private spill or continuable-child protocol is needed.
+
+Guidance treats inline current-request as scope, not file corroboration, and excludes it from the file reader. Every candidate material ID needs disjoint inspected line spans. Reports retain required findings, adverse evidence and uncertainty; sampled pages or workspace-only checks do not establish complete capture coverage. Validators and gates remain unchanged.
 
 The [tools registry](../../../../packages/core/tools/src/index.ts) restricts inherited names; child-local definitions remain visible and cannot be named in `tools.restrict`. Consequently `childToolFilter` keeps the unchanged inherited read allowlist, while the scoped contribution supplies the reader and a Detective-specific execution guard explicitly permits it. Passing this local name in the filter fails before child creation. This refines the design's filter wording without a global placeholder, wider `READ_TOOLS`, or core changes. Other analysis roles still reject the name.
 
@@ -30,6 +32,6 @@ The dispatch package and tool calls/results use existing logged inputs. No histo
 
 ## Consequences
 
-Unit tests cover index order, immutable capture, line endings, Unicode, complete-result limits, later findings, corruption, role guards, registration rollback and disposal. The installed headless Loader scenario reads four saved pages after the synthetic workspace file changes, reaches its final adverse finding, and retains original critic/Auditor evidence through the accepted report. Existing Detective snapshots include indexed dispatches and reader calls where needed.
+Unit tests cover index order, immutable capture, line endings, Unicode, complete-result limits, later findings, corruption, role guards, registration rollback and disposal. The installed headless Loader scenario reads four saved pages after the synthetic workspace file changes, reaches its final adverse finding, and retains original critic/Auditor evidence through the accepted report. Logged request headers also pin Detective guidance and its absence from review roles. Existing Detective snapshots include indexed dispatches and reader calls where needed.
 
-The historical measured run contained no captured files, so this part has zero estimated saving there. Net price, extra calls and evidence quality still require the public real-model comparison. The coordinated v6 proposal retains budget and coverage accounting. No owner session data is needed.
+The historical run contained no files, giving zero estimated saving here. The [public comparison](https://github.com/Biyocon/biyocon-harness/pull/106) on `41136d904c` shows higher capture-case cost per completed report after span/rework failures. Revised guidance requires a fresh price/quality measurement, without lowering gates. Coordinated v6 retains budget/coverage accounting. No owner session data is needed.

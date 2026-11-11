@@ -141,7 +141,11 @@ export function prepareDetectiveCapture(
       stops.push(childCtx.systemPrompt.section({ name: `tool:${DETECTIVE_CAPTURE_READ_TOOL}`, order: 105,
         text: `Captured files are indexed without their bodies. Use ${DETECTIVE_CAPTURE_READ_TOOL} with the exact material_id, sha256 and selector to inspect saved source. `
           + 'Results identify inclusive line ranges, truncation and next_start_line. Continue from next_start_line to inspect later lines. '
-          + 'Cite only inspected lines in material_spans. Workspace read/search results are not substitutes for captured evidence.' }))
+          + 'Cite only inspected lines in material_spans. Workspace read/search results are not substitutes for captured evidence. '
+          + 'The current-request is already inline: cite it only for task scope, not corroboration of file facts, and do not pass its id to this file reader. '
+          + 'For every id in candidate.material_ids, include candidate.material_spans entries with material_id, start_line and end_line; ranges within one material must not overlap or repeat. '
+          + 'Sampled pages or workspace-only checks cannot establish completeness of uninspected captured ranges. Inspect the required saved ranges or disclose the limitation without claiming complete coverage. '
+          + 'Keep all required findings, adverse evidence and uncertainty, and focus the report on the unchanged acceptance criteria.' }))
       return dispose
     } catch (error) {
       dispose()

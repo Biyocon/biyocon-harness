@@ -36,6 +36,8 @@ Detective alone receives scoped `glob`/`grep` pages. `detectiveGlobMaxResultChar
 
 When admission contains files, Detective receives the current request and an ordered file index with id, selector, SHA-256, UTF-8 byte length and line count. File bodies stay in the v5 checkpoint. Only this child receives `conductor_read_capture`; it reads that saved text, never the workspace. Supply the indexed `material_id`, `sha256`, `selector`, optional one-based `start_line` and `line_count`. Unknown or mismatched identities and invalid ranges fail explicitly.
 
+The inline current request supplies task scope, not file corroboration, and cannot be read with this file tool. Guidance requires inspected, non-overlapping spans for every candidate material ID and preserves required findings, adverse evidence and uncertainty. Sampled pages or workspace-only checks do not establish complete capture coverage. Existing report validation and gates remain authoritative.
+
 `detectiveCaptureMaxResultChars` defaults to 4000 Unicode characters for complete JSON output and must be a safe integer of at least 512. `detectiveCaptureMaxLines` defaults to 200 and must be a positive safe integer. Results give inclusive start/end lines, complete line text, `truncated` and `next_start_line`. A line plus metadata that cannot fit fails without returning source. Follow the next line to inspect omissions. Critic excerpt validation and Auditor retain the complete capture; other roles' tools and prompts remain unchanged. Indexing reduces initial file input but adds reader calls; no price saving is guaranteed. See the [capture decision](../../../.agents/notes/implemented/feature/2026-11-11-detective-capture-index.md).
 
 ## Known Limitations and Deferred Work

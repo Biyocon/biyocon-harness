@@ -36,6 +36,8 @@
 
 准入包含文件时，Detective 收到当前请求，以及按原顺序排列的文件索引，包含 id、selector、SHA-256、UTF-8 字节数和行数。文件正文保留在 v5 检查点中。只有该子 agent 收到 `conductor_read_capture`；它读取保存的文本，绝不读取工作区。提供索引中的 `material_id`、`sha256`、`selector`，以及可选的一基 `start_line` 和 `line_count`。未知或不匹配的标识及无效范围会明确失败。
 
+内联当前请求用于界定任务范围，不是文件事实的佐证，也不能通过此文件工具读取。指导要求候选中的每个材料 ID 都有已检查且不重叠的区间，并保留必需发现、不利证据和不确定性。抽样页面或仅工作区检查不能证明捕获内容已被完整覆盖。现有报告验证和 gate 仍具有约束力。
+
 `detectiveCaptureMaxResultChars` 默认将完整 JSON 输出限制为 4000 个 Unicode 字符，必须是至少 512 的安全整数。`detectiveCaptureMaxLines` 默认为 200，必须是正安全整数。结果提供包含端点的起止行号、完整行文本、`truncated` 和 `next_start_line`。单行连同元数据无法容纳时，不返回来源并明确失败。按下一行继续检查省略内容。批评者的摘录验证与 Auditor 保留完整捕获；其他角色的工具和提示不变。索引减少初始文件输入，但增加读取调用；不保证价格节省。参见[捕获决策](../../../.agents/notes/implemented/feature/2026-11-11-detective-capture-index.md)。
 
 ## 已知限制与延期工作
