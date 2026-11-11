@@ -16,7 +16,7 @@ The public-fork profile limits Linux static gates to two concurrent gates, cover
 
 Hosted cache restoration and Playwright dependency installation are the default for untrusted or unknown pull-request metadata even when a failover variable is present. Only the same positive repository, owner, and boolean non-fork test can select the self-hosted Playwright step. The non-PR self-hosted standby drills and organization-runner benchmarks retain their top-level `github.event.repository.fork == false` guards because those push and `workflow_dispatch` events have no pull-request head repository.
 
-The Linux profile downloads Bubblewrap `0.9.0-1ubuntu0.3` from its immutable Launchpad Librarian object and verifies SHA-256 `2461f1beee9cb04c8942739fe1a2b37e7b7c2a3d518f0779dc75f9245baa3094` before extraction. Download or checksum failure stops preparation before the executable path, AppArmor setting, or Bubblewrap probe can change.
+The Linux profile downloads Bubblewrap `0.9.0-1ubuntu0.3` from Ubuntu's security archive, falling back to the main archive on transport or HTTP failure. Both locations must supply SHA-256 `2461f1beee9cb04c8942739fe1a2b37e7b7c2a3d518f0779dc75f9245baa3094` before extraction. Each mirror permits two transfers with a five-second connection timeout, a fifteen-second transfer timeout, a one-second configured retry delay, and a twenty-second retry window. A transfer started within that window can finish after it, allowing approximately 70 seconds across both mirrors. A checksum mismatch stops immediately rather than trying another mirror. Exhausting both mirrors also stops preparation before the executable path, AppArmor setting, or Bubblewrap probe can change.
 
 ## Alternatives considered
 
@@ -26,10 +26,14 @@ The Linux profile downloads Bubblewrap `0.9.0-1ubuntu0.3` from its immutable Lau
 
 **Replace the enterprise topology for every repository.** Rejected because the existing non-fork pools and failover switches remain useful and already have independent readiness checks. The fork predicate can isolate the public-fork policy without weakening or duplicating that behavior.
 
+**Depend on one immutable Launchpad Librarian object.** Rejected because artifact identity does not provide network availability. Two official Ubuntu endpoints retain the same pinned bytes while bounded retries prevent a small dependency download from blocking CI for many minutes. Neither an unverified mirror nor an unpinned package-manager installation can substitute for the required checksum.
+
 ## Consequences
 
 Untrusted pull-request heads can run the primary keyless CI on ephemeral GitHub-hosted machines, but the four affected jobs have less CPU capacity and may take longer. Secret-backed real-API E2E remains skipped for fork and Dependabot pull requests. Fork repositories do not run the self-hosted standby drills or organization-runner benchmarks. The workflow test pins the positive repository/owner/non-fork trust test, hosted-safe defaults, concurrency, setup, and the non-PR guards so later failover edits cannot silently restore persistent-runner routing for unknown or untrusted heads.
 
+The Ubuntu archives can retire a superseded package version. If both pinned locations disappear, CI fails explicitly until a maintainer reviews a replacement version and checksum; it never silently installs the latest package. A successful preparation still requires the real Bubblewrap confinement probe.
+
 ## Verification
 
-`scripts/ci-workflow.spec.ts` parses the assembled workflow and verifies that each public-fork runner selection precedes the failover variable, that conservative worker limits are present, that hosted Playwright setup remains active, and that persistent-host and enterprise benchmark jobs require a non-fork repository. `scripts/prepare-ci-bubblewrap.spec.ts` invokes the real preparation script with isolated command fixtures and verifies the pinned artifact, fail-closed download and checksum handling, and operation order without network access. Repository validation also runs typecheck, lint, documentation synchronization, change-scope, and whitespace checks.
+`scripts/ci-workflow.spec.ts` parses the assembled workflow and verifies that each public-fork runner selection precedes the failover variable, that conservative worker limits are present, that hosted Playwright setup remains active, and that persistent-host and enterprise benchmark jobs require a non-fork repository. `scripts/prepare-ci-bubblewrap.spec.ts` invokes the real preparation script with isolated command fixtures and verifies the pinned artifact, bounded curl options, replacement of a partial download during mirror failover, immediate checksum refusal on either mirror, exhaustion refusal, and operation order without network access. Repository validation also runs typecheck, lint, documentation synchronization, change-scope, and whitespace checks.

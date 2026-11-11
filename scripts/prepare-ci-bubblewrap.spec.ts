@@ -17,7 +17,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 const script = fileURLToPath(new URL('./prepare-ci-bubblewrap.sh', import.meta.url))
 const expectedVersion = '0.9.0-1ubuntu0.3'
 const expectedSha256 = '2461f1beee9cb04c8942739fe1a2b37e7b7c2a3d518f0779dc75f9245baa3094'
-const expectedUrl = 'https://launchpadlibrarian.net/877343618/bubblewrap_0.9.0-1ubuntu0.3_amd64.deb'
+const expectedUrl = 'https://security.ubuntu.com/ubuntu/pool/main/b/bubblewrap/bubblewrap_0.9.0-1ubuntu0.3_amd64.deb'
+const fallbackUrl = 'https://archive.ubuntu.com/ubuntu/pool/main/b/bubblewrap/bubblewrap_0.9.0-1ubuntu0.3_amd64.deb'
 const fixtures: string[] = []
 
 interface RunResult {
@@ -69,7 +70,7 @@ function createFixtureCommand(directory: string, name: string, source: string): 
   writeExecutable(join(directory, name), `#!/usr/bin/env bash\nset -euo pipefail\n${source}`)
 }
 
-function runScript(mode: 'curl-failure' | 'checksum-failure' | 'success'): RunResult {
+function runScript(mode: 'curl-failure' | 'checksum-failure' | 'fallback' | 'fallback-checksum-failure' | 'success'): RunResult {
   const root = mkdtempSync(join(tmpdir(), 'dsh-prepare-ci-bubblewrap-'))
   fixtures.push(root)
   const fakeBin = join(root, 'bin')
@@ -91,7 +92,7 @@ esac
 `)
   createFixtureCommand(fakeBin, 'curl', `
 printf 'download:%s\\n' "$*" >> "$DSH_TEST_LOG"
-${mode === 'curl-failure' ? 'exit 22' : ''}
+url="\${!#}"
 output=''
 while (( $# > 0 )); do
   if [[ "$1" == '--output' ]]; then
@@ -101,12 +102,16 @@ while (( $# > 0 )); do
   shift
 done
 [[ -n "$output" ]]
-/usr/bin/touch "$output"
+printf '%s' partial > "$output"
+${mode === 'curl-failure' ? 'exit 22' : ''}
+${mode === 'fallback' || mode === 'fallback-checksum-failure' ? 'if [[ "$url" == *security.ubuntu.com* ]]; then exit 28; fi' : ''}
+printf '%s' verified-payload > "$output"
 `)
   createFixtureCommand(fakeBin, 'sha256sum', `
 IFS= read -r input
 printf 'checksum:%s\\n' "$input" >> "$DSH_TEST_LOG"
-${mode === 'checksum-failure' ? 'exit 1' : 'exit 0'}
+[[ "$(< "\${input#*  }")" == verified-payload ]]
+${mode === 'checksum-failure' || mode === 'fallback-checksum-failure' ? 'exit 1' : 'exit 0'}
 `)
   createFixtureCommand(fakeBin, 'mkdir', `
 printf 'mkdir:%s\\n' "$*" >> "$DSH_TEST_LOG"
@@ -149,17 +154,19 @@ printf 'sysctl:%s\\n' "$*" >> "$DSH_TEST_LOG"
   }
 }
 
-function expectedDownloadLog(archive: string): string {
-  return `download:--fail --silent --show-error --location --retry 3 --retry-all-errors --output ${archive} ${expectedUrl}`
+function expectedDownloadLog(archive: string, url = expectedUrl): string {
+  return `download:--fail --silent --show-error --location --connect-timeout 5 --max-time 15 --retry 1 --retry-delay 1 --retry-max-time 20 --retry-all-errors --output ${archive} ${url}`
 }
 
 describe('prepare-ci-bubblewrap', () => {
-  it('stops after a curl exit 22', () => {
+  it('refuses preparation when both Ubuntu mirrors fail', () => {
     const result = runScript('curl-failure')
 
     expect(result.status).toBe(22)
-    expect(result.log).toHaveLength(1)
+    expect(result.log).toHaveLength(2)
     expect(result.log[0]).toBe(expectedDownloadLog(result.archive))
+    expect(result.log[1]).toBe(expectedDownloadLog(result.archive, fallbackUrl))
+    expect(result.stderr).toContain('Unable to download pinned bubblewrap')
     expect(result.githubPath).toBe('')
   })
 
@@ -170,6 +177,34 @@ describe('prepare-ci-bubblewrap', () => {
     expect(result.log).toHaveLength(2)
     expect(result.log[0]).toBe(expectedDownloadLog(result.archive))
     expect(result.log[1]).toBe(`checksum:${expectedSha256}  ${result.archive}`)
+    expect(result.githubPath).toBe('')
+  })
+
+  it('replaces a timed-out partial download using the second mirror before verification', () => {
+    const result = runScript('fallback')
+
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.log).toHaveLength(8)
+    expect(result.log.slice(0, 3)).toEqual([
+      expectedDownloadLog(result.archive),
+      expectedDownloadLog(result.archive, fallbackUrl),
+      `checksum:${expectedSha256}  ${result.archive}`,
+    ])
+    expect(result.log[3]).toContain('mkdir:-p')
+    expect(result.log[4]).toContain('extract:--extract')
+    expect(result.log.at(-1)).toBe('bwrap:--ro-bind / / --dev /dev --proc /proc --die-with-parent -- true')
+    expect(result.githubPath).toMatch(/dsh-bubblewrap[/\\]usr[/\\]bin\r?\n/u)
+  })
+
+  it('refuses a checksum failure after mirror failover', () => {
+    const result = runScript('fallback-checksum-failure')
+
+    expect(result.status).toBe(1)
+    expect(result.log).toEqual([
+      expectedDownloadLog(result.archive),
+      expectedDownloadLog(result.archive, fallbackUrl),
+      `checksum:${expectedSha256}  ${result.archive}`,
+    ])
     expect(result.githubPath).toBe('')
   })
 
