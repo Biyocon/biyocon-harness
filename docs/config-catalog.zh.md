@@ -2410,11 +2410,11 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-tool-conductor`
 
-需要：`tools` · `agents` · `subagents` · `skills` · `sessions` · `workflowEngine` · `sandbox` · `subprocess`
+需要： `tools` · `systemPrompt` · `agents` · `subagents` · `skills` · `sessions` · `workflowEngine` · `sandbox` · `subprocess`
 
 ```ts config-catalog
 /** Deployment policy for the Conductor tool. */
-export interface Config {
+export interface Config extends DetectiveSearchSettings {
   /** Maximum explicitly cited workspace files per intake (default 16). */
   maxMaterialFiles?: number
   /** Maximum bytes in one complete text input (default 65536). */
@@ -2445,6 +2445,20 @@ export interface Config {
   qualityCommands?: QualityCommandConfig[]
 }
 
+/** Configuration owned by the Detective search contribution. */
+export interface DetectiveSearchSettings {
+  /** Maximum characters in a complete Detective glob result (default 4000). */
+  readonly detectiveGlobMaxResultChars?: number
+  /** Maximum characters in a complete Detective grep result (default 4000). */
+  readonly detectiveGrepMaxResultChars?: number
+  /** Private artifact directory; defaults to storages/conductor-search under DSH_HOME. */
+  readonly detectiveSearchSnapshotRoot?: string
+  /** Maximum complete saved artifact bytes, including ownership (default 40000000). */
+  readonly detectiveSearchSnapshotMaxBytes?: number
+  /** Role-specific entry, preview and process settings; defaults follow the search tools. */
+  readonly detectiveSearch?: DetectiveSearchExecutionConfig
+}
+
 /** Configured exact-argv quality command. */
 export interface QualityCommandConfig {
   /** Opaque normalized id exposed to specialists. */
@@ -2468,11 +2482,31 @@ export interface QualityCommandConfig {
   /** Termination grace period in milliseconds. */
   graceMs: number
 }
+
+/** Detective-specific process and entry limits, independent of other roles. */
+export interface DetectiveSearchExecutionConfig {
+  /** Prefer one path from each top-level entry before remaining glob paths. */
+  readonly sampleOverCapGlobResults?: boolean
+  /** Maximum complete paths in one glob page (default 100). */
+  readonly globMaxResults?: number
+  /** Maximum complete matches in one grep page (default 250). */
+  readonly grepMaxMatches?: number
+  /** Maximum UTF-8 bytes in one explicitly cropped matched-line preview (default 2000). */
+  readonly grepMaxLineBytes?: number
+  /** Maximum retained complete ripgrep stdout bytes (default 20000000). */
+  readonly rawOutputMaxBytes?: number
+  /** Grace period before terminating a cancelled search process (default 3000 ms). */
+  readonly graceMs?: number
+  /** Maximum retained stderr bytes (default 65536). */
+  readonly stderrMaxBytes?: number
+  /** Cooperative per-call timeout, including persistence (default 30000 ms). */
+  readonly timeoutMs?: number
+}
 ```
 
-依赖：[`QualityPolicyStage`](../packages/conductor/conductor/src/index.ts)
+依赖： [`QualityPolicyStage`](../packages/conductor/conductor/src/index.ts)
 
-来源：[`packages/conductor/tool-conductor/src/index.ts:89`](../packages/conductor/tool-conductor/src/index.ts)
+来源： [`packages/conductor/tool-conductor/src/index.ts:91`](../packages/conductor/tool-conductor/src/index.ts)
 
 <a id="deepseek-aidsh-tool-fs"></a>
 

@@ -412,7 +412,7 @@ describe('Conductor analysis tool admission and execution policy', () => {
     await h.ctx.fiber.dispose()
   })
 
-  it('runs fresh report sessions with no execution tools, contribution, Ralph or approval', async () => {
+  it('runs fresh report sessions with only Detective search contributions and no execution tools, Ralph or approval', async () => {
     const h = await setup({ factory: analysisResult })
     h.ctx.on('approval/request', () => { throw new Error('Analysis must never request approval') })
     const result = await execute(h.ctx, { ...baseArgs, purpose: 'analysis', deliverable: 'answer' }, h.parent)
@@ -427,7 +427,9 @@ describe('Conductor analysis tool admission and execution policy', () => {
       }
       const critic = request.composeChildPrompt !== undefined
       expect(request.childToolFilter).toEqual({ allow: critic ? [] : ['read', 'read_image', 'grep', 'glob'] })
-      expect(request.childToolContribution).toBeUndefined()
+      const detective = (request.args as { label: string }).label === 'conductor-detective' && !critic
+      if (detective) expect(request.childToolContribution).toBeTypeOf('function')
+      else expect(request.childToolContribution).toBeUndefined()
       const attempt = (name: string) => request.childToolGuard!({ name } as never)
       expect(attempt('read')).toBe(critic ? 'Conductor critic uses only admitted excerpts.' : undefined)
       expect(attempt('structured_output')).toBeUndefined()

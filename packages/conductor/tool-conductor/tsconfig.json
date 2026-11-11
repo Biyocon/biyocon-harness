@@ -57,6 +57,15 @@
       "path": "../../util/timeout"
     },
     {
+      "path": "../../util/brand"
+    },
+    {
+      "path": "../../util/home-paths"
+    },
+    {
+      "path": "../../fs/tool-fs-search"
+    },
+    {
       "path": "../conductor"
     },
     {
