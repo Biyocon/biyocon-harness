@@ -20,20 +20,28 @@
 - `ctx.systemPrompt.section(section: PromptSection): () => void`：贡献一个段。层由调用上下文的作用域决定：`agent.ctx` 只为该 agent 贡献，并在该处遮蔽同名全局段。一个 `complete: true` 段会在组装 waterfall 之后成为精确的完整提示词；有效 complete 段超过一个时，组装会被拒绝。同一层中的重复名称和非有限顺序会抛出。随调用 fiber 一并 dispose（资源释放）。
 - `ctx.systemPrompt.context(context: PromptContext): () => void`：为调用作用域贡献有序动态上下文。每次符合条件的组装都会求值提供方，并在随附循环下成为模型历史中带来源的 runtime-context 快照。
 - `ctx.systemPrompt.suppressRuntimeContext(): () => void`：抑制调用作用域的所有动态上下文贡献。多个注册会独立组合；只有当不再存在抑制器时，dispose 返回的 effect 才会恢复上下文。
-- `ctx.systemPrompt.tools(provider: (context: AssembleContext) => ToolProviderResult): () => void`：贡献工具 schema；每次组装时使用该次组装的上下文求值。`ToolProviderResult` = `{ schemas, knownNames? }`：`schemas` 是限制后的可见集合；`knownNames` 是限制前由 `toolOrder` 使用的全集。提供方不得返回名为 `TOOL_ORDER_REST` 的 schema。带作用域提供方只在其作用域的组装中查询。随调用 fiber 一并 dispose。
+- `ctx.systemPrompt.tools(provider: (context: AssembleContext) => ToolProviderResult): () => void`：贡献工具 schema；每次组装时使用该次组装的上下文求值。`ToolProviderResult` = `{ schemas, knownNames?, capabilities? }`：`schemas` 是限制后的可见集合；`knownNames` 是限制前由 `toolOrder` 使用的全集。提供方不得返回名为 `TOOL_ORDER_REST` 的 schema。带作用域提供方只在其作用域的组装中查询。随调用 fiber 一并 dispose。
 - `ctx.systemPrompt.variable(name: string, provider: (context) => string | undefined): () => void`：贡献提示词变量，在段文本中以 `{{name}}` 引用。带作用域变量会为该 agent 遮蔽同名全局变量。同层重复或无法引用的名称会抛出；`undefined` 表示「本次组装没有值」。随调用 fiber 一并 dispose。
 - `ctx.systemPrompt.assemble(context?: AssembleContext): Promise<PromptAssembly>`：为一个调用方组装提示词：将全局层与 `context.scope` 的层合并，并在变换 waterfall 前分离工具 schema。它经过按作用域筛选的 `system-prompt/assemble` waterfall，之后将一个有效的 complete 段恢复为唯一的提示词段，并实施任何活动的 runtime-context 抑制器。可选的 `context.signal` 显式控制本次组装请求；提供方与监听器可以配合该信号，但不得将它保留给另一轮次。存在多个 complete 段、已配置的 `toolOrder` 指名提供方 `knownNames` 全集以外的工具，或提供方返回保留的其余项名称时，调用会被拒绝。
+
+<a id="tool-associated-sections"></a>
+
+### 工具关联段
+
+`PromptSection.requiresTools` 将段与非空、唯一的已注册能力名称列表关联。组装先解析作用域遮蔽，再验证全部前置条件；仅当所有能力可见时保留该段，省略段绝不求值其文本提供方。空白、重复或未注册名称会拒绝组装。没有此元数据的段保持原有行为。
+
+`ToolProviderResult.capabilities` 分别提供已知和可见能力名称。因此，即使 wire 仅公开 `run_code`，经 Code Mode 可调用的能力仍保留指引。省略此字段时，能力名称由 `knownNames` 和可见 schema 推导。筛选发生在协作式组装 waterfall 之前，返回结果中的隐藏注册段也会被移除。监听器保留对未关联内容的控制权。
 
 <a id="live-events"></a>
 
 ### 实时事件
 
-普通段以 `system-prompt/assemble` 的返回结果为准；complete 段则会在 waterfall 之后作为最终提示词约束生效。替换条目的监听器必须保留任何已启用的 Code Mode 或结构化输出协议。筛选需要在呈现、查找与执行之间保持一致时，应使用 [`ToolRuntime.restrict()`](../tools/README.md)。注册表变更通知不经过筛选。[system-prompt.md](../../../docs/subsystems/system-prompt.md#cordis-surface) 的生成区块拥有事件签名和分发约定。
+`system-prompt/assemble` 在 complete 段、工具关联及上下文抑制约束实施前变换组装结果。替换条目的监听器必须保留任何已启用的 Code Mode 或结构化输出协议。筛选需要在呈现、查找与执行之间保持一致时，应使用 [`ToolRuntime.restrict()`](../tools/README.md)。注册表变更通知不经过筛选。[system-prompt.md](../../../docs/subsystems/system-prompt.md#cordis-surface) 的生成区块拥有事件签名和分发约定。
 
 ### 关键类型
 
 - `AssembleContext`：说明一次 `assemble()` 调用的用途。它可通过合并扩展；此处声明 `scope?: ScopeKey`（层选择器）与 `signal?: AbortSignal`（显式请求控制能力），而 `dsh-agent` 声明 `agent?: Agent`（类型化 DX 字段；绝不能在没有 `scope` 时设置，应使用 `assembleContextFor(agent, signal)`）。提供方必须容忍字段缺席，因为裸 `assemble()` 携带的是无作用域、无信号的空上下文。`signal` 是请求值，不是环境 Agent 执行 frame 的一部分。
-- `PromptSection`：`{ name, order, text, complete? }`。各段按 `order` 升序拼接。顺序区间：`-100` 是 harness 身份，`0` 是部署 persona，工具引导使用 `100–199`。协作式组装完成后，一个有效的 `complete` 段会抑制其他所有段。
+- `PromptSection`：`{ name, order, text, requiresTools?, complete? }`。各段按 `order` 升序拼接。顺序区间：`-100` 是 harness 身份，`0` 是部署 persona，工具引导使用 `100–199`。协作式组装完成后，一个有效的 `complete` 段会抑制其他所有段。
 - `PromptAssembly`：`{ sections: AssembledSection[], tools: ToolSchema[], variables: Record<string, string | undefined> }`。各段文本到达时已求值，但尚未插值；`variables` 保存所有已注册变量在当前上下文中求得的值。工具 schema 按设计属于组装结果：「模型获知自己能做什么」是一个连贯整体，尽管适配器把 schema 作为独立 wire 字段传输。
 - `renderPrompt(assembly)`：插值每个段中的 `{{variable}}` 引用，删除空段，并用空行连接。严格规则：未知引用（使用 `Object.hasOwn` 查找，因此 `{{constructor}}` 等原型名称未知）、已注册但无值的引用、格式错误的完整 `{{…}}` 组，或出现 `{{` 却没有形成完整组、而后文仍有 `}}`（`{{{model}}}`），都会抛出异常；明确失败胜过交付格式错误的提示词。孤立的 `{{` 如果后面任何位置都没有 `}}`，会按字面量通过；替换值绝不再次扫描。
 
@@ -74,11 +82,11 @@ You are an AI agent powered by Biyocon Harness.
 
 #### 模型看到的内容
 
-对于已交付工具，模型会收到[生成工具 schema](../../../docs/tool-catalog.md#tool-package-map) 中对每个 agent 可见的子集；限制与组装拦截完成后，按配置或字典序排列。扩展可以通过同一注册表贡献其他定义。段与 schema 提供方是独立的组装输入，因此工具限制不会移除独立注册的引导。
+对于已交付工具，模型会收到[生成工具 schema](../../../docs/tool-catalog.md#tool-package-map) 中对每个 agent 可见的子集；限制与组装拦截完成后，按配置或字典序排列。扩展可以通过同一注册表贡献其他定义。未关联段保持独立；声明 `requiresTools` 的段遵循能力可见性，即使 wire schema 已收束。
 
 #### Token 影响
 
-schema token 在每次请求中重复。限制工具会为该 agent 移除其全部 schema 成本，但不会移除独立提示词段；重排序会改变缓存形状，但不改变语义内容。
+schema token 在每次请求中重复。限制工具会移除其 schema 成本及显式关联的指引；未关联文本保留。重排序会改变缓存形状，但不改变语义内容。
 
 #### KV Cache 影响
 

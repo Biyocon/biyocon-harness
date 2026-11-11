@@ -204,8 +204,8 @@ export function presentSearchResult(args: { query: string }, result: ToolResult)
  *   request's `maxResults`.
  * @param timeoutMs - the cooperative tool-call budget (ms) attached as the tool's
  *   `ToolDefinition.timeoutMs` for `@deepseek-ai/dsh-tool-call-timeout-policy` to enforce.
- * @param fetchEnabled - whether the same composition exposes `web_fetch`, which
- *   controls whether search guidance may recommend that follow-up tool.
+ * @param fetchEnabled - whether to register follow-up guidance; assembly also
+ *   requires both search and fetch capabilities in the calling scope.
  */
 export function applyWebSearchTool(
   ctx: Context,
@@ -216,10 +216,17 @@ export function applyWebSearchTool(
   ctx.systemPrompt.section({
     name: 'tool:web_search',
     order: 110,
-    text: fetchEnabled
-      ? 'Use the web_search tool to discover current information on the web. It returns an optional answer plus a list of source URLs. Follow up with web_fetch when you need the full content of a specific result, and cite the relevant URLs as markdown links.'
-      : 'Use the web_search tool to discover current information on the web. It returns an optional answer plus a list of source URLs. Use the returned source snippets when available, and cite the relevant URLs as markdown links.',
+    requiresTools: ['web_search'],
+    text: 'Use the web_search tool to discover current information on the web. It returns an optional answer plus a list of source URLs. Use the returned source snippets when available, and cite the relevant URLs as markdown links.',
   })
+  if (fetchEnabled) {
+    ctx.systemPrompt.section({
+      name: 'tool:web_search:fetch',
+      order: 110.5,
+      requiresTools: ['web_search', 'web_fetch'],
+      text: 'Follow up with web_fetch when you need the full content of a specific result.',
+    })
+  }
 
   ctx.tools.register(defineTool({
     name: 'web_search',

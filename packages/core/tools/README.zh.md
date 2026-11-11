@@ -28,6 +28,8 @@ tools:
 
 ### 注入的服务
 
+提示词提供方报告与作用域查找一致的已知及可见能力名称，独立于随呈现模式变化的 wire schema。因此，[段的前置条件](../system-prompt/README.md#tool-associated-sections)在 Code Mode 中仍适用于经 SDK 可调用的工具。
+
 `SystemPrompt`：注册表通过 `ctx.systemPrompt.tools()` 自动将工具 schema 送入系统提示词组装。审批 seam 则在可用时使用（`ctx.get('approval')`，无静态注入）：未部署该 seam 时仍会将询问退化为拒绝，而无论是否存在该 seam，注册表都会保持活动。
 
 ### 取消

@@ -115,6 +115,11 @@ describe('a child agent composed in-process', () => {
     // The capability filter is the only thing bounding a delegated child, and
     // every tool it can name now arrives from the preset rather than the host.
     expect(ctx.tools.schemas(run.localAgent).map(schema => schema.name)).toEqual([])
+    const headers = run.localAgent!.session.events.filter(event => event.type === 'request/header')
+    expect(headers).toHaveLength(1)
+    expect(headers[0]!.data.header.system).not.toContain('section for preset_only')
+    const parentPrompt = await ctx.systemPrompt.assemble({ scope: parent, agent: parent })
+    expect(parentPrompt.sections.some(section => section.text === 'section for preset_only')).toBe(true)
     await run.dispose()
   })
 

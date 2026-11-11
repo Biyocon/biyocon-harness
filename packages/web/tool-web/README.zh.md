@@ -47,33 +47,33 @@
 
 #### 模型看到的内容
 
-搜索与抓取分别贡献以下 web-search 和 web-fetch 指引。搜索会在注册时根据配置选用启用抓取或仅搜索的文本。scope 工具限制不会移除这些独立注册的区段。
+搜索指引要求 `web_search` 可见；可选后续段要求 `web_search` 和 `web_fetch` 同时可见。抓取指引要求 `web_fetch` 可见。类型化关联遵循调用作用域，包括通过 Code Mode 调用的能力。配置禁用会移除注册；缺少后端提供方不会。
 
-##### 启用抓取时的 Web 搜索指引
-
-```markdown
-Use the web_search tool to discover current information on the web. It returns an optional answer plus a list of source URLs. Follow up with web_fetch when you need the full content of a specific result, and cite the relevant URLs as markdown links.
-```
-
-##### 仅搜索时的 Web 搜索指引
+##### Web 搜索指引
 
 ```markdown
 Use the web_search tool to discover current information on the web. It returns an optional answer plus a list of source URLs. Use the returned source snippets when available, and cite the relevant URLs as markdown links.
 ```
 
+##### 启用抓取且两个工具均可见时的搜索后续指引
+
+```markdown
+Follow up with web_fetch when you need the full content of a specific result.
+```
+
 ##### Web 抓取指引
 
 ```markdown
-Use the web_fetch tool to retrieve the content of a specific HTTP(S) URL (for example a result from web_search). It returns the page content decoded to text. Cite the URL as a markdown link when you use its content.
+Use the web_fetch tool to retrieve the content of a specific HTTP(S) URL. It returns the page content decoded to text. Cite the URL as a markdown link when you use its content.
 ```
 
 #### Token 影响
 
-每个通过配置启用的工具都会为每次请求增加固定的指引 token 开销，即使限制隐藏了其 schema。切换抓取状态不仅会注册或移除抓取区段，也会更改搜索指引。
+每个可见指引段增加固定的每请求成本。作用域限制在求值文本前省略关联段；启用抓取会增加后续段及抓取段。
 
 #### KV Cache 影响
 
-只要启用工具、scope 与指引文本不变，前缀就保持稳定。配置启用状态（包括因切换抓取状态而改变搜索指引分支）或插件生命周期可能使从第一个变化的提示词区段起的复用失效；scope schema 限制不会移除该区段。
+能力可见性及指引文本不变时，前缀保持稳定。配置、生命周期或作用域限制可能使从首个变化提示词段起的复用失效。
 
 ### 工具 schema
 
@@ -83,7 +83,7 @@ Use the web_fetch tool to retrieve the content of a specific HTTP(S) URL (for ex
 
 #### Token 影响
 
-每次请求都会产生固定的 schema token 开销；通过配置禁用会同时移除 schema 与指引，scope 限制只移除 schema。
+每次请求产生固定的 schema token 开销；配置禁用及作用域限制会移除对应 schema 和关联指引。
 
 #### KV Cache 影响
 

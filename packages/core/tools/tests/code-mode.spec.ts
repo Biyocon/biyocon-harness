@@ -116,6 +116,33 @@ async function runCode(
 }
 
 describe('mode-aware wire contribution', () => {
+  it.each(['native', 'code', 'both'] as const)('filters guidance by callable capabilities in %s mode', async (mode) => {
+    const { ctx, systemPrompt } = await setup({ mode })
+    try {
+      registerEcho(ctx, 'visible')
+      registerEcho(ctx, 'hidden')
+      ctx.systemPrompt.section({ name: 'visible-guidance', order: 110, text: 'Available guidance.', requiresTools: ['visible'] })
+      ctx.systemPrompt.section({ name: 'hidden-guidance', order: 111, text: 'Hidden guidance.', requiresTools: ['hidden'] })
+      const { scope, agent } = await mintAgentScope(ctx)
+      scope.ctx.tools.restrict({ deny: ['hidden'] })
+      const assembly = await systemPrompt.assemble({ scope: agent })
+      expect(assembly.sections.some(section => section.name === 'visible-guidance')).toBe(true)
+      expect(assembly.sections.some(section => section.name === 'hidden-guidance')).toBe(false)
+      expect(assembly.tools.map(tool => tool.name)).toEqual(mode === 'native'
+        ? ['visible']
+        : mode === 'code' ? [RUN_CODE_NAME] : [RUN_CODE_NAME, 'visible'])
+      expect((await systemPrompt.assemble()).sections.some(section => section.name === 'hidden-guidance')).toBe(true)
+      scope.ctx.tools.register(defineTool({
+        name: 'hidden', description: 'Scoped replacement.', parameters: {},
+        output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+        execute: () => Promise.resolve('replacement'),
+      }))
+      expect((await systemPrompt.assemble({ scope: agent })).sections.some(section => section.name === 'hidden-guidance')).toBe(true)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it("mode 'native' contributes every schema, no run_code, no SDK section — and needs no runtime", async () => {
     const { ctx, systemPrompt } = await setup({ mode: 'native', runtime: false })
     registerEcho(ctx)

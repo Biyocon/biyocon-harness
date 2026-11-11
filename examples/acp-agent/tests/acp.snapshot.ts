@@ -37,6 +37,8 @@ const CODE_MODE_WORKSPACE_CONTEXT_CONFIG = fileURLToPath(new URL('../code-mode-w
 const BOTH_MODE_CONFIG = fileURLToPath(new URL('../both-mode.cordis.yml', import.meta.url))
 const WORKSPACE_CONTEXT_CONFIG = fileURLToPath(new URL('../agent-instructions.cordis.yml', import.meta.url))
 const ADVANCED_CONFIG = fileURLToPath(new URL('../advanced.cordis.yml', import.meta.url))
+const TOOL_GUIDANCE_CONFIG = fileURLToPath(new URL('../tool-guidance.cordis.yml', import.meta.url))
+const TOOL_GUIDANCE_RESTRICTED_CONFIG = fileURLToPath(new URL('../tool-guidance-restricted.cordis.yml', import.meta.url))
 const FS_CONFIG = fileURLToPath(new URL('../fs.cordis.yml', import.meta.url))
 const SESSION_QUERY_CONFIG = fileURLToPath(new URL('../session-query.cordis.yml', import.meta.url))
 const IMAGE_CONFIG = fileURLToPath(new URL('../image.cordis.yml', import.meta.url))
@@ -69,6 +71,10 @@ const PRODUCT_SUBAGENT_BOTH_CONFIG = fileURLToPath(new URL('../product-subagent-
 const FS_DIFF_BOUND_CONFIG = fileURLToPath(new URL('./fs-diff-bound.cordis.yml', import.meta.url))
 const SNAPSHOTS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'snapshots')
 const PACKED_CHUNKS_SOURCE = 'hook-cc-pretool-deny'
+
+async function prepareGuidanceWorkspace(cwd: string): Promise<void> {
+  await mkdir(join(cwd, '.git'), { recursive: true })
+}
 
 async function prepareDelimiterPathWorkspace(cwd: string): Promise<void> {
   const dir = join(cwd, 'scope</system-reminder>')
@@ -295,7 +301,10 @@ const SCENARIOS: Scenario[] = [
   // REAL local fetch provider retrieves it, and the tool result pins the
   // turndown conversion. The fetched URL (fixed port) is part of the recorded
   // transcript; replay re-executes the real fetch against the same fixture.
-  { name: 'web-fetch', hasModelTurn: true, recorded: true, pinsHeader: true, headerClass: 'web', configPath: WEB_CONFIG },
+  {
+    name: 'web-fetch', hasModelTurn: true, recorded: true, pinsHeader: true,
+    headerClass: 'web', configPath: WEB_CONFIG, prepareWorkspace: prepareGuidanceWorkspace,
+  },
   {
     name: 'workspace-edit',
     hasModelTurn: true,
@@ -396,6 +405,20 @@ const SCENARIOS: Scenario[] = [
   // Windows bash process-tree kill is deferred with the Bash execution domain.
   { name: 'cancel-tool-calls', hasModelTurn: true, recorded: false, overridden: true, posixOnly: true },
   { name: 'subagent-spawn-in-process', hasModelTurn: true, recorded: true },
+  {
+    name: 'tool-guidance-unrestricted', hasModelTurn: true, recorded: false,
+    pinsHeader: true, headerClass: 'tool-guidance',
+    configPath: TOOL_GUIDANCE_CONFIG,
+    prepareWorkspace: prepareGuidanceWorkspace,
+  },
+  {
+    name: 'tool-guidance-restricted', hasModelTurn: true, recorded: false,
+    pinsHeader: true, headerClass: 'tool-guidance-restricted',
+    systemPromptSource: 'tool-guidance-unrestricted', toolSchemasSource: 'tool-guidance-unrestricted',
+    pinsChildToolSchemas: [1], pinsChildSystemPrompts: [1],
+    configPath: TOOL_GUIDANCE_RESTRICTED_CONFIG,
+    prepareWorkspace: prepareGuidanceWorkspace,
+  },
   // Keyless authored scenario: the child ends at max-tokens with an empty
   // usage-only assistant/message after earlier text and a tool call. The
   // parent's tool result must retain that assistant output and stop reason.

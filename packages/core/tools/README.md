@@ -28,6 +28,8 @@ tools:
 
 ### Injected services
 
+The prompt provider reports the same known and visible capability names used by scoped lookup, separately from mode-dependent wire schemas. [Section prerequisites](../system-prompt/README.md#tool-associated-sections) therefore remain valid for SDK-callable tools in Code Mode.
+
 `SystemPrompt` — the registry automatically feeds its tool schemas into the system-prompt assembly via `ctx.systemPrompt.tools()`. The approval seam is consumed opportunistically instead (`ctx.get('approval')`, no static inject): a deployment without it keeps the ask→deny degrade, and the registry stays active either way.
 
 ### Cancellation

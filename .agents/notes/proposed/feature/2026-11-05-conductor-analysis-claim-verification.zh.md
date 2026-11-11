@@ -18,7 +18,7 @@ Status: proposed
 
 阶段 1 是通用子智能体组合修复，以独立 PR 交付，不改变 Conductor 记录或会话格式。为 `PromptSection` 增加类型化的可选 `requiresTools` 列表：只有其中每个工具都在当前 scope 的有效工具视图内，才包含该段。关联由显式元数据声明，绝不能解析 `tool:` 名称前缀。未关联的段保持既有行为。工具注册完成后，在组装时验证名称非空、不重复且对应已注册能力；已知但被过滤的工具导致该段省略。工具 provider 须独立于 wire schemas 提供有效能力名称，因为 Code Mode 可能只暴露 `run_code`，但仍有底层可调用能力。每次组装和冷恢复均重新计算可见性，保持父级/兄弟隔离和 scoped shadowing。在求值文本 provider 前省略被隐藏的段。搜索指导关联 `web_search`；建议后续使用 `web_fetch` 的句子须同时依赖两者。执行限制仍是权限依据，最终提示沿用现有已记录快照。
 
-本提案仅部分取代[子智能体组合](../../implemented/feature/2026-07-12-subagent-persona-tool-filter-and-depth.md)中无条件保留独立工具指导的规则；persona、过滤、深度与 provider 决策继续有效。阶段 1 实施前，现有指导规则仍是已交付行为。
+本提案仅部分取代[子智能体组合](../../implemented/feature/2026-07-12-subagent-persona-tool-filter-and-depth.md)中无条件保留独立工具指导的规则；persona、过滤、深度与 provider 决策继续有效。通用关联由[工具关联提示词段](../../implemented/feature/2026-11-11-tool-associated-prompt-sections.md)实现；下方后续 Conductor 专属修改仍属提案。
 
 涉及的包为 [system-prompt](../../../../packages/core/system-prompt/src/index.ts)（类型化关联与组装）、[tools](../../../../packages/core/tools/src/index.ts)（有效能力名称投影）及 [tool-web](../../../../packages/web/tool-web/src/search.ts)（搜索/获取声明）。子智能体组合使用这些通用能力，Conductor 不需要专用隐藏规则。测试覆盖 system-prompt 分层组装、未知/被过滤能力、父级/兄弟隔离、shadowing、provider 求值和未关联段；tools 覆盖 native/code/both；tool-web 覆盖仅搜索及混合可见性。子智能体 driver 的 preset-inheritance 测试及 continuation-inheritance 测试验证新建与冷恢复。增加含受限与不受限子智能体的真实组装无密钥 transcript，并在该实施 PR 更新所属 README/JSDoc 和 system-prompt 类型投影。
 

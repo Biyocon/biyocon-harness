@@ -34,7 +34,7 @@ This uses the normal system-prompt registration mechanism rather than a second p
 
 ### Tool filtering is one live global-view rule
 
-The tool filter controls capability visibility and executable lookup together. An in-process provider installs `ToolRuntime.restrict()` in the child's scope before publication, and the registry's single resolver applies the same result to wire tool schemas, lookup, execution, and Code Mode SDK generation. Independently registered system-prompt sections are outside `ToolRuntime`, so filtering a tool does not remove that plugin's standalone guidance. [Evidence-bound analysis, phase 1](../../proposed/feature/2026-11-05-conductor-analysis-claim-verification.md) proposes replacing only this guidance policy with explicit typed tool associations; it is not implemented. The remaining composition decisions here retain their authority.
+The tool filter controls capability visibility and executable lookup together. An in-process provider installs `ToolRuntime.restrict()` in the child's scope before publication, and the registry's single resolver applies the same result to wire tool schemas, lookup, execution, and Code Mode SDK generation. [Tool-associated prompt sections](2026-11-11-tool-associated-prompt-sections.md) follow that capability view through explicit `requiresTools` declarations, including SDK-callable tools. Unassociated guidance remains independent. The remaining composition decisions here retain their authority.
 
 Resolution follows these rules:
 

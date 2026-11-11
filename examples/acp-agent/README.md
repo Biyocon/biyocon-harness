@@ -11,6 +11,8 @@ pnpm run demo:code-mode       # same protocol with the Code Mode tool transport
 
 The leaf loads the ACP app, DeepSeek adapter, sandboxed bash and filesystem stacks, one-shot approval policy, compaction, subagents, workflows, hooks, a derived session-query index, and repeat guard. The app creates one fresh agent per `session/new`, persists sessions to JSONL, and keeps stdout protocol-pure. Optional overlays add session queries, filesystem spill storage, Code Mode, or web fetching.
 
+The `tool-guidance` overlays contrast unrestricted and web-restricted children using the same parent composition. Keyless scenarios pin both prompt guidance and callable schemas; their owned workspace roots exclude ancestor instructions. See [tool-associated sections](../../packages/core/system-prompt/README.md#tool-associated-sections) for visibility semantics.
+
 ## Protocol channel
 
 Stdout carries only newline-delimited ACP JSON-RPC. `@deepseek-ai/dsh-acp-demo` installs no stdout logger; leaf additions must use stderr for diagnostics.
