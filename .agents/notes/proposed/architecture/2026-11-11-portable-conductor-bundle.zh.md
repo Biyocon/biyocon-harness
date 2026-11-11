@@ -23,7 +23,7 @@ Conductor 运行引擎已分为可复用的软件包，但已安装的产品还�
 
 第一项拆分交付是打包的宿主 bundle 与 preset，不包含客户端适配器或 record 变更。[`composeProfile`](../../../../apps/cli/src/profile-boot.ts) 目前在组合 bundle 之后，用 CLI 自带目录覆盖 `agent-presets.roots`，因此 bundle patch 无法注册自己的 preset。增加可选的 `dsh.bundle.presetRoot`，相对于各已安装 bundle；宿主在包内解析并授予 system 信任。须在同一变更中把 Conductor 从 CLI 自带目录及基础 bundle 移入新 bundle，再把它列入 Biyocon 的 profiles。保留明确的 system 优先于 user 的顺序，遇到 system 目录之间重复的 id 时拒绝，而不是静默遮蔽。在移动 UI 或所有者 API 前，用实际打包产物验证安装、组合、缺失资源、重复 id 和未安装 bundle 的情形。
 
-bundle 的公开包名必须位于发布者控制的命名空间。现有 `@deepseek-ai/*` 名称和指向上游的 repository 字段，不能视为在该命名空间发布的许可。公开 tarball 前须确定并验证发布身份；本地原型可使用未发布的包说明符。Cordis 与共享 Harness 服务须保持 peer 身份，避免安装 bundle 时加载第二套核心。上游[插件安装指南](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.md)说明 `dsh plugin --profile <name> add <package>` 及 bundle 组合；测试须使用选定目标版本的实际命令和打包产物。固定受支持的宿主版本；每个更新的上游版本都要做显式兼容性检查。Biyocon Harness 本身继续使用 rc.7。
+bundle 的公开包名必须位于发布者控制的命名空间。三个 Conductor 包（`conductor`、`conductor-presets`、`tool-conductor`）目前都使用 `@deepseek-ai/*` 名称，工具包还以另外两个包为 peer。须为整套锁定版本的发行物选择发布者自有的包身份，或把其代码打入一个自有产物；workspace 链接不能证明可移植性。现有名称与指向上游的 repository 字段，不能视为在该命名空间发布的许可。Cordis 与共享 Harness 服务须保持 peer 身份，避免安装时加载第二套核心。上游[插件安装指南](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.md)说明 `dsh plugin --profile <name> add <package>` 及 bundle 组合；测试须针对选定宿主版本的实际命令和打包后的完整依赖进行。Biyocon Harness 保持 rc.7；每个更新的上游宿主版本都要做显式兼容性检查。
 
 ### Host security and lifecycle
 
