@@ -30,7 +30,7 @@ foreach ($caseName in 'capture','discovery') {
     if ($LASTEXITCODE -ne 0) { throw 'Inspect the preserved trial before proceeding.' }
   }
 }
-pnpm exec tsx scripts/conductor-cost/report.ts $experimentRoot
+pnpm run measure:conductor:report $experimentRoot
 ```
 
 The [launcher](launch-cost.ps1) sets fresh `DSH_HOME`, `DSH_AGENTS_HOME`, home/profile and temporary environment variables. It does not start a browser/server or access the owner's application home. Each workspace has an empty `.git` directory to stop ancestor instruction discovery; user presets are disabled. An additional read-path guard restricts access to the synthetic workspace and that trial's state. The product's normal read-only analysis and approval guards remain active.

@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { aggregateCostTrials, analyzeCostTrial } from '../conductor-cost-report.ts'
 
 const rootArg = process.argv[2]
-if (rootArg === undefined) throw new Error('Usage: pnpm exec tsx scripts/conductor-cost/report.ts <synthetic-root>')
+if (rootArg === undefined) throw new Error('Usage: pnpm run measure:conductor:report <synthetic-root>')
 const root = await realpath(rootArg)
 const worlds = z.array(z.looseObject({ caseId: z.enum(['capture', 'discovery']), workspace: z.string(),
   files: z.array(z.looseObject({ path: z.string(), sha256: z.string() })),

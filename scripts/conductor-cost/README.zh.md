@@ -30,7 +30,7 @@ foreach ($caseName in 'capture','discovery') {
     if ($LASTEXITCODE -ne 0) { throw 'Inspect the preserved trial before proceeding.' }
   }
 }
-pnpm exec tsx scripts/conductor-cost/report.ts $experimentRoot
+pnpm run measure:conductor:report $experimentRoot
 ```
 
 [启动器](launch-cost.ps1)设置全新的 `DSH_HOME`、`DSH_AGENTS_HOME`、home/配置和临时目录环境变量。它不会启动浏览器或服务器，也不会访问所有者的应用 home。每个工作区包含一个空 `.git` 目录，用于停止向上查找指令；用户预设被禁用。额外的读取路径检查将访问范围限制在合成工作区和本次试验的状态目录。产品原有的只读分析和审批检查仍然生效。
