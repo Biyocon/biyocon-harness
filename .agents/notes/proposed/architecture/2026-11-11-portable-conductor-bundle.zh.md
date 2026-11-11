@@ -10,18 +10,20 @@ Conductor 运行引擎已分为可复用的软件包，但已安装的产品还�
 
 ## Proposal
 
-建立一套可选的 Conductor 发行包，规范运行时仍位于 `packages/conductor/*`。bundle 包声明 `dsh.bundle`，持有宿主呈现行、Conductor 工具、preset 组合及元数据，以及完整的角色、协议、模板和图像资源。另一个可选 Web UI bundle 持有 Conductor 专属的子代理及所有者问题呈现。Biyocon 的 profile 安装同一套包；另一个 Harness fork 无需复制 Biyocon 源码，即可安装打包产物。通用基础包、Web bundle、源码启动器、preset 列表、会话读取器及问题 UI 只在必要处增加小型、可复用的插件扩展点。核心绝不导入 Conductor。[核心依赖清单](2026-11-05-conductor-core-dependencies.md)记录每项宿主改动的文件、用途和 PR。
+建立一套有版本的 Conductor 引擎发行物，规范运行时仍位于 `packages/conductor/*`。针对每条受支持的 Harness 宿主版本线，以轻量宿主 bundle 组合相同的引擎及打包好的角色、协议、模板和图像资源。另一个可选 Web UI bundle 持有 Conductor 专属的子代理及所有者问题呈现。Biyocon 与另一个 Harness fork 安装同一套引擎包，无需复制源码；各自选择兼容的宿主 bundle。通用基础包、Web bundle、源码启动器、preset 列表、会话读取器及问题 UI 只在必要处增加小型、可复用的插件扩展点。核心绝不导入 Conductor。[核心依赖清单](2026-11-05-conductor-core-dependencies.md)记录每项宿主改动的文件、用途和 PR。
 
 ### Package and composition ownership
 
 | 当前绑定 | 建议的归属及行为 |
 |---|---|
-| [`apps/cli/config/agent-presets/conductor/`](../../../../apps/cli/config/agent-presets/conductor/preset.yml) 与 [`generate-conductor-skills.ts`](../../../../apps/cli/scripts/generate-conductor-skills.ts) | Conductor 发行包打包原始资源及完整 preset。preset 从已安装包的相对位置解析资源，绝不从任务工作区或源码 checkout 解析。通用 preset 列表通过声明的包／根目录输入发现它；资源缺失时，在发布 Agent 前拒绝安装。 |
+| [`apps/cli/config/agent-presets/conductor/`](../../../../apps/cli/config/agent-presets/conductor/preset.yml) 与 [`generate-conductor-skills.ts`](../../../../apps/cli/scripts/generate-conductor-skills.ts) | 发行物打包原始资源及完整 preset。资源从已安装包解析，绝不从任务工作区或源码 checkout 解析。rc.7 发现声明的包目录；新版宿主声明 preset 行。资源缺失时，在发布 Agent 前拒绝安装。 |
 | [`dsh-base`](../../../../packages/bundle/base/cordis.patch.yml) 与 [`dsh-web-app`](../../../../packages/bundle/web-app/cordis.patch.yml) | 可选的 Conductor 宿主及 UI bundle 持有自身的行与依赖。移除 bundle 后，通用 Harness 仍可正常工作。启用 bundle 时，必须在读取 Conductor 会话前安装投影。 |
 | [`ui-user-questions`](../../../../packages/client/ui-user-questions/README.md) 与 [`apiproxy`](../../../../packages/host/apiproxy/README.md) | 将 Conductor 卡片与回执移至可选 UI 插件。保留通用、类型化的所有者意图注册及服务端验证路径；外部客户端不能仅靠模型文字或猜出的 question id 伪造批准。 |
 | [`known-event-types.ts`](../../../../packages/core/session/src/known-event-types.ts) | 会话读取器必须在回放前识别已安装 Conductor 的必需事件。用经验证的已安装包事件声明或等效的组装目录输入，替代只扫描仓库路径的生成器假设。未知的必需事件仍须拒绝；不可用的旧 Conductor 运行不能遮蔽无关聊天历史。 |
 
-第一项拆分交付是打包的宿主 bundle 与 preset，不包含客户端适配器或 record 变更。[`composeProfile`](../../../../apps/cli/src/profile-boot.ts) 目前在组合 bundle 之后，用 CLI 自带目录覆盖 `agent-presets.roots`，因此 bundle patch 无法注册自己的 preset。增加可选的 `dsh.bundle.presetRoot`，相对于各已安装 bundle；宿主在包内解析并授予 system 信任。须在同一变更中把 Conductor 从 CLI 自带目录及基础 bundle 移入新 bundle，再把它列入 Biyocon 的 profiles。保留明确的 system 优先于 user 的顺序，遇到 system 目录之间重复的 id 时拒绝，而不是静默遮蔽。在移动 UI 或所有者 API 前，用实际打包产物验证安装、组合、缺失资源、重复 id 和未安装 bundle 的情形。
+第一项 rc.7 拆分交付是打包的宿主 bundle 与 preset，不包含客户端适配器或 record 变更。[`composeProfile`](../../../../apps/cli/src/profile-boot.ts) 目前在组合 bundle 之后，用 CLI 自带目录覆盖 `agent-presets.roots`，因此 bundle patch 无法注册自己的 preset。增加可选的 `dsh.bundle.presetRoot`，相对于各已安装 bundle；宿主在包内解析并授予 system 信任。须在同一变更中把 Conductor 从 CLI 自带目录及基础 bundle 移入新 bundle，再把它列入 Biyocon 的 profiles。保留明确的 system 优先于 user 的顺序，遇到 system 目录之间重复的 id 时拒绝，而不是静默遮蔽。在移动 UI 或所有者 API 前，用实际打包产物验证安装、组合、缺失资源、重复 id 和未安装 bundle 的情形。
+
+截至 2026 年 11 月 11 日，上游 master [`e8f7b93a`](https://github.com/deepseek-ai/deepseek-harness/tree/e8f7b93a344964de3dca1ace9e72b6e4d6de87cb) 用[声明式 preset 行](https://github.com/deepseek-ai/deepseek-harness/blob/e8f7b93a344964de3dca1ace9e72b6e4d6de87cb/packages/preset/agent-preset/README.md)取代目录 preset，且 [`dsh.bundle.patch`](https://github.com/deepseek-ai/deepseek-harness/blob/e8f7b93a344964de3dca1ace9e72b6e4d6de87cb/packages/bundle/web-app/package.json)支持有序文件列表。`presetRoot` 只属于 rc.7 宿主扩展点，不是上游安装机制。轻量的上游 bundle 必须通过该宿主的 preset 行声明相同引擎；其服务和 record 兼容性仍未得到证明。每条宿主版本线都须固定版本并分别验证打包安装。不能声称同一个宿主 bundle 可在两者上通用。
 
 bundle 的公开包名必须位于发布者控制的命名空间。三个 Conductor 包（`conductor`、`conductor-presets`、`tool-conductor`）目前都使用 `@deepseek-ai/*` 名称，工具包还以另外两个包为 peer。须为整套锁定版本的发行物选择发布者自有的包身份，或把其代码打入一个自有产物；workspace 链接不能证明可移植性。现有名称与指向上游的 repository 字段，不能视为在该命名空间发布的许可。Cordis 与共享 Harness 服务须保持 peer 身份，避免安装时加载第二套核心。上游[插件安装指南](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.md)说明 `dsh plugin --profile <name> add <package>` 及 bundle 组合；测试须针对选定宿主版本的实际命令和打包后的完整依赖进行。Biyocon Harness 保持 rc.7；每个更新的上游宿主版本都要做显式兼容性检查。
 
@@ -52,7 +54,7 @@ DSH bundle 是产品引擎；客户端适配器是独立发行部分。优先采
 
 ## Acceptance criteria
 
-第二个干净的 Harness 安装只使用真实打包的 Conductor 产物及文档化的 profile 命令；不依赖 Biyocon checkout、从源码树生成的复制品、私有数据或手工传输 preset 文件。选定的宿主版本须通过包内容、依赖身份、安装、重载、回放及未安装插件的测试。无密钥合成示例覆盖分析与关卡；另行获批的模型测试及所有者交互测试证明真实派发、拒绝过期或伪造答复、恢复，以及宿主重启后的状态读取。Biyocon 使用相同发行包并保留现有产品行为。四个目标客户端各自通过正常 UI 验收；一个客户端的试点不能替代另一个。公开发布还要求发布者拥有包名、许可／来源与秘密信息审计、安装文档、宿主兼容矩阵，以及所有者的单独发布决定。
+第二个干净的 Harness 安装只使用真实打包的 Conductor 产物及文档化的 profile 命令；不依赖 Biyocon checkout、从源码树生成的复制品、私有数据或手工传输 preset 文件。每条固定版本的宿主线都须以其轻量适配 bundle 通过包内容、依赖身份、安装、重载、回放及未安装插件的测试。无密钥合成示例覆盖分析与关卡；另行获批的模型测试及所有者交互测试证明真实派发、拒绝过期或伪造答复、恢复，以及宿主重启后的状态读取。Biyocon 与另一个 fork 使用内容相同的规范引擎包，并各自保留适合其宿主的组合。四个目标客户端各自通过正常 UI 验收；一个客户端的试点不能替代另一个。公开发布还要求发布者拥有包名、许可／来源与秘密信息审计、安装文档、宿主兼容矩阵，以及所有者的单独发布决定。
 
 ## Risks
 
