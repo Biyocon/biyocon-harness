@@ -22,6 +22,7 @@ import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import * as SubagentFork from '@deepseek-ai/dsh-subagent-fork-in-process'
 import * as SubagentSpawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
 import ApprovalService, { effectiveApprovalPolicy } from '@deepseek-ai/dsh-user-approval'
+import { defineTool } from '@deepseek-ai/dsh-tools'
 import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import SubagentRuntime from '../src/index.ts'
 
@@ -48,9 +49,10 @@ async function setup(script: Script) {
   await ctx.plugin(SubagentRuntime)
   await ctx.plugin(SubagentSpawn, { providerName: 'spawn' })
   await ctx.plugin(SubagentFork, { providerName: 'fork' })
-  ctx.llm.registerAdapter(['mock'], new MockAdapter(script))
+  const adapter = new MockAdapter(script)
+  ctx.llm.registerAdapter(['mock'], adapter)
   const parent = ctx.agentLoop.create(SessionId('parent'), { provider: 'mock', model: 'mock' })
-  return { ctx, parent }
+  return { ctx, parent, adapter }
 }
 
 function startSpec(parent: Agent, provider = 'spawn') {
@@ -74,6 +76,45 @@ function policyEvents(events: readonly SessionEvent[]) {
 }
 
 describe('continuable policy inheritance', () => {
+  it.each([
+    { provider: 'spawn', restricted: false },
+    { provider: 'spawn', restricted: true },
+    { provider: 'fork', restricted: false },
+    { provider: 'fork', restricted: true },
+  ])('reassembles tool-associated guidance after cold resume: $provider / restricted=$restricted', async ({ provider, restricted }) => {
+    const { ctx, parent, adapter } = await setup([textResponse('first'), textResponse('after resume')])
+    ctx.on('agent/pre-step', async ({ agent }, next) => {
+      if (agent === parent) return { kind: 'reject' }
+      return next()
+    })
+    ctx.tools.register(defineTool({
+      name: 'lookup', description: 'Synthetic lookup.', parameters: {},
+      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+      execute: () => Promise.resolve('synthetic'),
+    }))
+    ctx.systemPrompt.section({ name: 'lookup-advice', order: 110, text: 'Synthetic lookup guidance.', requiresTools: ['lookup'] })
+    const spec = startSpec(parent, provider)
+    const started = await ctx.subagents.startContinuable({
+      ...spec,
+      request: { ...spec.request, ...restricted ? { toolFilter: { deny: ['lookup'] } } : {} },
+    })
+    await waitNoActivation(ctx, started.childId)
+    await ctx.subagents.followup(parent, started.childId, [{ type: 'text', text: 'continue' }], {
+      source: { kind: 'user' }, signal: new AbortController().signal,
+    })
+    await waitNoActivation(ctx, started.childId)
+    expect(adapter.requests).toHaveLength(2)
+    expect(adapter.requests.map(request => request.system?.includes('Synthetic lookup guidance.')))
+      .toEqual([!restricted, !restricted])
+    const loaded = await ctx.sessionPersistence.load(started.childId)
+    const headers = loaded.events.filter(event => event.type === 'request/header')
+    expect(headers.map(event => event.data.reason)).toEqual(['initial', 'resume'])
+    expect(headers.map(event => event.data.header.system?.includes('Synthetic lookup guidance.')))
+      .toEqual([!restricted, !restricted])
+    const parentPrompt = await ctx.systemPrompt.assemble({ scope: parent, agent: parent })
+    expect(parentPrompt.sections.some(section => section.name === 'lookup-advice')).toBe(true)
+  })
+
   it('seeds the parent sandbox override and pins approval to never', { timeout: 20_000 }, async () => {
     const { ctx, parent } = await setup([textResponse('child done')])
     setSandboxMode(parent.session, 'danger-full-access')

@@ -25,15 +25,25 @@ interface AssembleContext {
 
 ## Tool-provider result
 
-`ToolProviderResult.schemas` is the model-visible set for the current assembly. `knownNames` is the provider's pre-restriction name universe used to distinguish a configured-name typo from a known tool that is deliberately hidden in this scope.
+`ToolProviderResult.schemas` is the current wire-schema set; `knownNames` validates tool ordering. Optional `capabilities` reports registered and effective visible capability names separately, so section prerequisites are independent of Code Mode wire collapse.
 
 ```ts type-equiv
-/** Tool schemas visible in one assembly and their pre-restriction name set. */
+/** Tool schemas and capability visibility contributed to one assembly. */
 interface ToolProviderResult {
   /** The schemas this provider contributes to THIS assembly. */
   readonly schemas: readonly ToolSchema[]
   /** The pre-restriction name universe for config validation (defaults to `schemas`' names). */
   readonly knownNames?: readonly string[]
+  /**
+   * Capability identity independent of wire-schema presentation. Omission uses
+   * `knownNames` (or schema names) and visible schema names, respectively.
+   */
+  readonly capabilities?: {
+    /** Registered names before scope restrictions, including collapsed capabilities. */
+    readonly knownNames: readonly string[]
+    /** Callable names after scope restrictions, including collapsed capabilities. */
+    readonly visibleNames: readonly string[]
+  }
 }
 ```
 
@@ -58,6 +68,13 @@ interface PromptSection {
    * interpolated later, by {@link renderPrompt}.
    */
   readonly text: string | ((context: AssembleContext) => string)
+  /**
+   * Include this section only when every named capability is visible in the
+   * assembly's scope. A supplied list must be non-empty, unique, and contain
+   * registered non-blank names; assembly rejects invalid references. Hidden
+   * sections do not evaluate their text provider.
+   */
+  readonly requiresTools?: readonly string[]
   /**
    * Treat this contribution as the complete system prompt. Assembly still
    * runs the cooperative waterfall so tools, contexts, and variables can be
@@ -147,16 +164,17 @@ variable(name: string, provider: (context: AssembleContext) => string | undefine
 /**
  * Assemble global and scoped providers, detach tool parameters, apply
  * canonical ordering, then run the assembly waterfall. Scoped sections and
- * variables shadow globals. The returned waterfall value is authoritative
- * except that an effective complete section is restored afterwards as the
- * sole prompt section.
+ * variables shadow globals. An effective complete section is restored as the
+ * sole prompt section after the waterfall; tool-hidden registered sections
+ * remain omitted. Section prerequisites are validated before text providers
+ * run; invalid references reject the assembly.
  * @param context - the optional scope and plugin-defined assembly fields.
  * @returns the post-waterfall assembly with any complete prompt enforced.
  */
 async assemble(context: AssembleContext = {}): Promise<PromptAssembly>
 ```
 
-Source: [`packages/core/system-prompt/src/index.ts:338`](../../packages/core/system-prompt/src/index.ts)
+Source: [`packages/core/system-prompt/src/index.ts:373`](../../packages/core/system-prompt/src/index.ts)
 
 <a id="system-prompt-events"></a>
 
@@ -166,7 +184,7 @@ Source: [`packages/core/system-prompt/src/index.ts:338`](../../packages/core/sys
 
 #### `system-prompt/assemble` — waterfall
 
-Expert waterfall over the assembled sections, contexts, tools, and variables. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): scoped listeners receive only that scope's assemblies. The returned value is authoritative. A supplied signal controls only this explicit assembly request and must not be retained to control later turns. A registered complete section is restored after this waterfall, so listeners cannot add to or replace that scope's system prompt.
+Expert waterfall over the assembled sections, contexts, tools, and variables. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): scoped listeners receive only that scope's assemblies. The returned value is authoritative. A supplied signal controls only this explicit assembly request and must not be retained to control later turns. A registered complete section is restored after this waterfall, so listeners cannot add to or replace that scope's system prompt. Registered sections whose tool prerequisites are hidden remain omitted from the returned sections.
 
 ```ts cordis-catalog
 /**
@@ -176,7 +194,8 @@ Expert waterfall over the assembled sections, contexts, tools, and variables. Sc
  * A supplied signal controls only this explicit assembly request and must not
  * be retained to control later turns. A registered complete section is
  * restored after this waterfall, so listeners cannot add to or replace
- * that scope's system prompt.
+ * that scope's system prompt. Registered sections whose tool prerequisites
+ * are hidden remain omitted from the returned sections.
  * @param assembly - the mutable assembly built from registered providers.
  * @param context - the caller's per-assembly context.
  * @mode waterfall
@@ -186,7 +205,7 @@ Expert waterfall over the assembled sections, contexts, tools, and variables. Sc
 
 Types: [Scoped](scope.md)
 
-Source: [`packages/core/system-prompt/src/index.ts:31`](../../packages/core/system-prompt/src/index.ts)
+Source: [`packages/core/system-prompt/src/index.ts:32`](../../packages/core/system-prompt/src/index.ts)
 
 <a id="system-promptchange--emit"></a>
 
@@ -203,5 +222,5 @@ Emitted when any prompt provider changes. This registry notification is unfilter
 'system-prompt/change'(): void
 ```
 
-Source: [`packages/core/system-prompt/src/index.ts:37`](../../packages/core/system-prompt/src/index.ts)
+Source: [`packages/core/system-prompt/src/index.ts:38`](../../packages/core/system-prompt/src/index.ts)
 <!-- END GENERATED cordis-surface -->

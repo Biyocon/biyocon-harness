@@ -1,0 +1,20 @@
+- id: base
+  name: '@deepseek-ai/cordis-plugin-include'
+  config:
+    path: ./cordis.yml
+    patches:
+      - id: tool-subagent
+        name: '@deepseek-ai/dsh-tool-subagent'
+        config:
+          provider: spawn
+          toolName: subagent
+          backgroundMode: continuable
+          maxDepth: 1
+          toolFilter:
+            deny: [web_search, web_fetch]
+
+- id: web
+  name: '@deepseek-ai/dsh-web'
+
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'

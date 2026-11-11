@@ -1,0 +1,10 @@
+- id: base
+  name: '@deepseek-ai/cordis-plugin-include'
+  config:
+    path: ./cordis.yml
+
+- id: web
+  name: '@deepseek-ai/dsh-web'
+
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'

@@ -23,7 +23,8 @@ declare module '@deepseek-ai/cordis' {
      * A supplied signal controls only this explicit assembly request and must not
      * be retained to control later turns. A registered complete section is
      * restored after this waterfall, so listeners cannot add to or replace
-     * that scope's system prompt.
+     * that scope's system prompt. Registered sections whose tool prerequisites
+     * are hidden remain omitted from the returned sections.
      * @param assembly - the mutable assembly built from registered providers.
      * @param context - the caller's per-assembly context.
      * @mode waterfall
@@ -66,6 +67,13 @@ export interface PromptSection {
    */
   readonly text: string | ((context: AssembleContext) => string)
   /**
+   * Include this section only when every named capability is visible in the
+   * assembly's scope. A supplied list must be non-empty, unique, and contain
+   * registered non-blank names; assembly rejects invalid references. Hidden
+   * sections do not evaluate their text provider.
+   */
+  readonly requiresTools?: readonly string[]
+  /**
    * Treat this contribution as the complete system prompt. Assembly still
    * runs the cooperative waterfall so tools, contexts, and variables can be
    * resolved, then restores this exact section as the sole prompt section.
@@ -100,12 +108,22 @@ export interface AssembledContext {
   text: string
 }
 
-/** Tool schemas visible in one assembly and their pre-restriction name set. */
+/** Tool schemas and capability visibility contributed to one assembly. */
 export interface ToolProviderResult {
   /** The schemas this provider contributes to THIS assembly. */
   readonly schemas: readonly ToolSchema[]
   /** The pre-restriction name universe for config validation (defaults to `schemas`' names). */
   readonly knownNames?: readonly string[]
+  /**
+   * Capability identity independent of wire-schema presentation. Omission uses
+   * `knownNames` (or schema names) and visible schema names, respectively.
+   */
+  readonly capabilities?: {
+    /** Registered names before scope restrictions, including collapsed capabilities. */
+    readonly knownNames: readonly string[]
+    /** Callable names after scope restrictions, including collapsed capabilities. */
+    readonly visibleNames: readonly string[]
+  }
 }
 
 /**
@@ -180,6 +198,23 @@ function orderTools(tools: ToolSchema[], toolOrder: string[] | undefined, knownN
 /** Lexicographic (code-unit) name comparison — locale-independent, so the order is identical on every machine. */
 function compareToolNames(a: ToolSchema, b: ToolSchema): number {
   return a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+}
+
+/** Validate all prerequisites so a hidden capability cannot conceal a later invalid reference. */
+function sectionToolsAvailable(section: PromptSection, known: ReadonlySet<string>, visible: ReadonlySet<string>): boolean {
+  const required = section.requiresTools
+  if (required === undefined) return true
+  if (required.length === 0) throw new Error(`prompt section "${section.name}" must name at least one tool`)
+  const seen = new Set<string>()
+  let available = true
+  for (const name of required) {
+    if (name.trim().length === 0) throw new Error(`prompt section "${section.name}" must not contain a blank tool name`)
+    if (seen.has(name)) throw new Error(`prompt section "${section.name}" lists tool "${name}" more than once`)
+    seen.add(name)
+    if (!known.has(name)) throw new Error(`prompt section "${section.name}" requires unregistered tool "${name}"`)
+    if (!visible.has(name)) available = false
+  }
+  return available
 }
 
 /** Plugin config: the deployment-authored fragment of the system prompt (see {@link Config.persona} for its contract). */
@@ -457,9 +492,10 @@ export class SystemPrompt extends Service {
   /**
    * Assemble global and scoped providers, detach tool parameters, apply
    * canonical ordering, then run the assembly waterfall. Scoped sections and
-   * variables shadow globals. The returned waterfall value is authoritative
-   * except that an effective complete section is restored afterwards as the
-   * sole prompt section.
+   * variables shadow globals. An effective complete section is restored as the
+   * sole prompt section after the waterfall; tool-hidden registered sections
+   * remain omitted. Section prerequisites are validated before text providers
+   * run; invalid references reject the assembly.
    * @param context - the optional scope and plugin-defined assembly fields.
    * @returns the post-waterfall assembly with any complete prompt enforced.
    */
@@ -490,6 +526,8 @@ export class SystemPrompt extends Service {
     ]
     const collected: ToolSchema[] = []
     const knownNames = new Set<string>()
+    const knownCapabilities = new Set<string>()
+    const visibleCapabilities = new Set<string>()
     for (const provider of providers) {
       const result = provider(context)
       const schemas = result.schemas.map(({ name, description, parameters }): ToolSchema => ({
@@ -500,8 +538,17 @@ export class SystemPrompt extends Service {
       const acceptedKnownNames = result.knownNames ?? schemas.map(tool => tool.name)
       collected.push(...schemas)
       for (const name of acceptedKnownNames) knownNames.add(name)
+      for (const name of result.capabilities?.knownNames ?? acceptedKnownNames) knownCapabilities.add(name)
+      for (const name of result.capabilities?.visibleNames ?? schemas.map(tool => tool.name)) visibleCapabilities.add(name)
     }
-    const sectionDefinitions = [...sectionByName.values()].sort((a, b) => a.order - b.order)
+    const hiddenSections = new Set<string>()
+    const sectionDefinitions = [...sectionByName.values()]
+      .filter((section) => {
+        if (sectionToolsAvailable(section, knownCapabilities, visibleCapabilities)) return true
+        hiddenSections.add(section.name)
+        return false
+      })
+      .sort((a, b) => a.order - b.order)
     const completeSections = sectionDefinitions.filter(section => section.complete === true)
     if (completeSections.length > 1) {
       throw new Error(`multiple complete prompt sections are active: ${completeSections.map(section => JSON.stringify(section.name)).join(', ')}`)
@@ -533,10 +580,12 @@ export class SystemPrompt extends Service {
       scopeTarget(this, scope), 'system-prompt/assemble', assembly, context,
       () => Promise.resolve(assembly),
     )
-    if (completeSection === undefined && !runtimeContextSuppressed) return transformed
+    if (completeSection === undefined && !runtimeContextSuppressed && hiddenSections.size === 0) return transformed
     return {
       ...transformed,
-      sections: completeSection === undefined ? transformed.sections : [completeSection],
+      sections: completeSection === undefined
+        ? transformed.sections.filter(section => !hiddenSections.has(section.name))
+        : [completeSection],
       contexts: runtimeContextSuppressed ? [] : transformed.contexts,
     }
   }

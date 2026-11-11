@@ -47,33 +47,33 @@ The tool never calls a provider's `available()` and never enumerates providers �
 
 #### What the model sees
 
-Search and fetch contribute the web-search and web-fetch guidance below. Search chooses its fetch-enabled or search-only text from config at registration time. A scoped tool restriction does not remove these independently registered sections.
+Search guidance requires visible `web_search`; the optional follow-up section requires both `web_search` and `web_fetch`. Fetch guidance requires visible `web_fetch`. The typed associations follow the calling scope, including capabilities reached through Code Mode. Config disablement removes registrations; missing backend providers do not.
 
-##### Web search guidance with fetch enabled
-
-```markdown
-Use the web_search tool to discover current information on the web. It returns an optional answer plus a list of source URLs. Follow up with web_fetch when you need the full content of a specific result, and cite the relevant URLs as markdown links.
-```
-
-##### Web search-only guidance
+##### Web search guidance
 
 ```markdown
 Use the web_search tool to discover current information on the web. It returns an optional answer plus a list of source URLs. Use the returned source snippets when available, and cite the relevant URLs as markdown links.
 ```
 
+##### Search follow-up when fetch is enabled and both tools are visible
+
+```markdown
+Follow up with web_fetch when you need the full content of a specific result.
+```
+
 ##### Web fetch guidance
 
 ```markdown
-Use the web_fetch tool to retrieve the content of a specific HTTP(S) URL (for example a result from web_search). It returns the page content decoded to text. Cite the URL as a markdown link when you use its content.
+Use the web_fetch tool to retrieve the content of a specific HTTP(S) URL. It returns the page content decoded to text. Cite the URL as a markdown link when you use its content.
 ```
 
 #### Token effect
 
-Fixed guidance cost per request for each config-enabled tool, even when a restriction hides its schema. Toggling fetch changes the search guidance as well as registering or removing the fetch section.
+Each visible guidance section adds a fixed per-request cost. Scope restrictions omit associated sections before evaluating their text; fetch enablement adds the follow-up and fetch sections.
 
 #### KV Cache effect
 
-Prefix-stable while enabled tools, scope, and guidance text are unchanged. Config enablement—including toggling fetch's search-guidance branch—or plugin lifecycle may invalidate reuse from the first changed prompt section; scoped schema restrictions do not remove it.
+Prefix-stable while capability visibility and guidance text are unchanged. Configuration, lifecycle or scoped restrictions may invalidate reuse from the first changed prompt section.
 
 ### Tool schemas
 
@@ -83,7 +83,7 @@ The model sees the generated [`web_search` and `web_fetch` schemas](../../../doc
 
 #### Token effect
 
-Fixed schema cost per request; config disablement removes both schema and guidance, while a scoped restriction removes only the schema.
+Fixed schema cost per request; config disablement and scoped restrictions remove the corresponding schemas and associated guidance.
 
 #### KV Cache effect
 

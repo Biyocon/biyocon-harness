@@ -694,7 +694,7 @@ interface CompiledToolRestriction {
 interface ToolView {
   /** Visible definitions after restrictions, scoped shadowing, and transport insertion. */
   readonly visible: ReadonlyMap<string, ToolDefinition>
-  /** Pre-restriction capability names used by prompt-order validation. */
+  /** Pre-restriction capability names for ordering and section-prerequisite validation. */
   readonly knownNames: ReadonlySet<string>
   /** Current global names that a scoped restriction may name. */
   readonly restrictableNames: ReadonlySet<string>
@@ -974,15 +974,19 @@ export class ToolRuntime extends Service {
   }
 
   /**
-   * Build one scope's wire schemas and names for prompt-order validation.
+   * Build one scope's wire schemas, ordering names, and separate capability view.
    * Restrictions do not make known tools invalid, but a mode collapse does.
    */
   private wireSchemas(scope?: ScopeKey): ToolProviderResult {
     const view = this.view(scope)
     const mode = this.modeFor(scope)
+    const capabilities = {
+      knownNames: [...view.knownNames, ...mode === 'native' ? [] : [RUN_CODE_NAME]],
+      visibleNames: [...view.visible.keys()],
+    }
     if (mode === 'native') {
       const schemas = [...view.visible.values()].map(definition => this.schemaOf(definition, false))
-      return { schemas, knownNames: [...view.knownNames] }
+      return { schemas, knownNames: [...view.knownNames], capabilities }
     }
     // Validate the runtime language BEFORE projecting schemas: schemaOf reads
     // run_code's language-aware description/parameters getters, whose own
@@ -995,9 +999,10 @@ export class ToolRuntime extends Service {
       return {
         schemas: schemas.filter(schema => schema.name === RUN_CODE_NAME),
         knownNames: [RUN_CODE_NAME],
+        capabilities,
       }
     }
-    return { schemas, knownNames: [...view.knownNames, RUN_CODE_NAME] }
+    return { schemas, knownNames: [...view.knownNames, RUN_CODE_NAME], capabilities }
   }
 
   /**

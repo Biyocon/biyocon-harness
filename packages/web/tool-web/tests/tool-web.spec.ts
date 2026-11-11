@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import TurndownService from 'turndown'
 import { CallId } from '@deepseek-ai/dsh-llm'
+import { createScope, scopeOf } from '@deepseek-ai/dsh-scope'
+import type { Scope } from '@deepseek-ai/dsh-scope'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import WebRuntime from '@deepseek-ai/dsh-web'
@@ -440,6 +442,31 @@ describe('web_fetch presentation meta and result view', () => {
 })
 
 describe('tool-web registration', () => {
+  it.each([
+    { label: 'search only', deny: ['web_fetch'], search: true, fetch: false },
+    { label: 'fetch only', deny: ['web_search'], search: false, fetch: true },
+    { label: 'neither tool', deny: ['web_search', 'web_fetch'], search: false, fetch: false },
+  ])('matches inherited guidance to the effective scope: $label', async ({ deny, search, fetch }) => {
+    const { ctx } = await mountTools()
+    try {
+      let scope!: Scope
+      await ctx.plugin(Object.assign((inner: Context) => { scope = createScope(inner, { name: 'restricted-child' }) }, {
+        inject: ['tools', 'systemPrompt'],
+      }))
+      scope.ctx.tools.restrict({ deny })
+      const assembly = await ctx.systemPrompt.assemble({ scope: scopeOf(scope.ctx)! })
+      const text = assembly.sections.map(section => section.text).join('\n')
+      expect(text.includes('web_search')).toBe(search)
+      expect(text.includes('web_fetch')).toBe(fetch)
+      expect(text.includes('Follow up with web_fetch')).toBe(search && fetch)
+      const parent = (await ctx.systemPrompt.assemble()).sections.map(section => section.text).join('\n')
+      expect(parent).toContain('web_search')
+      expect(parent).toContain('web_fetch')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('registers both tools by default', async () => {
     const { fiber, ctx } = await mountTools()
     const names = ctx.tools.schemas().map(s => s.name)
@@ -483,7 +510,8 @@ describe('tool-web registration', () => {
     const { fiber, ctx } = await mountTools()
     const prompt = await ctx.systemPrompt.assemble()
     const text = prompt.sections.map(s => s.text).join('\n')
-    expect(text).toContain('Use the web_search tool to discover current information on the web. It returns an optional answer plus a list of source URLs. Follow up with web_fetch when you need the full content of a specific result, and cite the relevant URLs as markdown links.')
+    expect(text).toContain('Use the web_search tool to discover current information on the web. It returns an optional answer plus a list of source URLs.')
+    expect(text).toContain('Follow up with web_fetch when you need the full content of a specific result.')
     expect(text).toContain('Use the web_fetch tool to retrieve the content of a specific HTTP(S) URL')
     await fiber.dispose()
   })

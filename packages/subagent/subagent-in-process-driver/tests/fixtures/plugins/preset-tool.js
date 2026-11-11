@@ -15,6 +15,7 @@ export function apply(ctx, config) {
   ctx.effect(() => ctx.systemPrompt.section({
     name: `preset:${config.tool}`,
     order: 10,
+    requiresTools: [config.tool],
     text: `section for ${config.tool}`,
   }))
 }
