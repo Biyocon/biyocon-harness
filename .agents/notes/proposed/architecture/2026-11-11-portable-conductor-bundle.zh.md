@@ -21,7 +21,7 @@ Conductor 运行引擎已分为可复用的软件包，但已安装的产品还�
 | [`ui-user-questions`](../../../../packages/client/ui-user-questions/README.md) 与 [`apiproxy`](../../../../packages/host/apiproxy/README.md) | 将 Conductor 卡片与回执移至可选 UI 插件。保留通用、类型化的所有者意图注册及服务端验证路径；外部客户端不能仅靠模型文字或猜出的 question id 伪造批准。 |
 | [`known-event-types.ts`](../../../../packages/core/session/src/known-event-types.ts) | 会话读取器必须在回放前识别已安装 Conductor 的必需事件。用经验证的已安装包事件声明或等效的组装目录输入，替代只扫描仓库路径的生成器假设。未知的必需事件仍须拒绝；不可用的旧 Conductor 运行不能遮蔽无关聊天历史。 |
 
-bundle 的公开包名必须位于发布者控制的命名空间。现有 `@deepseek-ai/*` 名称和指向上游的 repository 字段，不能视为在该命名空间发布的许可。公开 tarball 前须确定并验证发布身份；本地原型可使用未发布的包说明符。Cordis 与共享 Harness 服务须保持 peer 身份，避免安装 bundle 时加载第二套核心。固定受支持的宿主版本；每个更新的上游版本都要做显式兼容性检查。Biyocon Harness 本身继续使用 rc.7。
+bundle 的公开包名必须位于发布者控制的命名空间。现有 `@deepseek-ai/*` 名称和指向上游的 repository 字段，不能视为在该命名空间发布的许可。公开 tarball 前须确定并验证发布身份；本地原型可使用未发布的包说明符。Cordis 与共享 Harness 服务须保持 peer 身份，避免安装 bundle 时加载第二套核心。上游[插件安装指南](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.md)说明 `dsh plugin --profile <name> add <package>` 及 bundle 组合；测试须使用选定目标版本的实际命令和打包产物。固定受支持的宿主版本；每个更新的上游版本都要做显式兼容性检查。Biyocon Harness 本身继续使用 rc.7。
 
 ### Host security and lifecycle
 
@@ -36,7 +36,7 @@ DSH bundle 是产品引擎；客户端适配器是独立发行部分。优先采
 | 客户端 | 实现前须验证的连接方式 | 独立验收 |
 |---|---|---|
 | ChatGPT Desktop | 官方[插件连接](https://developers.openai.com/plugins/deploy/connect-chatgpt)与[安全 MCP 隧道](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)说明私有 MCP 访问；[仅桌面插件](https://developers.openai.com/plugins/deploy/desktop-only)说明本地执行。须核对所有者实际账号、工作区权限及可用连接方式。 | 真正的 ChatGPT 桌面对话启动并读取运行；浏览器／API 或 Codex CLI 成功不能代替。隧道配置及任何密钥使用须由所有者另行决定。 |
-| PI-Desktop | 确定准确的上游应用、版本及受支持的 MCP 或插件机制；不可从 Super-Desktop 推断。 | 其自身正常 UI 启动并读取宿主运行。 |
+| PI-Desktop | 所有者的 Super-Desktop fork 指向 [vastsa/PI-Desktop](https://github.com/vastsa/PI-Desktop)；其[插件指南](https://github.com/vastsa/PI-Desktop/blob/main/docs/plugin-development.md)声明 stdio 与 HTTP MCP server，并把本地命令限制为 PATH 中的名称或插件相对的可执行文件。须验证实际安装的上游版本及其支持的清单；不可从 fork 推断行为。 | 其自身正常 UI 启动并读取宿主运行。 |
 | Super-Desktop | 接线前重新核对所有者 fork 在固定修订上的 stdio／HTTP MCP 客户端。 | 正常聊天调用共用外观，而不是复制的运行时。 |
 | Multica | 重新核对所选 Agent provider，以及其 daemon 在何处执行 MCP 命令。 | 正常 UI 到达同一宿主，返回真实 run id，并在重启后读取结果。 |
 
@@ -54,4 +54,4 @@ DSH bundle 是产品引擎；客户端适配器是独立发行部分。优先采
 
 ## Risks
 
-较新的上游宿主可能缺少 Conductor 依赖的通用子代理、输出上限、所有者问题或事件目录能力；仅安装包不能证明兼容。移动所有者 UI 与必需事件识别可能改变回放及授权，因此测试须覆盖无效和不受支持的 record，以及成功运行。隧道或 MCP 客户端改变的是访问路径，不是宿主的批准权限。实施适配器前，仍需验证 PI-Desktop 的准确产品及各客户端账号的权限。已有的活跃笔记仍对其已交付机制具有权威性；本提案与其打包描述部分重叠，但在代码交付前不取代任何一篇。
+较新的上游宿主可能缺少 Conductor 依赖的通用子代理、输出上限、所有者问题或事件目录能力；仅安装包不能证明兼容。移动所有者 UI 与必需事件识别可能改变回放及授权，因此测试须覆盖无效和不受支持的 record，以及成功运行。隧道或 MCP 客户端改变的是访问路径，不是宿主的批准权限。实施适配器前，仍需验证实际安装的 PI-Desktop 版本及各客户端账号的权限。已有的活跃笔记仍对其已交付机制具有权威性；本提案与其打包描述部分重叠，但在代码交付前不取代任何一篇。
