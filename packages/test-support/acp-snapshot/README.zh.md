@@ -61,15 +61,21 @@ defineAcpSnapshotSuite({
 
 示例还发布 `cordis.snapshot.yml` 回放 overlay，位于 `cordis.yml` 旁边（bin 在 `DSH_SNAPSHOT=replay` 下交换它们，见[单源回放配置 Agent Note](../../../.agents/notes/archived/testing/2026-07-04-single-source-acp-replay-config.md)）；回放 fixture 由 [`dsh-llm-replay`](../llm-replay/README.md) 提供，本包通过为子进程设置的 `DSH_SNAPSHOT_*` env var 指向它。`pnpm run test:snapshot:record` 调用在线 LLM（大语言模型），并重写已记录场景的模型 fixture；`pnpm run test:snapshot:refresh` 保持无密钥，运行回放 overlay，并从已提交模型脚本重写 stdout、可比较会话日志预期输出，以及各 pin 自有的提示词与工具 schema 伴随文件。Fixture 角色、录制/回放/刷新语义和场景表字段记录在 `Scenario` 以及[快照 Agent Note](../../../.agents/notes/implemented/testing/2026-06-19-acp-snapshot-tests.md) 中。
 
-约束：`suite.ts` 与 `harness.ts` 导入 vitest（harness 通过 `vi.waitFor` 轮询其持久边界等待），因此包入口只能在 vitest 运行中导入（启动器和规范化器没有此依赖，但从同一入口发布）。启动器和套件工厂按设计专用于 ACP，启动器使用 SDK 的 `ClientSideConnection`；规范化器是与传输无关的会话日志/文本辅助工具，还由 JSON-RPC 和 Web 快照录制器消费。输入脚本覆盖初始化、新建会话、文本提示简写、精确结构化 ACP 提示词块、取消、预期 RPC 失败和持久轮次边界等待。权限往返是选项类别选择（`allow_once`、`reject_once` 等）的 FIFO 队列，映射到 agent 发出的 `optionId`；缺少或耗尽的队列回答 `cancelled`，未提供类别会拒绝运行。
+约束：`suite.ts` 与 `harness.ts` 导入 vitest，因此包入口只能在 vitest 运行中导入（启动器和规范化器没有此依赖，但从同一入口发布）。启动器和套件工厂按设计专用于 ACP，启动器使用 SDK 的 `ClientSideConnection`；规范化器是与传输无关的会话日志/文本辅助工具，还由 JSON-RPC 和 Web 快照录制器消费。输入脚本覆盖初始化、新建会话、文本提示简写、精确结构化 ACP 提示词块、取消、预期 RPC 失败和持久轮次边界等待。权限往返是选项类别选择（`allow_once`、`reject_once` 等）的 FIFO 队列，映射到 agent 发出的 `optionId`；缺少或耗尽的队列回答 `cancelled`，未提供类别会拒绝运行。
+
+会话日志收集先放主会话，再按 `createdAt` 排列子会话；平局按会话 ID 的 UTF-16 代码单元顺序处理。这与回放的子会话顺序一致，不受 host 区域设置影响。
+
+生成的工作区在复制 fixture 后、执行 `prepareWorkspace` 或启动 agent 前取得自有 `.git` 标记。保留已有标记文件或目录。标记限制项目指令发现；需要 Git 操作的场景仍自行初始化仓库。
+
+持久状态等待保留配置的期限，拒绝迟到成功，并保留最近一次检查失败；首次读取尚未完成时使用明确的就绪错误。清理在移除自有目录之前等待进行中的读取结束（[理由](../../../.agents/notes/implemented/bug-fix/2026-11-11-acp-persisted-wait-diagnostics.md)）。
 
 ## 模型体验
 
-无。该测试专用 harness 记录、规范化并比较 ACP transcript（文本记录），不会改变 agent 组装的模型请求。
+间接通过场景的指令及文件系统消费者产生影响，它们读取隔离的工作区；此 harness 不注册 prompt section 或 tool schema。
 
 #### KV Cache 影响
 
-无；该包既不组装也不发送提供方请求。
+工作区自身的项目标记排除祖先指令上下文；等价运行之间由 fixture 控制的上下文保持稳定，fixture 内容变化可能改变消费者的请求前缀。此 harness 本身不发送提供方请求。
 
 ## 已知限制与暂缓事项
 

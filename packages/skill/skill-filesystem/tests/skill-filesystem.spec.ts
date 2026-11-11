@@ -200,9 +200,31 @@ describe('FileSystemSkillProvider', () => {
     expect(skills.find(skill => skill.name === 'bundled-only')).toMatchObject({ source: 'bundled' })
     expect((await ctx.skills.get('bundled-only'))?.content).toBe('Use the skill.')
 
-    const noGit = await tempDir('skill-no-git')
-    await writeSkill(join(noGit, '.dsh/skills'), 'fallback-root', 'Fallback root')
-    expect((await ctx.skills.list({ cwd: noGit })).map(skill => skill.name)).toContain('fallback-root')
+  })
+
+  it('uses cwd when the filesystem provider exposes no project markers', async () => {
+    const home = await tempDir('skill-fallback-home')
+    const project = await tempDir('skill-fallback-project')
+    await writeSkill(join(project, '.dsh/skills'), 'fallback-root', 'Fallback root')
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    await ctx.plugin(TestFileSystem)
+    const fileSystem = ctx.fs as TestFileSystem
+    let current = project
+    for (;;) {
+      fileSystem.statOverrides.set(join(current, '.git'), undefined)
+      const parent = dirname(current)
+      if (parent === current) break
+      current = parent
+    }
+    await ctx.plugin(SkillFileSystem, {
+      dshHome: join(home, '.dsh'), agentsHome: join(home, '.agents'), watch: false,
+    })
+    try {
+      expect((await ctx.skills.list({ cwd: project })).map(skill => skill.name)).toEqual(['fallback-root'])
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 
   it('lets project skills override runtime while runtime overrides custom and user skills', async () => {

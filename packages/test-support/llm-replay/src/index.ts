@@ -543,7 +543,8 @@ export function loadSessionScripts(config: ReplayConfig): SessionScript[] {
   }
   // Synchronous children start in creation order; the id only stabilizes timestamp ties.
   // XXX(concurrent-subagents): concurrent children need an explicit first-call ordinal.
-  children.sort((a, b) => a.createdAt - b.createdAt || a.recordedId.localeCompare(b.recordedId))
+  children.sort((a, b) => a.createdAt - b.createdAt
+    || Number(a.recordedId > b.recordedId) - Number(a.recordedId < b.recordedId))
   return [primary, ...children]
 }
 
