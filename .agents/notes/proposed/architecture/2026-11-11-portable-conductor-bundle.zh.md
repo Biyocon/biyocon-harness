@@ -23,7 +23,7 @@ Conductor 运行引擎已分为可复用的软件包，但已安装的产品还�
 
 第一项 rc.7 拆分交付是打包的宿主 bundle 与 preset，不包含客户端适配器或 record 变更。[`composeProfile`](../../../../apps/cli/src/profile-boot.ts) 目前在组合 bundle 之后，用 CLI 自带目录覆盖 `agent-presets.roots`，因此 bundle patch 无法注册自己的 preset。增加可选的 `dsh.bundle.presetRoot`，相对于各已安装 bundle。通过 realpath 解析目录，并拒绝逃出包目录的路径，包括符号链接逃逸。只有宿主 profile 明确列出的 bundle 才获得 system 信任；传递依赖不获得。跨全部 system 根目录（包括 CLI 自身目录）拒绝重复 id，而不是静默遮蔽。三项规则都须测试。在同一变更中把 Conductor 从 CLI 自带目录及基础 bundle 移入新 bundle，再在 Biyocon profiles 中明确列出该 bundle。
 
-包的资源正面清单包含 `.agents/conductor/README.md` 与 `roles/profiles.yml`；角色文件名基干为 `00-conductor`、`01-detective`、`02-strategist`、`03-devils-advocate`、`04-headsman`、`05-auditor`、`06-integrator`、`07-the-arbiter`，每个基干恰有 `.md` 和 `.webp` 两种文件；模板为 `baseline.md`、`closeout.md`、`dispatch.md`、`gate-decision.md`、`run.md`、`specialist-envelope.md`；技能只取 `conductor-closeout`、`conductor-orchestration`、`conductor-ralph`、`conductor-specialist` 四个目录中的 `SKILL.md`。清单逐项映射原始路径、包内资源路径及哈希；新增文件必须显式修改清单。包构建使用该清单，`npm pack` 验证完整资源子树及其哈希。
+包的资源正面清单包含 `.agents/conductor/README.md` 与 `roles/profiles.yml`；Conductor 角色仅包含 `00-conductor.webp`；角色文件名基干为 `01-detective`、`02-strategist`、`03-devils-advocate`、`04-headsman`、`05-auditor`、`06-integrator`、`07-the-arbiter`，每个基干恰有 `.md` 和 `.webp` 两种文件；模板为 `baseline.md`、`closeout.md`、`dispatch.md`、`gate-decision.md`、`run.md`、`specialist-envelope.md`；技能只取 `conductor-closeout`、`conductor-orchestration`、`conductor-ralph`、`conductor-specialist` 四个目录中的 `SKILL.md`。这 27 个资源文件加上 `preset.yml` 和 `agent.cordis.yml`，与当前 CLI preset 的 29 个文件一致。清单逐项映射原始路径、包内资源路径及哈希；新增文件必须显式修改清单。包构建使用该清单，`npm pack` 验证完整资源子树及其哈希。
 
 ### Event replay and existing sessions
 
