@@ -134,7 +134,7 @@
     "release:pack": "tsx scripts/release/pack.ts",
     "release:verify-packed-install": "tsx scripts/release/verify-packed-install.ts",
     "release:publish": "tsx scripts/release/publish.ts",
-    "dsh": "node --import tsx/esm packages/conductor/conductor-presets/scripts/source-launch.ts",
+    "dsh": "node --import tsx/esm --import ./packages/conductor/conductor-presets/scripts/prepare-source.ts apps/cli/scripts/source-launch.ts",
     "demo:code-mode": "node scripts/demo-code-mode.mjs",
     "demo:cordis": "node scripts/demo-cordis.mjs",
     "demo:acp": "node --import tsx packages/examples/acp-demo/src/bin.ts --config examples/acp-agent/cordis.yml",

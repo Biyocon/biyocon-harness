@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-11-01-conductor-source-launch-assets.md
-2026-11-01-conductor-source-launch-assets.md: 8e5bef040cf0e47f11ccde34e44910191db2a48d
-2026-11-01-conductor-source-launch-assets.zh.md: ade71da8d34219fb68183a3cee0d3c0b5c0b2a2f
+2026-11-01-conductor-source-launch-assets.md: 6a88c310edf1db00e544f6511946b183526b3155
+2026-11-01-conductor-source-launch-assets.zh.md: c4191b8f0a0abbc50ad172dffc5330d5db688c53

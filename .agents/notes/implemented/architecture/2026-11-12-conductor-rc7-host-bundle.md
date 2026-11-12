@@ -16,6 +16,8 @@ The generic rc.7 `dsh.bundle.presetRoot` declaration resolves a package-relative
 
 Biyocon explicitly selects the host bundle for new profiles. A generic installation-supplied extraction migration adds it once to existing profiles containing base and records its identity. This preserves custom profile rows and existing session access while respecting later explicit opt-outs. The core contains no Conductor imports or migration names. Both Conductor projections are registered by the bundle before replay; existing strict record parsing is unchanged.
 
+The root source command starts the CLI entry directly, after a separate Node preload from `conductor-presets`; that package imports no app entry. The npm prepack implementation also lives in `conductor-presets`, and the host package invokes it rather than importing a sibling script.
+
 ## Alternatives considered
 
 **Keep the CLI copy or the base mount.** Either keeps Conductor mandatory and leaves two installation owners.
@@ -23,6 +25,12 @@ Biyocon explicitly selects the host bundle for new profiles. A generic installat
 **Append the bundle on every boot.** It prevents a deliberate opt-out. A recorded one-time migration preserves existing behavior without continually undoing user configuration.
 
 **Copy whole canonical directories.** It can ship unlisted or private files. Literal paths and tarball verification make the publication set explicit.
+
+## Source-checkout upgrades
+
+Source preflight recognizes only `apps/cli/config/agent-presets/conductor/` containing the exact generated `skills/` file/directory allowlist and no preset metadata. It stops before preparation or boot with the absolute path and one PowerShell `Move-Item` command targeting a unique sibling backup outside preset roots. It reads names, not file contents, and never moves or deletes the remainder. The legacy generated path remains gitignored. Other layouts retain ordinary preset validation and the strict duplicate rule; fresh checkouts pass unchanged.
+
+After merge, with the previous server stopped and before running `start-biyocon.ps1` again, the owner backs up every `~/.dsh/profiles/*/package.json`, retaining each profile name, then moves the legacy directory using the diagnostic's command. The next launch performs the one-time profile-manifest migration; session files stay untouched. CLI regression snapshots prove the actionable refusal preserves the old bytes, while a fresh checkout boots and forwards its port arguments.
 
 ## Consequences
 

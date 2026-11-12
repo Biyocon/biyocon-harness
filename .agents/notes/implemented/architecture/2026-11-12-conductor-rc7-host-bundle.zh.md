@@ -16,6 +16,8 @@ CLI 的 Conductor preset 副本与基础 bundle 无条件安装的投影阻碍�
 
 Biyocon 为新 profile 显式选择宿主 bundle。安装方提供的通用拆分迁移向包含 base 的现有 profile 添加此 bundle 一次，并记录迁移身份。这保留自定义 profile 行与现有会话访问，并尊重之后的明确退出选择。核心不包含 Conductor 导入或迁移名称。bundle 在回放前注册两种 Conductor 投影；严格的 record 解析保持不变。
 
+根目录源码命令先执行 `conductor-presets` 的独立 Node 预加载，再直接启动 CLI 入口；该包不导入应用入口。npm prepack 实现也位于 `conductor-presets`，宿主包调用它，不再导入相邻包的脚本。
+
 ## 考虑过的替代方案
 
 **保留 CLI 副本或基础挂载。** 任一做法都会使 Conductor 继续成为必需项，并保留两个安装所有者。
@@ -23,6 +25,12 @@ Biyocon 为新 profile 显式选择宿主 bundle。安装方提供的通用拆�
 **每次启动都追加 bundle。** 这阻止用户明确退出。记录一次性迁移可保留现有行为，而不持续撤销用户配置。
 
 **复制整个规范目录。** 这可能发布未列出或私有的文件。字面路径与 tarball 验证明确规定发布集合。
+
+## 源码 checkout 升级
+
+源码预检仅识别 `apps/cli/config/agent-presets/conductor/` 下符合精确生成文件与目录正面清单的 `skills/` 树，且目录不含 preset 元数据。它在准备资源或启动前停止，显示绝对路径及一条 PowerShell `Move-Item` 命令，将目录移至 preset 根目录之外的唯一相邻备份。预检仅读取名称，不读取文件内容，绝不自动移动或删除残留。旧生成路径继续被 gitignore 忽略。其他布局仍使用普通 preset 校验及严格重复 id 规则；全新 checkout 不受影响。
+
+合并后，所有者先停止旧服务器，并在再次运行 `start-biyocon.ps1` 前备份每个 `~/.dsh/profiles/*/package.json`，保留各 profile 名称，再执行诊断给出的目录移动命令。下次启动执行一次性 profile 清单迁移；会话文件不变。CLI 回归快照证明拒绝信息可直接操作且保留旧字节，并证明全新 checkout 能启动并转发端口参数。
 
 ## 后果
 

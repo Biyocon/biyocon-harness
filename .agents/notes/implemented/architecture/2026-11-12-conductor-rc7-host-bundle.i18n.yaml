@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-11-12-conductor-rc7-host-bundle.md
-2026-11-12-conductor-rc7-host-bundle.md: b230ed3c0c8712698b6f034747e23ce9509e1aeb
-2026-11-12-conductor-rc7-host-bundle.zh.md: f7759b54e03ba9c9a181b972620744fe08ccc48d
+2026-11-12-conductor-rc7-host-bundle.md: 4fc58b6359d9e59bbce1ee107206977bccf181dd
+2026-11-12-conductor-rc7-host-bundle.zh.md: 8c650cd7451d939805b12aef780284c56af1ad0c

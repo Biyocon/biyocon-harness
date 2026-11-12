@@ -6,7 +6,7 @@
 
 ## 安装与配置
 
-[rc.7 宿主 bundle](../conductor-host-rc7/README.md)从规范来源构建正面清单中的 27 个角色、协议、模板及图像资源，并包含本包的 preset 文件。生成资源作为分发投影提交，在构建前对照规范来源验证哈希；干净 checkout 不需要手动 prepack。每次 `pnpm dsh` 源码启动前都由包自身准备资源；已安装宿主直接读取 tarball 中的资源，不需要源码 checkout。字节不变时不写入；变更文件先暂存，再逐文件原子替换，包括 Windows 上仍打开文件的普通读取者。准备失败会停止启动，必需内容校验会拒绝 preset 挂载。现有定义不热重载。[发布决策](../../../.agents/notes/implemented/bug-fix/2026-11-01-conductor-source-launch-assets.md)规定并发与失败语义。
+[rc.7 宿主 bundle](../conductor-host-rc7/README.md)从规范来源构建正面清单中的 27 个角色、协议、模板及图像资源，并包含本包的 preset 文件。生成资源作为分发投影提交，在构建前对照规范来源验证哈希；干净 checkout 不需要手动 prepack。每次 `pnpm dsh` 源码启动时，包自身的独立预加载在 CLI 入口前准备资源；已安装宿主直接读取 tarball 中的资源，不需要源码 checkout。字节不变时不写入；变更文件先暂存，再逐文件原子替换，包括 Windows 上仍打开文件的普通读取者。准备失败会停止启动，必需内容校验会拒绝 preset 挂载。现有定义不热重载。[发布决策](../../../.agents/notes/implemented/bug-fix/2026-11-01-conductor-source-launch-assets.md)规定并发与失败语义。
 
 | 配置 | 必填值 |
 |---|---|

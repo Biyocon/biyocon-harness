@@ -19,7 +19,9 @@ describe('source launch prepares installed Conductor instructions', () => {
     const initial = await f.launch()
     expect(initial.stderr).toBe('')
     expect(initial.exitCode).toBe(0)
-    expect(JSON.parse(initial.stdout)).toEqual({ mounted: true, roleFresh: false, sharedFresh: false, protocolFresh: false })
+    expect(JSON.parse(initial.stdout)).toEqual({
+      launchArgs: [], mounted: true, roleFresh: false, sharedFresh: false, protocolFresh: false,
+    })
     for (const [path, marker] of [
       ['conductor/roles/01-detective.md', 'ROLE'],
       ['conductor/README.md', 'SHARED'],
@@ -28,7 +30,9 @@ describe('source launch prepares installed Conductor instructions', () => {
     const next = await f.launch()
     expect(next.stderr).toBe('')
     expect(next.exitCode).toBe(0)
-    expect(JSON.parse(next.stdout)).toEqual({ mounted: true, roleFresh: true, sharedFresh: true, protocolFresh: true })
+    expect(JSON.parse(next.stdout)).toEqual({
+      launchArgs: [], mounted: true, roleFresh: true, sharedFresh: true, protocolFresh: true,
+    })
   }, 30_000)
 
   it('allows two simultaneous source launches with separate homes and one installation', async () => {

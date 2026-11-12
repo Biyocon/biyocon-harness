@@ -34,6 +34,13 @@ export async function sourceLaunchFixture() {
   let launches = 0
   return {
     directory, checkout, cli, workspace,
+    async seedLegacy() {
+      const legacy = join(cli, 'config/agent-presets/conductor')
+      for (const [source, target] of CONDUCTOR_ASSETS) {
+        await cp(join(checkout, '.agents', source), join(legacy, 'skills', target), { recursive: true })
+      }
+      return legacy
+    },
     async dispose() {
       for (const path of [join(cli, 'node_modules'), join(checkout, 'node_modules'), join(checkout, 'packages/conductor/conductor-presets/node_modules/@deepseek-ai/dsh-fs-local')]) await unlink(path)
       await rm(directory, { recursive: true, force: true })
@@ -75,13 +82,13 @@ export async function apply(ctx) {
     sharedProtocolFile: join(assets, 'README.md'),
   })
   await ctx.plugin({
-    name: 'source-conductor-reader', inject: ['skills', ...${JSON.stringify(roster === undefined ? [] : ['agentPresets'])}],
+    name: 'source-conductor-reader', inject: ['skills', 'cmdlineArgs', ...${JSON.stringify(roster === undefined ? [] : ['agentPresets'])}],
     async apply(ctx) {
       const role = await ctx.skills.get('conductor-detective', { cwd: process.cwd() })
       const protocol = await ctx.skills.get('conductor-specialist', { cwd: process.cwd() })
       console.log(JSON.stringify({
         ...${roster === undefined ? '{}' : '{ roster: (await ctx.agentPresets.list()).map(row => [row.id, row.trust]) }'},
-        mounted: true, roleFresh: role.content.includes('SOURCE_ROLE_NEW'),
+        launchArgs: ctx.cmdlineArgs.get(), mounted: true, roleFresh: role.content.includes('SOURCE_ROLE_NEW'),
         sharedFresh: role.content.includes('SOURCE_SHARED_NEW'),
         protocolFresh: protocol.content.includes('SOURCE_PROTOCOL_NEW'),
       }))
@@ -94,7 +101,8 @@ export async function apply(ctx) {
       const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/(KEY|TOKEN|SECRET|PASSWORD)/i.test(key)))
       return execa(process.execPath, [
         '--import', pathToFileURL(join(root, 'node_modules/tsx/dist/esm/index.mjs')).href,
-        join(checkout, 'packages/conductor/conductor-presets/scripts/source-launch.ts'), ...args,
+        '--import', pathToFileURL(join(checkout, 'packages/conductor/conductor-presets/scripts/prepare-source.ts')).href,
+        join(checkout, 'apps/cli/scripts/source-launch.ts'), ...args,
       ], {
         cwd: workspace, input: '', reject: false, timeout: 25_000, killSignal: 'SIGKILL', extendEnv: false,
         env: { ...env, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1', TSX_TSCONFIG_PATH: join(root, 'tsconfig.json') },
