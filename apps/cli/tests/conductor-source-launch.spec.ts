@@ -68,11 +68,19 @@ describe('source launch prepares installed Conductor instructions', () => {
 
 
 describe('bundle roots through the real source CLI composition', () => {
-  it('combines the CLI, explicit bundle and configured roots with system trust', async () => {
+  it('trusts only the CLI and explicit bundle roots, despite configured system trust', async () => {
     const f = await fixture()
     const result = await f.launch(undefined, 'combined')
     expect(result.exitCode, result.stderr).toBe(0)
-    expect((JSON.parse(result.stdout) as { roster: Array<[string, string]> }).roster).toEqual([['cli', 'system'], ['bundle', 'system'], ['configured', 'system']])
+    expect((JSON.parse(result.stdout) as { roster: Array<[string, string]> }).roster).toEqual([['cli', 'system'], ['bundle', 'system'], ['configured', 'user']])
+  }, 30_000)
+
+  it('does not promote a patch root or reject its duplicate id as a system collision', async () => {
+    const f = await fixture()
+    const result = await f.launch(undefined, 'patch-collision')
+    expect(result.exitCode, result.stderr).toBe(0)
+    expect((JSON.parse(result.stdout) as { roster: Array<[string, string]> }).roster).toEqual([['cli', 'system'], ['bundle', 'system']])
+    expect(result.stderr).not.toContain('duplicate system preset')
   }, 30_000)
 
   it('refuses a bundle id that collides with the CLI system root', async () => {

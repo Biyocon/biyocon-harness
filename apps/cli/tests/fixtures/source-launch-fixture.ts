@@ -38,7 +38,7 @@ export async function sourceLaunchFixture() {
       for (const path of [join(cli, 'node_modules'), join(checkout, 'node_modules'), join(checkout, 'packages/conductor/conductor-presets/node_modules/@deepseek-ai/dsh-fs-local')]) await unlink(path)
       await rm(directory, { recursive: true, force: true })
     },
-    async launch(args = ['--profile', 'probe'], roster?: 'combined' | 'collision') {
+    async launch(args = ['--profile', 'probe'], roster?: 'combined' | 'collision' | 'patch-collision') {
       const home = join(directory, `home-${++launches}`)
       const profile = join(home, 'profiles/probe')
       const bundle = join(profile, 'node_modules/dsh-source-probe')
@@ -54,7 +54,7 @@ export async function sourceLaunchFixture() {
       if (roster !== undefined) {
         for (const [parent, id] of [
           [join(cli, 'config/agent-presets'), roster === 'collision' ? 'bundle' : 'cli'],
-          [join(bundle, 'presets'), 'bundle'], [configuredRoot, 'configured'],
+          [join(bundle, 'presets'), 'bundle'], [configuredRoot, roster === 'patch-collision' ? 'bundle' : 'configured'],
         ]) {
           await mkdir(join(parent!, id!), { recursive: true })
           await writeFile(join(parent!, id!, 'agent.cordis.yml'), '[]\n')

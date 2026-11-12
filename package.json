@@ -141,6 +141,7 @@
     "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
     "dev:web": "tsx scripts/dev-web.ts --poll",
     "postinstall": "node scripts/install-lefthook.mjs",
+    "verify-conductor-resources": "tsx packages/conductor/conductor-presets/scripts/verify-pack.ts --resources",
     "verify-conductor-pack": "tsx packages/conductor/conductor-presets/scripts/verify-pack.ts && vitest run --config vitest.e2e.config.ts packages/conductor/conductor-host-rc7/tests/composition.e2e.ts packages/conductor/conductor-host-rc7/tests/assets.e2e.ts"
   },
   "devDependencies": {

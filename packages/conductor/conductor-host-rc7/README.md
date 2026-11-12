@@ -6,7 +6,7 @@ Optional Conductor host bundle for Biyocon Harness rc.7. Enable it explicitly be
 
 ## Resources and installation
 
-The package build prepares 27 literal allowlisted assets and two preset files through [conductor-presets](../conductor-presets/README.md). No canonical directory is recursively copied. The generated manifest records each resource's SHA-256; `pnpm run verify-conductor-pack` verifies the actual npm tarball against canonical bytes and rejects missing, additional or modified resources. The CLI contains no Conductor preset copy or preparation import.
+The committed preset tree is a generated projection, available before install or build. `pnpm run verify-conductor-resources` checks its exact allowlist and canonical SHA-256 hashes without regenerating it; static CI and doc-sync run this check. The package build prepares 27 literal allowlisted assets and two preset files through [conductor-presets](../conductor-presets/README.md). No canonical directory is recursively copied. The generated manifest records each resource's SHA-256; `pnpm run verify-conductor-pack` verifies the actual npm tarball against canonical bytes and rejects missing, additional or modified resources. The CLI contains no Conductor preset copy or preparation import.
 
 Biyocon's source command prepares the same resources before boot. Existing profiles containing `dsh-base` gain this bundle through the installation's one-time extraction migration; a later explicit removal is respected. The existing strict run-format checks and unavailable-run behavior remain unchanged. No session files are rewritten.
 

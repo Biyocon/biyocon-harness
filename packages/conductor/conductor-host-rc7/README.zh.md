@@ -6,7 +6,7 @@ Biyocon Harness rc.7 的可选 Conductor 宿主 bundle。须在 profile 的 `dsh
 
 ## 资源与安装
 
-包构建通过 [conductor-presets](../conductor-presets/README.md) 准备正面清单中明确列出的 27 个资源与两个 preset 文件，不递归复制任何规范来源目录。生成清单记录每个资源的 SHA-256；`pnpm run verify-conductor-pack` 对照规范字节验证实际 npm tarball，并拒绝缺失、额外或修改过的资源。CLI 不包含 Conductor preset 副本，也不导入准备逻辑。
+已提交的 preset 树是生成投影，在安装或构建前即可使用。`pnpm run verify-conductor-resources` 不重新生成资源，而是检查精确正面清单与规范 SHA-256；静态 CI 与 doc-sync 执行此检查。包构建通过 [conductor-presets](../conductor-presets/README.md) 准备正面清单中明确列出的 27 个资源与两个 preset 文件，不递归复制任何规范来源目录。生成清单记录每个资源的 SHA-256；`pnpm run verify-conductor-pack` 对照规范字节验证实际 npm tarball，并拒绝缺失、额外或修改过的资源。CLI 不包含 Conductor preset 副本，也不导入准备逻辑。
 
 Biyocon 的源码命令在启动前准备相同资源。包含 `dsh-base` 的现有 profile 通过安装方的一次性拆分迁移添加此 bundle；之后用户明确移除它的选择会得到尊重。严格的运行格式检查及不可用运行行为保持不变，不改写会话文件。
 

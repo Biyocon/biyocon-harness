@@ -58,5 +58,10 @@ export async function verifyConductorPack(): Promise<void> {
 }
 
 if (process.argv[1] !== undefined && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
-  await verifyConductorPack()
+  if (process.argv.includes('--resources')) {
+    await verifyConductorResources(join(repository, 'packages/conductor/conductor-host-rc7/presets'))
+    console.log('verify-conductor-resources: committed allowlist and canonical SHA-256 hashes match')
+  } else {
+    await verifyConductorPack()
+  }
 }

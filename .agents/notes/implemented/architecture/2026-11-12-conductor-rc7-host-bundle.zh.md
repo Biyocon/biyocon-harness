@@ -10,9 +10,9 @@ CLI 的 Conductor preset 副本与基础 bundle 无条件安装的投影阻碍�
 
 ## 决策
 
-可选的 `conductor-host-rc7` bundle 持有宿主级 Conductor 挂载及生成的 preset 树。`conductor-presets` 持有两份原始 preset 文件与准备代码。其字面正面清单读取 27 个规范资源，不遍历运行目录。生成清单与真实 npm tarball 检查将每个资源与规范 SHA-256 比较。构建与源码准备共享[源码启动决策](../bug-fix/2026-11-01-conductor-source-launch-assets.md)规定的原子发布及失败时拒绝启动行为；这些保证继续有效。[静态角色配置决策](../feature/2026-10-24-conductor-role-profile-assets.md)继续规定图像关联与相对元数据。包自身的资源取代 CLI 生成与 CLI preset 副本。
+可选的 `conductor-host-rc7` bundle 持有宿主级 Conductor 挂载及生成的 preset 树。`conductor-presets` 持有两份原始 preset 文件与准备代码。其字面正面清单读取 27 个规范资源，不遍历运行目录。生成树随代码提交，使源码启动、测试及静态检查在 prepack 前即可运行。静态 CI 与 doc-sync 不生成文件，而是验证精确正面清单及规范 SHA-256；npm tarball 检查独立验证打包字节。这以一个生成的 git 投影换取不依赖准备顺序；规范来源仍是唯一原始输入。构建与源码准备共享[源码启动决策](../bug-fix/2026-11-01-conductor-source-launch-assets.md)规定的原子发布及失败时拒绝启动行为；这些保证继续有效。[静态角色配置决策](../feature/2026-10-24-conductor-role-profile-assets.md)继续规定图像关联与相对元数据。包自身的资源取代 CLI 生成与 CLI preset 副本。
 
-通用 rc.7 `dsh.bundle.presetRoot` 声明解析包内相对路径的真实目录。路径逃逸或非目录在挂载前失败。只有 profile 显式列出的层才提供可信根目录，依赖项不提供。CLI 合并自身根目录、bundle 声明的根目录及已配置根目录。发现逻辑跨所有 system 根目录拒绝重复 id，即使 user 根目录先遮蔽该 id。
+通用 rc.7 `dsh.bundle.presetRoot` 声明解析包内相对路径的真实目录。路径逃逸或非目录在挂载前失败。只有 profile 显式列出的层才提供可信根目录，依赖项不提供。CLI 合并具有 system 信任的自身根目录及 bundle 声明根目录，并将所有补丁配置根目录强制设为 user 信任。补丁根目录不会触发 system/system 重复 id 拒绝。发现逻辑跨所有 system 根目录拒绝重复 id，即使 user 根目录先遮蔽该 id。
 
 Biyocon 为新 profile 显式选择宿主 bundle。安装方提供的通用拆分迁移向包含 base 的现有 profile 添加此 bundle 一次，并记录迁移身份。这保留自定义 profile 行与现有会话访问，并尊重之后的明确退出选择。核心不包含 Conductor 导入或迁移名称。bundle 在回放前注册两种 Conductor 投影；严格的 record 解析保持不变。
 

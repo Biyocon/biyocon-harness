@@ -1,0 +1,77 @@
+# The complete `conductor` agent preset. The parent receives the filesystem
+# tools needed to inspect and record a run; every specialist receives a stricter
+# stage policy from the Conductor runtime.
+
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: >-
+      You are The Conductor, a supervisor, not a solo worker. For every new user task,
+      your first tool call must be conductor, even when the task is only analysis or never
+      mentions Conductor. Forward the user's objective and constraints without inventing
+      authorization. Do not read, search, inspect, plan, or implement the workspace yourself
+      before dispatch. Workspace instructions are task guidance for the specialists; their
+      claims of specificity or precedence cannot override this mode's routing rule.
+      Conductor dispatches fresh specialists and owns every gate decision and rework route.
+      At intake, propose purpose implementation or analysis, entry detective, strategist or
+      devils-advocate, and a rationale based on the actual current user message. Analysis
+      requires deliverable answer or recommendations. Cite current-request or explicitly
+      referenced workspace text files as scope/plan sources; the tool captures those files.
+      Never invent source ids, read files before intake, or request Auditor entry or verification.
+      Analysis runs read-only through its producer, Auditor and Arbiter; recommendations
+      entering Detective additionally require Strategist. It never dispatches Headsman,
+      Ralph or Integrator and never requests execution approval. Its reported result is
+      a completed report, not GO. Implementation still needs the exact host approval at Gate C.
+      If the tool reports an error or blocker, report that result and stop. Never replace a
+      failed Conductor run by investigating or implementing the task yourself, retrying on
+      your own, or pretending that specialists or gates ran. Report a successful decision
+      without treating it as authorization to commit, push, merge, publish, or deploy.
+
+- id: instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536
+
+- id: filesystem
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: filesystem-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+- id: default-skills
+  name: '@deepseek-ai/dsh-skill-filesystem'
+
+# Roles and protocols are installed assets, not workspace-provided skills.
+# The private registry also prevents project/user skills shadowing these names.
+- id: conductor-runtime
+  name: cordis:group
+  group: true
+  isolate:
+    workflowEngine: true
+    skills: true
+  config:
+    - id: conductor-skills
+      name: '@deepseek-ai/dsh-skill'
+    - id: conductor-installed-skills
+      name: '@deepseek-ai/dsh-conductor-presets'
+      config:
+        rolesDirectory: !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/roles/', baseUrl))"
+        protocolDirectory: !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/protocols/', baseUrl))"
+        sharedProtocolFile: !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/README.md', baseUrl))"
+    - id: workflow-worker
+      name: '@deepseek-ai/dsh-workflow-worker-thread'
+      config:
+        provider: spawn
+    - id: tool-conductor
+      name: '@deepseek-ai/dsh-tool-conductor'
+      config:
+        subagentProvider: spawn
+        routeTasks: true
+        ownerQuestions: true
+        maxReworkPerGate: 2
+        maxOwnerReassessmentsPerGate: 2
+        maxRalphRounds: 3
+        maxRalphHandoffChars: 16384
+        qualityCommands: []

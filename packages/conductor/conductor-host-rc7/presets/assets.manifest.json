@@ -1,0 +1,147 @@
+[
+  {
+    "source": ".agents/conductor/README.md",
+    "path": "conductor/skills/README.md",
+    "sha256": "9d25fc76a77a23c303a5b54569749f8def7cab2adb21003df3ef6a6c7205f7ce"
+  },
+  {
+    "source": ".agents/conductor/roles/profiles.yml",
+    "path": "conductor/skills/roles/profiles.yml",
+    "sha256": "fb9a49a390c64f514eaa955dea134123ba688227637c9981f8556413f5bc1081"
+  },
+  {
+    "source": ".agents/conductor/roles/00-conductor.webp",
+    "path": "conductor/skills/roles/00-conductor.webp",
+    "sha256": "fa00e9afdac802c48c3d647ffceade5d1f166102848bdc9290595f200a1a6812"
+  },
+  {
+    "source": ".agents/conductor/roles/01-detective.md",
+    "path": "conductor/skills/roles/01-detective.md",
+    "sha256": "45605d22997594a30012542de7d9b7e583670b2f5f64ef8b8efeaba464004e31"
+  },
+  {
+    "source": ".agents/conductor/roles/01-detective.webp",
+    "path": "conductor/skills/roles/01-detective.webp",
+    "sha256": "62f1afb7c96067dba2e1e110ad86c89e4da649729c319344662a0e108b1937b1"
+  },
+  {
+    "source": ".agents/conductor/roles/02-strategist.md",
+    "path": "conductor/skills/roles/02-strategist.md",
+    "sha256": "b6f3498b0b4e6a4db698e92b2f7905a7f036f52816def08f16e743b73a618c3f"
+  },
+  {
+    "source": ".agents/conductor/roles/02-strategist.webp",
+    "path": "conductor/skills/roles/02-strategist.webp",
+    "sha256": "c16a0b9136a8a27f835a495b2f6becbe7b50e6720943d3b87ad657304197a283"
+  },
+  {
+    "source": ".agents/conductor/roles/03-devils-advocate.md",
+    "path": "conductor/skills/roles/03-devils-advocate.md",
+    "sha256": "11ebf3888b8ceb24c5ec7495a9973f4380bbdcc3546083a10b0fb69651cb957c"
+  },
+  {
+    "source": ".agents/conductor/roles/03-devils-advocate.webp",
+    "path": "conductor/skills/roles/03-devils-advocate.webp",
+    "sha256": "dcb928448c53208eea0b6bfcc23f52fab48a95ab59d85454b35f948d48e2c8fa"
+  },
+  {
+    "source": ".agents/conductor/roles/04-headsman.md",
+    "path": "conductor/skills/roles/04-headsman.md",
+    "sha256": "d9e485893dc690a1377480220e4430b458f0ab11a3e4445cef1db6ad382a4889"
+  },
+  {
+    "source": ".agents/conductor/roles/04-headsman.webp",
+    "path": "conductor/skills/roles/04-headsman.webp",
+    "sha256": "b9504995901c1c8b25b9ed8e86aae2924971ff35d09a5ede8883f4b89e24128d"
+  },
+  {
+    "source": ".agents/conductor/roles/05-auditor.md",
+    "path": "conductor/skills/roles/05-auditor.md",
+    "sha256": "f5744d3c07f2cb2414ad3c78ae9c9a7455d937c8de286a41150875bf8bcf2288"
+  },
+  {
+    "source": ".agents/conductor/roles/05-auditor.webp",
+    "path": "conductor/skills/roles/05-auditor.webp",
+    "sha256": "7e6fe4e1f45f59adecb95f6bfd73711d800941d39731f3ce55473789e3abec93"
+  },
+  {
+    "source": ".agents/conductor/roles/06-integrator.md",
+    "path": "conductor/skills/roles/06-integrator.md",
+    "sha256": "91e5e523feebe7c12274df24afaf24d7933fd2a3132ee407e6524cf667249c82"
+  },
+  {
+    "source": ".agents/conductor/roles/06-integrator.webp",
+    "path": "conductor/skills/roles/06-integrator.webp",
+    "sha256": "1d16161a14f20fc4b666ea9b18530bc8417166a02da56af2d86779202d8b30d6"
+  },
+  {
+    "source": ".agents/conductor/roles/07-the-arbiter.md",
+    "path": "conductor/skills/roles/07-the-arbiter.md",
+    "sha256": "d4d56fed15870f15e9f3af9ff3d2f94ade02b8e6767200124ac6eb89d899ce80"
+  },
+  {
+    "source": ".agents/conductor/roles/07-the-arbiter.webp",
+    "path": "conductor/skills/roles/07-the-arbiter.webp",
+    "sha256": "912f380dedb559ab63248f74bda81686163b0aa3ec9b1361d65a9a20043847da"
+  },
+  {
+    "source": ".agents/conductor/templates/baseline.md",
+    "path": "conductor/skills/templates/baseline.md",
+    "sha256": "935ee3f05b4eff31c98e0d0336a44b05100ce12a5697a966ee1ba3ac805b15eb"
+  },
+  {
+    "source": ".agents/conductor/templates/closeout.md",
+    "path": "conductor/skills/templates/closeout.md",
+    "sha256": "89022ff84b04f881af3a215b7564c5d9ceaf4c6b0cf598e12483f24b34af446d"
+  },
+  {
+    "source": ".agents/conductor/templates/dispatch.md",
+    "path": "conductor/skills/templates/dispatch.md",
+    "sha256": "6a3c6f0eee3e5b4aac75726772ac0fe74462cd62a4ff01491ce1f78d516df2ff"
+  },
+  {
+    "source": ".agents/conductor/templates/gate-decision.md",
+    "path": "conductor/skills/templates/gate-decision.md",
+    "sha256": "4e9cbf2061ef8ac37f6e45c8da6f1afebbb2e1cbe0e176c66adf9bc616e237aa"
+  },
+  {
+    "source": ".agents/conductor/templates/run.md",
+    "path": "conductor/skills/templates/run.md",
+    "sha256": "ed426a48286bd4171473c92172739a9fa79c4b16cdaea7dd757050bfabaf0151"
+  },
+  {
+    "source": ".agents/conductor/templates/specialist-envelope.md",
+    "path": "conductor/skills/templates/specialist-envelope.md",
+    "sha256": "eb20ae2df166a7a5e9997b5b93884d39a273efbc52034259c501b724c2939c6b"
+  },
+  {
+    "source": ".agents/skills/conductor-closeout/SKILL.md",
+    "path": "conductor/skills/protocols/conductor-closeout/SKILL.md",
+    "sha256": "39fdb474d76076b5ac3ad57708bfc920d1935434163d7d6cafde45f7da9935fe"
+  },
+  {
+    "source": ".agents/skills/conductor-orchestration/SKILL.md",
+    "path": "conductor/skills/protocols/conductor-orchestration/SKILL.md",
+    "sha256": "3740c67949fad582b30505c8e306550f75003478437e9e1ada6eb12f407b6e92"
+  },
+  {
+    "source": ".agents/skills/conductor-ralph/SKILL.md",
+    "path": "conductor/skills/protocols/conductor-ralph/SKILL.md",
+    "sha256": "d5907bf5c7bfda5e0eedbe3b105a44548b59a2a0c2c5823dd4b3c70b23d55fc8"
+  },
+  {
+    "source": ".agents/skills/conductor-specialist/SKILL.md",
+    "path": "conductor/skills/protocols/conductor-specialist/SKILL.md",
+    "sha256": "ee4de8d9fc35385511e24b3a5277d575981f90e75fa996e1c1ac844c0254baa5"
+  },
+  {
+    "source": "packages/conductor/conductor-presets/presets/conductor/preset.yml",
+    "path": "conductor/preset.yml",
+    "sha256": "16b786423ccb121fa4154061214cd1cbc8dcb7b9c4d8bc6c1e1fd7fffafca96a"
+  },
+  {
+    "source": "packages/conductor/conductor-presets/presets/conductor/agent.cordis.yml",
+    "path": "conductor/agent.cordis.yml",
+    "sha256": "66bf34ea60865612909bf16b39aec4014083a50316ee8a312bd6a69a9d796726"
+  }
+]

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
-import { CONDUCTOR_ASSETS, generateConductorSkills, syncConductorSkills } from '../scripts/prepare-assets.ts'
+import { CONDUCTOR_ASSETS, syncConductorSkills } from '../scripts/prepare-assets.ts'
 import { verifyConductorResources } from '../scripts/verify-pack.ts'
 
 it('reads only 27 literal sources, excluding synthetic private data and unlisted roles', async () => {
@@ -29,7 +29,6 @@ it('reads only 27 literal sources, excluding synthetic private data and unlisted
 })
 
 it('rejects extra files, tampered bytes and a tampered manifest', async () => {
-  await generateConductorSkills()
   const directory = await mkdtemp(join(tmpdir(), 'conductor-pack-invalid-'))
   try {
     const target = join(directory, 'presets')

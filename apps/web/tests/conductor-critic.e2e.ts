@@ -34,7 +34,7 @@ it.each([
     }
   }
   const scaffold = await launchWebScaffold({ agentPresets: {
-    default: 'conductor', roots: [{ path: join(ROOT, 'apps/cli/config/agent-presets'), trust: 'system' }],
+    default: 'conductor', roots: [{ path: join(ROOT, 'packages/conductor/conductor-host-rc7/presets'), trust: 'system' }],
   } })
   const browser = await chromium.launch()
   const events: SessionEvent[] = []

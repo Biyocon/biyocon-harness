@@ -157,6 +157,8 @@ function composeProfile(
     if (typeof row.id === 'string') rows.set(row.id, row)
   }
   const composedOverlays = [...overlays]
+  // Patch layers cannot grant system trust; only the installation and explicit
+  // profile bundles supply those roots.
   // The SHIPPED root is the part of the roster only this app can resolve: it
   // sits beside this app's own config, in both the source and built layouts.
   // The writable root the roster appends is `dsh-agent-presets`' own, so a
@@ -169,7 +171,8 @@ function composeProfile(
         roots: [
           { path: SHIPPED_PRESET_ROOT, trust: 'system' },
           ...profile.layers.flatMap(layer => layer.presetRoot === undefined ? [] : [{ path: layer.presetRoot, trust: 'system' }]),
-          ...((rows.get('agent-presets')?.config as { roots?: unknown[] } | undefined)?.roots ?? []),
+          ...((rows.get('agent-presets')?.config as { roots?: Array<{ path: string }> } | undefined)?.roots ?? [])
+            .map(root => ({ ...root, trust: 'user' })),
         ],
       },
     })

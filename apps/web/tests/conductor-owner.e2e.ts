@@ -28,7 +28,7 @@ it.each([
   const priorScenario = process.env['DSH_CONDUCTOR_OWNER_SCENARIO']
   process.env['DSH_CONDUCTOR_OWNER_SCENARIO'] = proposal ? 'approved' : 'analysis-web'
   const scaffold = await launchWebScaffold({ agentPresets: {
-    default: 'conductor', roots: [{ path: join(ROOT, 'apps/cli/config/agent-presets'), trust: 'system' }],
+    default: 'conductor', roots: [{ path: join(ROOT, 'packages/conductor/conductor-host-rc7/presets'), trust: 'system' }],
   } })
   const browser = await chromium.launch()
   const events: SessionEvent[] = []
