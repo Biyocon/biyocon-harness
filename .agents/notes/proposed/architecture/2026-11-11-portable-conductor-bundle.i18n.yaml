@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-11-11-portable-conductor-bundle.md
-2026-11-11-portable-conductor-bundle.md: fe627484f0734a56905ec9e419bc7f5baa040f23
-2026-11-11-portable-conductor-bundle.zh.md: e571e07b44a22a917105acf8171d05f49ac5ba75
+2026-11-11-portable-conductor-bundle.md: 2ccb746cbf68fb0c2b691669180631dd1a0fed9c
+2026-11-11-portable-conductor-bundle.zh.md: a5079ce5e762c493c49c0750a403326b37760daf
