@@ -171,13 +171,19 @@ export async function scanRoot(root: PresetRoot): Promise<AgentPreset[]> {
 
 /**
  * Scan every root in precedence order.
- * @param roots - roots in precedence order; an earlier root wins a duplicate id.
- * @returns every discovered preset, first-root-wins per id.
+ * @param roots - roots in precedence order; duplicate system ids are refused.
+ * @returns every discovered preset, first-root-wins except system/system collisions.
  */
 export async function discoverPresets(roots: readonly PresetRoot[]): Promise<AgentPreset[]> {
   const byId = new Map<string, AgentPreset>()
+  const systemPaths = new Map<string, string>()
   for (const root of roots) {
     for (const preset of await scanRoot(root)) {
+      if (root.trust === 'system') {
+        const previous = systemPaths.get(preset.id)
+        if (previous !== undefined) throw new Error(`agent-presets: duplicate system preset "${preset.id}" at ${previous} and ${preset.path}`)
+        systemPaths.set(preset.id, preset.path)
+      }
       if (byId.has(preset.id)) continue
       byId.set(preset.id, preset)
     }

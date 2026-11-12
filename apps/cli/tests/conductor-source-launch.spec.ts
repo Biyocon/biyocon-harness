@@ -49,13 +49,13 @@ describe('source launch prepares installed Conductor instructions', () => {
     const result = await f.launch()
     expect(result.exitCode).not.toBe(0)
     expect(result.stdout).not.toContain('"mounted":true')
-    expect(result.stderr).toMatch(/conductor-detective|conductor-roles|YAML|end of the stream/)
+    expect(result.stderr).toMatch(/conductor-detective|01-detective.md|conductor-roles|YAML|end of the stream/)
   }, 30_000)
 
   it('reports generation failure and never boots with stale resources', async () => {
     const f = await fixture()
     expect((await f.launch()).exitCode).toBe(0)
-    const installed = join(f.cli, 'config/agent-presets/conductor/skills/README.md')
+    const installed = join(f.checkout, 'packages/conductor/conductor-host-rc7/presets/conductor/skills/README.md')
     const before = await readFile(installed)
     await rm(join(f.checkout, '.agents/conductor/README.md'))
     const result = await f.launch()
@@ -63,5 +63,22 @@ describe('source launch prepares installed Conductor instructions', () => {
     expect(result.stdout).toBe('')
     expect(result.stderr).toContain('dsh: could not prepare Conductor skills:')
     expect(await readFile(installed)).toEqual(before)
+  }, 30_000)
+})
+
+
+describe('bundle roots through the real source CLI composition', () => {
+  it('combines the CLI, explicit bundle and configured roots with system trust', async () => {
+    const f = await fixture()
+    const result = await f.launch(undefined, 'combined')
+    expect(result.exitCode, result.stderr).toBe(0)
+    expect((JSON.parse(result.stdout) as { roster: Array<[string, string]> }).roster).toEqual([['cli', 'system'], ['bundle', 'system'], ['configured', 'system']])
+  }, 30_000)
+
+  it('refuses a bundle id that collides with the CLI system root', async () => {
+    const f = await fixture()
+    const result = await f.launch(undefined, 'collision')
+    expect(result.exitCode).not.toBe(0)
+    expect(result.stderr).toContain('duplicate system preset "bundle"')
   }, 30_000)
 })

@@ -152,3 +152,5 @@ Prefix-stable for the life of an agent: a composition is installed once, before 
 - **Health is a shape check, not a mount** — discovery proves the composition parses in the loader dialect and holds named rows, not that every row's module resolves or activates; a row naming an absent package still fails at the first session, which rolls the creation back.
 - **A copy is a snapshot that drifts** — upgrading the deployment does not update copies of shipped presets, and there is no patch semantics at this layer to express "standard plus one change" (that is the bundle layer's `cordis.patch.yml`); the shipped set itself accepts the same cost — `cordis` and `code` are full copies of `standard` — so the whole assembly stays readable in one file.
 - **Root scans are not watched** — every read hits the filesystem instead, which keeps the roster fresh but puts one `readdir` per root on each `list()`.
+
+Duplicate preset ids across system roots are refused, including the CLI root and bundle roots. User roots retain first-root precedence and cannot hide a system/system conflict.

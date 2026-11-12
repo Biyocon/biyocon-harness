@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-24-conductor-installed-skills.md
-2026-10-24-conductor-installed-skills.md: d9b4e746494ccb0cd53416a72e4e704dc69b9a95
-2026-10-24-conductor-installed-skills.zh.md: 4f5be52b79b2ae0931f90e8a5cc1172c50732810
+2026-10-24-conductor-installed-skills.md: f73850ad5434733ec45b6d8cad5988d3ad368308
+2026-10-24-conductor-installed-skills.zh.md: 32cfa0dc39701947d97b0c6517c316051d73b714

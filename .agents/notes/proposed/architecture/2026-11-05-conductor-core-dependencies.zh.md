@@ -63,9 +63,9 @@ Biyocon Harness 保持 rc.7 基础；所有者已取消 [#68](https://github.com
 | 应用路径 | 当前耦合 | 插件化后的替代方式 |
 |---|---|---|
 | `apps/cli/scripts/source-launch.ts` | CLI 启动前调用 `generateConductorSkills()`。 | 由 Conductor bundle 安装资源；通用源码启动器不感知 Conductor。 |
-| `apps/cli/scripts/generate-conductor-skills.ts` | 将 `.agents/conductor/{README.md,roles/,templates/}` 和 `.agents/skills/conductor-*/` 复制到 `apps/cli/config/agent-presets/conductor/skills/`。 | 从 Conductor 包经技能注册或 bundle 自有资源步骤发布。 |
+| `packages/conductor/conductor-presets/scripts/prepare-assets.ts` | 将 `.agents/conductor/{README.md,roles/,templates/}` 和 `.agents/skills/conductor-*/` 复制到 `packages/conductor/conductor-host-rc7/presets/conductor/skills/`。 | 从 Conductor 包经技能注册或 bundle 自有资源步骤发布。 |
 | `apps/cli/tsdown.config.ts` | CLI 构建后调用同一生成器。 | 将资源步骤移入 Conductor 包构建或 bundle。 |
-| `apps/cli/config/agent-presets/conductor/agent.cordis.yml`; `apps/cli/config/agent-presets/conductor/preset.yml` | 定义随应用附带的组合、提示、技能来源及显示元数据。 | 插件包提供 bundle 入口和 preset 元数据，经通用 preset loader 发现。 |
+| `packages/conductor/conductor-presets/presets/conductor/agent.cordis.yml`; `packages/conductor/conductor-presets/presets/conductor/preset.yml` | 定义随应用附带的组合、提示、技能来源及显示元数据。 | 插件包提供 bundle 入口和 preset 元数据，经通用 preset loader 发现。 |
 | `apps/cli/package.json` | 把 `dsh-conductor-presets` 和 `dsh-tool-conductor` 列为 CLI 必需依赖，并打包 `config/`。 | 独立安装可选的 Conductor bundle 和 preset。 |
 | `apps/cli/composition.md`; `apps/cli/reference/README.md`; `apps/cli/reference/README.zh.md` | 记载内置组合和启动时资源准备。 | 从已安装 bundle 生成组合图，并在 Conductor 包内维护说明。 |
 | `apps/cli/tests/conductor-assets.e2e.ts`; `apps/cli/tests/conductor-source-launch.spec.ts`; `apps/cli/tests/generate-conductor-skills.spec.ts`; `apps/cli/tests/fixtures/source-launch-fixture.ts` | 验证 CLI 自有资源复制与源码启动；fixture 还导入 `conductor-presets` 源码。 | 将资源与 bundle 测试移至 Conductor；CLI 只保留通用 bundle 加载覆盖。 |
@@ -90,3 +90,7 @@ Biyocon Harness 保持 rc.7 基础；所有者已取消 [#68](https://github.com
 ## Risks
 
 这是从已合并差异生成的首版清单，不证明每一行代码仍为当前 master 或未来宿主所必需。某些文件兼有通用与 Conductor 专有行为。所有者卡片的 UI/RPC 改动及直接会话事件注册是最明显的移植工作。本 note 不启动上游同步或阶段 1 实施。
+
+### rc.7 宿主 bundle 实现
+
+实现 PR 待创建：`packages/boot/app-boot/src/profile.ts` 与 `src/index.ts` 提供通用的包内 preset 根目录及一次性 profile bundle 拆分迁移；`packages/preset/agent-presets/src/discovery.ts` 拒绝重复 system id。`apps/cli/src/profile-boot.ts` 合并根目录，并提供 Biyocon 的显式 bundle 与迁移身份。这些共享包不导入 Conductor 代码。[实现决策](../../implemented/architecture/2026-11-12-conductor-rc7-host-bundle.md)规定其行为。

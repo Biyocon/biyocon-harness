@@ -10,9 +10,9 @@ Conductor 的角色路径相对于启动目录解析，协议发现则依赖任�
 
 ## 决策
 
-[CLI 构建](../../../../apps/cli/tsdown.config.ts)从[正典角色](../../../conductor/roles/profiles.yml)、其[共享协议](../../../conductor/README.md)和操作模板，以及[仓库 skills](../../../skills/README.md)中的四个 `conductor-*` 目录生成安装资源。生成的副本位于随附预设内，不纳入源代码管理。共享 README 位于角色链接的相对目标位置，并保留模板和角色资源，以维持完整指令及元数据，不增加另一套人工维护来源或头像行为。发布的 CLI 通过现有 config 允许清单包含生成目录。翻译配对清单排除这个生成的指令目录，而不是要求为构建产物单独编写译文；包冒烟测试逐字节核对所有生成文件与正典来源。
+[宿主 bundle 构建](../../../../packages/conductor/conductor-host-rc7/tsdown.config.ts)从[正典角色](../../../conductor/roles/profiles.yml)、其[共享协议](../../../conductor/README.md)和操作模板，以及[仓库 skills](../../../skills/README.md)中的四个 `conductor-*` 目录生成安装资源。生成的副本位于随附预设内，不纳入源代码管理。共享 README 位于角色链接的相对目标位置，并保留模板和角色资源，以维持完整指令及元数据，不增加另一套人工维护来源或头像行为。发布的 rc.7 宿主 bundle 通过资源正面清单包含生成目录。翻译配对清单排除这个生成的指令目录，而不是要求为构建产物单独编写译文；包冒烟测试逐字节核对所有生成文件与正典来源。
 
-[预设](../../../../apps/cli/config/agent-presets/conductor/agent.cordis.yml)使用 `!!js` 相对于自身的 `baseUrl` 解析资源位置，并为其 Conductor 运行时创建私有 skill 注册表。[预设安装器](../../../../packages/conductor/conductor-presets/README.md)挂载通过宿主读取随附文件的文件系统提供方，并在发布 agent（智能体）之前验证全部七个角色名以及 specialist、Ralph 和 closeout 协议。它还要求共享协议可读且非空，并将其作为内联参考附加在每个预备角色定义之前，使专家无需从任务工作区读取安装或仓库链接。预备定义保留角色元数据和资源路径；临时角色提供方随即释放，不留下重复候选。任务 cwd、工作区文件系统权限、项目 skills 和用户 skill 优先级不参与这些指令的选择。缺失、格式错误或正文为空的必需指令会阻止挂载，并给出重新构建或安装的诊断；释放预设会移除其注册。
+[预设](../../../../packages/conductor/conductor-presets/presets/conductor/agent.cordis.yml)使用 `!!js` 相对于自身的 `baseUrl` 解析资源位置，并为其 Conductor 运行时创建私有 skill 注册表。[预设安装器](../../../../packages/conductor/conductor-presets/README.md)挂载通过宿主读取随附文件的文件系统提供方，并在发布 agent（智能体）之前验证全部七个角色名以及 specialist、Ralph 和 closeout 协议。它还要求共享协议可读且非空，并将其作为内联参考附加在每个预备角色定义之前，使专家无需从任务工作区读取安装或仓库链接。预备定义保留角色元数据和资源路径；临时角色提供方随即释放，不留下重复候选。任务 cwd、工作区文件系统权限、项目 skills 和用户 skill 优先级不参与这些指令的选择。缺失、格式错误或正文为空的必需指令会阻止挂载，并给出重新构建或安装的诊断；释放预设会移除其注册。
 
 父级角色指令要求报告 Conductor 错误和阻塞并停止，不得接管专家任务。[模式路由决策](2026-10-25-conductor-mode-routing.md)负责强制父级分派，以及执行器对独立替代执行的限制；指令交付不会永久移除父级写入工具。[运行时决策](../feature/2026-09-11-conductor-runtime-layer.md)仍负责门禁、子级策略与授权；[角色资料资源决策](../feature/2026-10-24-conductor-role-profile-assets.md)仍负责图像关联。两项决策均未被取代。
 

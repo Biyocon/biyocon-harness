@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ROLE_DIR, ROLE_SKILL, ROLE_SKILL_NAMES } from '../src/index.ts'
 
-const PRESET_PATH = 'apps/cli/config/agent-presets/conductor/agent.cordis.yml'
+const PRESET_PATH = 'packages/conductor/conductor-host-rc7/presets/conductor/agent.cordis.yml'
 
 describe('dsh-conductor-presets', () => {
   it('ships exactly one role skill per gated stage with a matching frontmatter name', async () => {

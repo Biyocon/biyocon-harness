@@ -51,7 +51,7 @@ export function registerOwnerEscalationSnapshots(): void {
             expect(relative(root, cwd)).toMatch(/^\.\./)
             await mkdir(join(cwd, '.git'))
             await mkdir(join(cwd, 'owner-allowed'))
-            await cp(join(root, 'apps/cli/config/agent-presets/conductor'), join(cwd, 'installed-presets/conductor'), { recursive: true })
+            await cp(join(root, 'packages/conductor/conductor-host-rc7/presets/conductor'), join(cwd, 'installed-presets/conductor'), { recursive: true })
             if (scenario.endsWith('unavailable')) {
               const preset = join(cwd, 'installed-presets/conductor/agent.cordis.yml')
               const source = await readFile(preset, 'utf8')

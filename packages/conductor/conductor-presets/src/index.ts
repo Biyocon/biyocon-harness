@@ -2,7 +2,7 @@
  * Installed Conductor role and protocol skills.
  *
  * The shipped preset composition
- * (`apps/cli/config/agent-presets/conductor/agent.cordis.yml`) loads the
+ * (`packages/conductor/conductor-presets/presets/conductor/agent.cordis.yml`) loads the
  * generated copies of the canonical Markdown through a private skill registry.
  * Installation files are read on the host, independently of the task filesystem.
  * Missing required skills reject the preset mount before an agent is published.

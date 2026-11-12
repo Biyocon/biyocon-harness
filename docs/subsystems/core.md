@@ -390,7 +390,8 @@ Discovery is unmemoized: `list()` and `resolve()` re-read the roots on every cal
 ```ts cordis-catalog
 /**
  * Every preset the configured roots currently supply.
- * @returns the presets, first-root-wins per id.
+ * @returns the presets, first-root-wins except duplicate system ids.
+ * @throws when two system roots provide the same preset id.
  */
 async list(): Promise<AgentPreset[]>
 

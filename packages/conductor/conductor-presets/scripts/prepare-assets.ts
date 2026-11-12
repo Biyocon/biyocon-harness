@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -29,23 +30,40 @@ async function filesIn(directory: string): Promise<string[]> {
   }
 }
 
+/** The literal publication allowlist; no canonical directory is traversed. */
+export const CONDUCTOR_ASSETS: ReadonlyArray<readonly [string, string]> = [
+  ['conductor/README.md', 'README.md'],
+  ['conductor/roles/profiles.yml', 'roles/profiles.yml'],
+  ['conductor/roles/00-conductor.webp', 'roles/00-conductor.webp'],
+  ['conductor/roles/01-detective.md', 'roles/01-detective.md'],
+  ['conductor/roles/01-detective.webp', 'roles/01-detective.webp'],
+  ['conductor/roles/02-strategist.md', 'roles/02-strategist.md'],
+  ['conductor/roles/02-strategist.webp', 'roles/02-strategist.webp'],
+  ['conductor/roles/03-devils-advocate.md', 'roles/03-devils-advocate.md'],
+  ['conductor/roles/03-devils-advocate.webp', 'roles/03-devils-advocate.webp'],
+  ['conductor/roles/04-headsman.md', 'roles/04-headsman.md'],
+  ['conductor/roles/04-headsman.webp', 'roles/04-headsman.webp'],
+  ['conductor/roles/05-auditor.md', 'roles/05-auditor.md'],
+  ['conductor/roles/05-auditor.webp', 'roles/05-auditor.webp'],
+  ['conductor/roles/06-integrator.md', 'roles/06-integrator.md'],
+  ['conductor/roles/06-integrator.webp', 'roles/06-integrator.webp'],
+  ['conductor/roles/07-the-arbiter.md', 'roles/07-the-arbiter.md'],
+  ['conductor/roles/07-the-arbiter.webp', 'roles/07-the-arbiter.webp'],
+  ['conductor/templates/baseline.md', 'templates/baseline.md'],
+  ['conductor/templates/closeout.md', 'templates/closeout.md'],
+  ['conductor/templates/dispatch.md', 'templates/dispatch.md'],
+  ['conductor/templates/gate-decision.md', 'templates/gate-decision.md'],
+  ['conductor/templates/run.md', 'templates/run.md'],
+  ['conductor/templates/specialist-envelope.md', 'templates/specialist-envelope.md'],
+  ['skills/conductor-closeout/SKILL.md', 'protocols/conductor-closeout/SKILL.md'],
+  ['skills/conductor-orchestration/SKILL.md', 'protocols/conductor-orchestration/SKILL.md'],
+  ['skills/conductor-ralph/SKILL.md', 'protocols/conductor-ralph/SKILL.md'],
+  ['skills/conductor-specialist/SKILL.md', 'protocols/conductor-specialist/SKILL.md'],
+]
+
 async function canonicalFiles(source: string): Promise<Map<string, Buffer>> {
-  const files = new Map<string, Buffer>()
-  const directories = [
-    ['conductor/roles', 'roles'],
-    ['conductor/templates', 'templates'],
-    ...(await readdir(join(source, 'skills')))
-      .filter(name => name.startsWith('conductor-'))
-      .map(name => [`skills/${name}`, `protocols/${name}`]),
-  ]
-  files.set('README.md', await readFile(join(source, 'conductor/README.md')))
-  for (const [from, to] of directories) {
-    const directory = join(source, from!)
-    // Unlike an absent output tree, a missing canonical directory is an error.
-    await readdir(directory)
-    for (const path of await filesIn(directory)) files.set(join(to!, path), await readFile(join(directory, path)))
-  }
-  return files
+  return new Map(await Promise.all(CONDUCTOR_ASSETS.map(async ([from, to]) =>
+    [to, await readFile(join(source, from))] as const)))
 }
 
 /**
@@ -59,7 +77,11 @@ async function canonicalFiles(source: string): Promise<Map<string, Buffer>> {
  * @throws on source, staging, or publication failures; never retries a failed rename.
  */
 export async function syncConductorSkills(source: string, destination: string): Promise<void> {
-  const files = await canonicalFiles(source)
+  await publishConductorFiles(await canonicalFiles(source), destination)
+}
+
+/** Publish complete package resources, preserving open readers and unchanged files. */
+export async function publishConductorFiles(files: ReadonlyMap<string, Buffer>, destination: string): Promise<void> {
   const existing = await filesIn(destination)
   for (const path of files.keys()) {
     if (existing.some(old => path.startsWith(old + sep) || old.startsWith(path + sep))) {
@@ -136,12 +158,20 @@ export async function syncConductorSkills(source: string, destination: string): 
 }
 
 /**
- * Prepare the CLI preset from the repository's sole authored Conductor sources.
+ * Prepare the packaged preset from the repository's sole authored Conductor sources.
  * @returns after installation resources match the canonical files.
  */
 export async function generateConductorSkills(): Promise<void> {
-  await syncConductorSkills(
-    fileURLToPath(new URL('../../../.agents/', import.meta.url)),
-    fileURLToPath(new URL('../config/agent-presets/conductor/skills/', import.meta.url)),
-  )
+  const assets = await canonicalFiles(fileURLToPath(new URL('../../../../.agents/', import.meta.url)))
+  const files = new Map([...assets].map(([path, bytes]) => [join('conductor/skills', path), bytes]))
+  const sources = new Map(CONDUCTOR_ASSETS.map(([source, target]) => [join('conductor/skills', target), `.agents/${source}`]))
+  for (const file of ['preset.yml', 'agent.cordis.yml']) {
+    files.set(join('conductor', file), await readFile(new URL(`../presets/conductor/${file}`, import.meta.url)))
+    sources.set(join('conductor', file), `packages/conductor/conductor-presets/presets/conductor/${file}`)
+  }
+  const manifest = [...files].map(([path, bytes]) => ({
+    source: sources.get(path), path: path.replaceAll('\\', '/'), sha256: createHash('sha256').update(bytes).digest('hex'),
+  }))
+  files.set('assets.manifest.json', Buffer.from(JSON.stringify(manifest, undefined, 2) + '\n'))
+  await publishConductorFiles(files, fileURLToPath(new URL('../../conductor-host-rc7/presets/', import.meta.url)))
 }

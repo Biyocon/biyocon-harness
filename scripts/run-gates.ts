@@ -377,6 +377,7 @@ function ciStaticGates(options: { ownsBuild: boolean }): Gate[] {
 function ciArtifactGates(): Gate[] {
   return [
     pnpmScript('build', 'build'),
+    pnpmScript('conductor-pack', 'verify-conductor-pack', { needs: ['build'] }),
     pnpmScript('publint', 'publint', { needs: ['build'] }),
     pnpmScript('node-next-types', 'verify-node-next-types', {
       label: 'node-next types',

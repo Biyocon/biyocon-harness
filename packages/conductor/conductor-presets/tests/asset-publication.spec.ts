@@ -3,7 +3,7 @@ import * as win32 from '@deepseek-ai/dsh-fs-local/src/win32.ts'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { syncConductorSkills } from '../scripts/generate-conductor-skills.ts'
+import { publishConductorFiles } from '../scripts/prepare-assets.ts'
 
 vi.mock('node:fs/promises', async importOriginal => ({ ...await importOriginal<typeof fs>() }))
 
@@ -18,6 +18,20 @@ afterEach(async () => {
   vi.restoreAllMocks()
   await Promise.all(roots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })))
 })
+
+async function syncConductorSkills(source: string, destination: string): Promise<void> {
+  const files = new Map<string, Buffer>()
+  for (const [from, to] of [['conductor', ''], ['skills', 'protocols']]) {
+    const directory = join(source, from!)
+    for (const entry of await fs.readdir(directory, { recursive: true, withFileTypes: true })) {
+      if (entry.isFile()) {
+        const local = (await import('node:path')).relative(directory, join(entry.parentPath, entry.name))
+        files.set(join(to!, local), await fs.readFile(join(directory, local)))
+      }
+    }
+  }
+  await publishConductorFiles(files, destination)
+}
 
 async function fixture() {
   const root = await fs.mkdtemp(join(tmpdir(), 'dsh-conductor-assets-'))

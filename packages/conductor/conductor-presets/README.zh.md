@@ -2,11 +2,11 @@
 
 [English](README.md) | 中文
 
-此包为[随附的应用预设](../../../apps/cli/config/agent-presets/conductor/agent.cordis.yml)安装并验证 Conductor 的角色与协议 skill（技能）。此包还导出 [Conductor 工具](../tool-conductor/README.md)使用的正典角色目录名与阶段到 skill 的映射元数据。
+此包为[随附的应用预设](../../../packages/conductor/conductor-presets/presets/conductor/agent.cordis.yml)安装并验证 Conductor 的角色与协议 skill（技能）。此包还导出 [Conductor 工具](../tool-conductor/README.md)使用的正典角色目录名与阶段到 skill 的映射元数据。
 
 ## 安装与配置
 
-CLI（命令行界面）构建将[正典角色目录](../../../.agents/conductor/roles/profiles.yml)、其[共享协议](../../../.agents/conductor/README.md)和链接的模板，以及[仓库 skills](../../../.agents/skills/README.md)中的 `conductor-*` 包复制到应用预设生成的 `skills/` 目录。这些副本是分发产物，不是额外的人工维护源文件。每次 `pnpm dsh` 源码启动都会在 profile 启动前准备这些资源，因此下一次启动可使用已完成的正典编辑，无需单独构建。字节不变时不写入。变更文件暂存于活动目录旁，再逐文件原子替换，包括 Windows 上普通 Node 读取者仍打开文件的情形；最后删除过期文件。生成错误会停止启动，必需内容校验仍会拒绝预设挂载。现有预备定义不热重载。发布的 CLI 包含生成文件，不需要源码检出。[发布决策](../../../.agents/notes/implemented/bug-fix/2026-11-01-conductor-source-launch-assets.md)说明并发与失败语义。
+[rc.7 宿主 bundle](../conductor-host-rc7/README.md)从规范来源构建正面清单中的 27 个角色、协议、模板及图像资源，并包含本包的 preset 文件。生成资源是分发产物。每次 `pnpm dsh` 源码启动前都由包自身准备资源；已安装宿主直接读取 tarball 中的资源，不需要源码 checkout。字节不变时不写入；变更文件先暂存，再逐文件原子替换，包括 Windows 上仍打开文件的普通读取者。准备失败会停止启动，必需内容校验会拒绝 preset 挂载。现有定义不热重载。[发布决策](../../../.agents/notes/implemented/bug-fix/2026-11-01-conductor-source-launch-assets.md)规定并发与失败语义。
 
 | 配置 | 必填值 |
 |---|---|

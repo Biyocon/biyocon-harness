@@ -1,0 +1,4 @@
+# Both replay projections are registered by this host-wide mount, before any agent preset.
+- insert:
+    - id: conductor-presentation
+      name: '@deepseek-ai/dsh-conductor'

@@ -63,9 +63,9 @@ The `apps/` scan covers executable wiring, packaging, documentation and test evi
 | App paths | Current binding | Plugin extraction |
 |---|---|---|
 | `apps/cli/scripts/source-launch.ts` | Calls `generateConductorSkills()` before CLI boot. | Let a Conductor bundle install its resources; leave generic source launch unaware of Conductor. |
-| `apps/cli/scripts/generate-conductor-skills.ts` | Copies `.agents/conductor/{README.md,roles/,templates/}` and `.agents/skills/conductor-*/` into `apps/cli/config/agent-presets/conductor/skills/`. | Publish the assets from the Conductor package through skill registration or a bundle-owned asset step. |
+| `packages/conductor/conductor-presets/scripts/prepare-assets.ts` | Copies `.agents/conductor/{README.md,roles/,templates/}` and `.agents/skills/conductor-*/` into `packages/conductor/conductor-host-rc7/presets/conductor/skills/`. | Publish the assets from the Conductor package through skill registration or a bundle-owned asset step. |
 | `apps/cli/tsdown.config.ts` | Runs the same generator after CLI build. | Move the asset step to the Conductor package build/bundle. |
-| `apps/cli/config/agent-presets/conductor/agent.cordis.yml`; `apps/cli/config/agent-presets/conductor/preset.yml` | Define the shipped composition, prompt, skill source and display metadata. | Ship a bundle entry and preset metadata in the plugin package, discovered through the generic preset loader. |
+| `packages/conductor/conductor-presets/presets/conductor/agent.cordis.yml`; `packages/conductor/conductor-presets/presets/conductor/preset.yml` | Define the shipped composition, prompt, skill source and display metadata. | Ship a bundle entry and preset metadata in the plugin package, discovered through the generic preset loader. |
 | `apps/cli/package.json` | Makes `dsh-conductor-presets` and `dsh-tool-conductor` mandatory CLI dependencies and packs `config/`. | Install an optional Conductor bundle and preset independently. |
 | `apps/cli/composition.md`; `apps/cli/reference/README.md`; `apps/cli/reference/README.zh.md` | Document built-in Conductor composition and launch-time assets. | Generate composition from installed bundles and document Conductor in its package. |
 | `apps/cli/tests/conductor-assets.e2e.ts`; `apps/cli/tests/conductor-source-launch.spec.ts`; `apps/cli/tests/generate-conductor-skills.spec.ts`; `apps/cli/tests/fixtures/source-launch-fixture.ts` | Assert CLI-owned asset copying and source launch; the fixture imports `conductor-presets` source. | Move asset/bundle tests with Conductor; retain generic bundle-loading coverage in CLI. |
@@ -90,3 +90,7 @@ The owner can locate each listed source file and merged PR, identify the generic
 ## Risks
 
 This is a first inventory from merged diffs, not proof that every changed line remains necessary on current master or a future host. Some files contain mixed generic and Conductor-specific behavior. The owner-card UI/RPC changes and direct session event registrations present the clearest extraction work. No upstream sync or phase-1 implementation follows from this note.
+
+### rc.7 host-bundle implementation
+
+Implementation PR pending: `packages/boot/app-boot/src/profile.ts` and `src/index.ts` add generic package-contained preset roots and one-time profile bundle extraction migrations; `packages/preset/agent-presets/src/discovery.ts` refuses duplicate system ids. `apps/cli/src/profile-boot.ts` combines roots and supplies Biyocon’s explicit bundle and migration identity. These shared packages import no Conductor code. The [implementation decision](../../implemented/architecture/2026-11-12-conductor-rc7-host-bundle.md) owns the behavior.

@@ -139,7 +139,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'async list(): Promise<AgentPreset[]>',
         description: 'Every preset the configured roots currently supply.',
         parameters: [],
-        returns: 'the presets, first-root-wins per id.',
+        returns: 'the presets, first-root-wins except duplicate system ids.',
+        throws: ['when two system roots provide the same preset id.'],
       },
       {
         signature: 'async resolve(id?: string): Promise<AgentPreset>',

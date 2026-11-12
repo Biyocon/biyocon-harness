@@ -45,6 +45,61 @@ function stageInstallation(bundles: Record<string, { patch?: string; deps?: Reco
   return join(appDir, 'package.json')
 }
 
+describe('bundle-owned preset roots and extraction upgrades', () => {
+  function fixture(presetRoot: unknown = './presets') {
+    const anchor = stageInstallation({ direct: { patch: '[]\n', deps: { transitive: '0.0.0' } }, transitive: { patch: '[]\n' } })
+    const dir = join(anchor, '..', 'node_modules/direct')
+    mkdirSync(join(dir, 'presets'), { recursive: true })
+    const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { dsh: { bundle: { presetRoot: unknown } } }
+    manifest.dsh.bundle.presetRoot = presetRoot
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest))
+    const home = tmp()
+    initProfile(resolveProfileDir('demo', home), ['direct'])
+    return { anchor, dir, home, load: () => loadProfile('t', 'demo', anchor, home) }
+  }
+
+  it('grants a preset root only to the explicitly listed bundle', () => {
+    const f = fixture()
+    const layers = f.load().layers
+    expect(layers).toHaveLength(1)
+    expect(layers[0]?.packageName).toBe('direct')
+    expect(layers[0]?.presetRoot).toBe(join(f.dir, 'presets'))
+  })
+
+  it.each(['', null, 42])('refuses an invalid presetRoot: %s', (value) => {
+    expect(() => fixture(value).load()).toThrow('package-relative directory')
+  })
+
+  it('refuses absolute, parent and symlink escapes and non-directory roots', () => {
+    expect(() => fixture(tmp()).load()).toThrow('package-relative directory')
+    expect(() => fixture('../').load()).toThrow('inside its installed package')
+    const link = fixture('linked')
+    symlinkSync(tmp(), join(link.dir, 'linked'), 'junction')
+    expect(() => link.load()).toThrow('inside its installed package')
+    expect(() => fixture('package.json').load()).toThrow('inside its installed package')
+  })
+
+  it('records an extracted bundle once, preserving custom rows and a subsequent opt-out', () => {
+    const f = fixture()
+    const profile = resolveProfileDir('demo', f.home)
+    const migrations = [{ id: 'extract', after: 'direct', bundle: 'transitive' }]
+    const load = () => loadProfile('t', 'demo', f.anchor, f.home, { migrations })
+    const ready = fixture()
+    const readyDir = resolveProfileDir('demo', ready.home)
+    writeProfileManifest(readyDir, { dsh: { profile: { bundles: ['direct', 'transitive'] } } })
+    expect(loadProfile('t', 'demo', ready.anchor, ready.home, { migrations }).layers).toHaveLength(2)
+    expect(load().layers.map(layer => layer.packageName)).toEqual(['direct', 'transitive'])
+    const manifest = readProfileManifest('t', profile)
+    expect(manifest.dsh?.profile?.appliedBundleMigrations).toEqual(['extract'])
+    manifest.dsh!.profile!.bundles = ['direct']
+    writeProfileManifest(profile, manifest)
+    expect(load().layers.map(layer => layer.packageName)).toEqual(['direct'])
+    manifest.dsh!.profile!.appliedBundleMigrations = 42 as unknown as string[]
+    writeProfileManifest(profile, manifest)
+    expect(load).toThrow('array of strings')
+  })
+})
+
 describe('resolveProfileDir', () => {
   it('joins the home and rejects traversal-shaped names', () => {
     const home = tmp()

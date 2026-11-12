@@ -58,3 +58,5 @@ profile 是位于 `$DSH_HOME/profiles/<name>` 下的目录（harness home 由 [`
 - **快照回放替换仅识别特定 basename**：只有以 `cordis.yml` 或 `cordis.yaml` 结尾的配置会映射到同级 `cordis.snapshot.yml`；自定义配置名称需要调用方自行选择。
 - **环境发现以启动为界**：`loadLayeredEnv` 只读取一次调用目录与 harness home 中的 `.env`；它不搜索父目录，也不跟随之后选择的 workspace。`loadEnv` 仍是非产品 bin 使用的单目录 helper。
 - **用户 patch 会替换匹配到的整个配置**：按 id 定位的 patch 不做深度合并，因此 profile 覆盖必须重述需要保留的组合包字段。
+
+profile 显式列出的 bundle 可声明 `dsh.bundle.presetRoot`，其值为非空的包内相对目录。rc.7 宿主解析 realpath，并拒绝包外路径、符号链接逃逸及非目录。传递依赖不提供 preset 根目录。`loadProfile` 接受安装方提供的初始 bundle 及一次性 bundle 拆分迁移；已执行迁移记录于 `dsh.profile.appliedBundleMigrations`，因此尊重之后用户明确移除 bundle 的选择。
