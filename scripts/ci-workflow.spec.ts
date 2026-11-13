@@ -15,6 +15,23 @@ const selfHostedLinuxSetup = actionExpression(`${trustedPullRequestHead} && vars
 const fullValidationCondition = "github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full-validation')"
 
 describe('CI workflow', () => {
+  it('prepares APT only on ephemeral Linux hosts before installing Playwright dependencies', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml')
+    const consumers = workflowJob(workflow, 'node-24-consumers')
+    if (!Array.isArray(consumers.steps)) throw new TypeError('consumer job must define setup steps')
+    const steps: unknown[] = consumers.steps
+    const index = steps.findIndex(step => isRecord(step) && step.name === 'Prepare Ubuntu APT mirror for hosted dependencies')
+    const preparation = steps[index]
+    if (!isRecord(preparation)) throw new TypeError('consumer job must define hosted APT preparation')
+    expect(preparation.if).toBe(actionExpression("runner.environment == 'github-hosted' && runner.os == 'Linux'"))
+    expect(preparation.run).toContain('sudo --preserve-env=RUNNER_ENVIRONMENT "$(command -v node)" --import tsx scripts/prepare-ci-apt-mirrors.ts /etc/apt')
+    for (const key of ['Acquire::Retries', 'Acquire::http::Timeout', 'Acquire::https::Timeout']) {
+      expect(preparation.run).toContain(`apt-config shell value ${key}`)
+    }
+    expect(index).toBeLessThan(steps.findIndex(step => isRecord(step) && step.name === 'Install Playwright Chromium and hosted dependencies'))
+    expect(collectStrings(workflow).filter(value => value.includes('scripts/prepare-ci-apt-mirrors.ts'))).toHaveLength(1)
+  })
+
   it('routes only an explicitly trusted pull request head beyond hosted runners', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml')
     const workflowText = readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8')

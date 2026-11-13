@@ -271,6 +271,14 @@ jobs:
           if (( install_status != 0 )); then exit "$install_status"; fi
           exit "$sandbox_status"
 
+      - name: Prepare Ubuntu APT mirror for hosted dependencies
+        if: ${{ runner.environment == 'github-hosted' && runner.os == 'Linux' }}
+        run: |
+          sudo --preserve-env=RUNNER_ENVIRONMENT "$(command -v node)" --import tsx scripts/prepare-ci-apt-mirrors.ts /etc/apt
+          test "$(apt-config shell value Acquire::Retries)" = "value='1'"
+          test "$(apt-config shell value Acquire::http::Timeout)" = "value='15'"
+          test "$(apt-config shell value Acquire::https::Timeout)" = "value='15'"
+
       - name: Install Playwright Chromium and hosted dependencies
         if: ${{ !(github.event.pull_request.head.repo && toJSON(github.event.pull_request.head.repo.id) == github.repository_id && toJSON(github.event.pull_request.head.repo.owner.id) == github.repository_owner_id && toJSON(github.event.pull_request.head.repo.fork) == 'false') || vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]' }}
         run: pnpm --filter @deepseek-ai/dsh-web-frontend exec playwright install --with-deps chromium
