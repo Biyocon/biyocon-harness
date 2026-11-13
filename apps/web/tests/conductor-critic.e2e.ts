@@ -26,6 +26,10 @@ it.each([
   process.env['DSH_CONDUCTOR_INTAKE_SCENARIO'] = `critic-web-${conclusion}`
   let release = () => {}
   const pending = new Promise<void>((resolve) => { release = resolve })
+  let releaseFinalCatalog = () => {}
+  const finalCatalogPending = new Promise<void>((resolve) => { releaseFinalCatalog = resolve })
+  let finalCatalogSeen = false
+  let drainCatalog = async () => {}
   class PausedCritic extends InstalledConductorAdapter {
     override async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
       if (options.messages.some(message => message.content.some(block => block.type === 'text'
@@ -59,12 +63,30 @@ it.each([
     await catalog.click()
     const tree = page.getByRole('tree', { name: locale === 'da-DK' ? 'Underagentsessioner' : 'Subagent sessions', exact: true })
     const pendingText = locale === 'da-DK' ? 'kritik afventer' : 'challenge pending'
+    await tree.getByRole('treeitem', { name: new RegExp(pendingText) }).waitFor()
     await expect.poll(() => tree.textContent()).toContain(pendingText)
     expect(await tree.textContent()).toContain(locale === 'da-DK' ? 'producent' : 'producer')
     expect(await tree.textContent()).toContain(locale === 'da-DK' ? 'kritiker' : 'critic')
     const selector = '[role="tree"][aria-label="' + (locale === 'da-DK' ? 'Underagentsessioner' : 'Subagent sessions') + '"]'
     await compareOrRefreshGolden(join(GOLDENS, `${locale}-${conclusion}-pending.expected.md`),
       await captureStableAria(page, selector, scaffold.workspaceCwd), MODE)
+    if (conclusion === 'holds') {
+      // Delay a real response, leaving the terminal host checkpoint ahead of the browser catalog.
+      await page.route('**/api/subagent.list', async (route) => {
+        const response = await route.fetch()
+        const body = await response.json() as {
+          result: { ok: true; value: { entries: { id: string }[] } } | { ok: false }
+        }
+        const arbiter = events.find(event => event.type === 'conductor/child' && event.data.role === 'arbiter')
+        if (arbiter?.type === 'conductor/child' && body.result.ok
+          && body.result.value.entries.some(entry => entry.id === arbiter.data.childId)) {
+          finalCatalogSeen = true
+          await finalCatalogPending
+        }
+        await route.fulfill({ response })
+      })
+      drainCatalog = () => page.unrouteAll({ behavior: 'wait' })
+    }
     release()
     const finding = page.locator('[data-conductor-challenge]')
     await finding.waitFor()
@@ -82,6 +104,18 @@ it.each([
     await expect.poll(() => events.filter(event => event.type === 'conductor/checkpoint' && event.data.record !== null)
       .map(event => event.type === 'conductor/checkpoint' ? JSON.parse(event.data.record!) as { status: string } : null)
       .at(-1)?.status).toBe(conclusion === 'escalated' ? 'escalated' : 'reported')
+    if (conclusion === 'holds') {
+      await expect.poll(() => finalCatalogSeen).toBe(true)
+      expect(await tree.getByRole('treeitem', { name: /^The Arbiter/ }).count()).toBe(0)
+      expect(await captureStableAria(page, selector, scaffold.workspaceCwd)).not.toContain('The Arbiter')
+      releaseFinalCatalog()
+    }
+    // The host checkpoint can precede the final child's WebSocket projection.
+    if (conclusion !== 'escalated') {
+      await tree.getByRole('treeitem', {
+        name: /^The Arbiter · (?:attempt 1 completed · Gate G: pass|forsøg 1 færdig · Gate G: bestået) · /,
+      }).waitFor()
+    }
     await compareOrRefreshGolden(join(GOLDENS, `${locale}-${conclusion}-settled.expected.md`),
       await captureStableAria(page, selector, scaffold.workspaceCwd), MODE)
     await page.reload()
@@ -95,6 +129,8 @@ it.each([
     expect(errors.pageErrors).toEqual([])
   } finally {
     release()
+    releaseFinalCatalog()
+    await drainCatalog()
     await browser.close()
     await scaffold.close()
     if (priorScenario === undefined) Reflect.deleteProperty(process.env, 'DSH_CONDUCTOR_INTAKE_SCENARIO')
