@@ -68,4 +68,4 @@ Detective 接受不确定的当前请求。较晚入口要求捕获的范围来�
 
 准入、报告验证及持久化篡改测试覆盖支持的组合、缺失材料、旧报告、因果修复/恢复、独立预算及禁止效果。[安装预设快照](../../../../examples/headless-agent/tests/conductor-installed.snapshot.ts)在具有矛盾 AGENTS.md 的外部工作区使用真实 Loader，仅替换模型，并验证实际第一个工具、专家路线、项目文件不变、无批准、父级拒绝以及 reported 或 blocked 结果。专用场景验证空分析标准在创建运行或子级前被拒绝，以及 Strategist 根据收到的历史在首次 Gate-B 返工修复标准不匹配。现有实现/质量快照保留宿主批准路线。Fixtures 在 Linux/WSL 录制；SDK 通用投影另行验证。
 
-第二阶段仍未实现：Auditor 入口、`verification`、dirty 候选 digest 和非 Git manifest 需要 F02 及单独批准。附件、隐式会话检索、远程文档、source-launch 自动生成（#25）、UI 元数据（#28）及补充专家/提供方/文档处理不属于第一阶段。因此 #30 保持打开。Runtime、质量执行器、安装 skills、路由和 gate 稳健性决策保留各自独立保证，没有任何一篇被完全替代或归档。
+第二阶段仍未实现：Auditor 入口、`verification`、dirty 候选 digest 和非 Git manifest 由[统一 v6 提案](../../proposed/feature/2026-11-11-conductor-v6-evidence-verification-and-budgets.md)管理，Codex 维护，并与 #75 第二阶段及 #58 B 阶段一起在实施前 review。附件、隐式会话检索、远程文档、source-launch 自动生成（#25）、UI 元数据（#28）及补充专家/提供方/文档处理不属于第一阶段。因此 #30 保持打开。Runtime、质量执行器、安装 skills、路由和 gate 稳健性决策保留各自独立保证，没有任何一篇被完全替代或归档。

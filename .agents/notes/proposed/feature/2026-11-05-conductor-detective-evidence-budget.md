@@ -28,7 +28,7 @@ Add a host-owned coverage ledger for each Detective attempt: admitted material i
 
 If relevant evidence cannot be inspected within the remaining allowance, record consumed/reserved/limit and the omitted scope, and end in terminal `incomplete`. Do not pass it to the critic as a complete candidate, silently reset the allowance, or turn it into a comprehensive `ready` report. This is a bounded failure mode, not an efficiency saving.
 
-These new run fields and terminal semantics require a new record version. Coordinate one v6 owner and schema with [#30 phase 2](https://github.com/Biyocon/biyocon-harness/issues/30), which also plans Auditor entry, verification, dirty-file digests, and a manifest outside Git. If #30 ships v6 first, Phase B uses the next version. The #30 manifest can supply stable provenance for newly discovered files; before it exists, those discoveries remain provisional.
+These new run fields and terminal semantics belong to the [combined v6 proposal](2026-11-11-conductor-v6-evidence-verification-and-budgets.md) with [#30 phase 2](https://github.com/Biyocon/biyocon-harness/issues/30) and #75 phase 2. Codex maintains the common schema and version allocation; Claude reviews and the owner merges. No separate phase-B format or runtime implementation precedes that review. The #30 manifest can supply stable provenance for newly discovered files; before it exists, those discoveries remain provisional. Phase A and the measurement rationale remain independently active here.
 
 Both phases preserve read-only analysis, the producer's `material_spans` against complete admitted captures, mandatory critic challenge, Auditor's full available evidence, and the existing Gate C/GO authorization rules. Image intake remains outside this proposal.
 

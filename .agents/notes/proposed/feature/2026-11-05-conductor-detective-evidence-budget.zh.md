@@ -28,7 +28,7 @@ Status: proposed
 
 如果剩余额度不足以检查相关证据，记录已消耗/已预留/上限和遗漏范围，以终态 `incomplete` 结束。不得把它作为完整候选交给批评者、暗中重置额度，或转换成全面的 `ready` 报告。这是有界的失败状态，不是效率收益。
 
-这些新增的运行字段和终态语义需要新的记录版本。与 [#30 第二阶段](https://github.com/Biyocon/biyocon-harness/issues/30)协调统一的 v6 归属和 schema；该阶段还计划 Auditor 入口、verification、未提交文件摘要及 Git 外文件清单。若 #30 先交付 v6，阶段 B 使用下一个版本。#30 清单可为新发现的文件提供稳定来源；在它出现之前，发现项仍属临时材料。
+这些新增运行字段和终态语义归入[统一 v6 提案](2026-11-11-conductor-v6-evidence-verification-and-budgets.md)，与 [#30 第二阶段](https://github.com/Biyocon/biyocon-harness/issues/30)及 #75 第二阶段一同协调。Codex 维护共同 schema 与版本分配，Claude review，所有者 merge。Review 前不单独实施 B 阶段格式或运行时代码。#30 清单可为新发现的文件提供稳定来源；在它出现之前，发现项仍属临时材料。本文的 A 阶段及测量理由继续独立有效。
 
 两个阶段均保留只读分析、生产者依据完整准入捕获填写的 `material_spans`、必经批评、Auditor 可用的全部证据，以及既有 Gate C/GO 授权规则。图片准入不在本提案内。
 

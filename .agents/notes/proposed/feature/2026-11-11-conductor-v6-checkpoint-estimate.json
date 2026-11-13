@@ -1,0 +1,806 @@
+{
+  "kind": "offline size-only simulation; not a valid v6 record or measured runtime",
+  "node": "v24.13.0",
+  "publicMetadataRevision": "5b3e4d7c8fd7ddfc5f84c6d8826c0e9bcd2f3fe5",
+  "probeSha256": "519230f738372cc6ccef3defa5737789c53508176df8c05919bd158f004ccd9a",
+  "inputProvenance": [
+    {
+      "study": "initial",
+      "publicMetadata": "scripts/conductor-cost/results/2026-11-11.json",
+      "sha256": "5b1f9519ee2017c3f1ec057c1b288f5c1ae99e2cb3bd3c088dff30bb152f744d"
+    },
+    {
+      "study": "followup",
+      "publicMetadata": "scripts/conductor-cost/results/2026-11-11-guidance.json",
+      "sha256": "ef4fe2a3e55090bb2fad9e7a3e347158d9597de7ed14440434b8b962d95e0b9a"
+    }
+  ],
+  "totals": {
+    "modelCalls": 606,
+    "parentCallsOutsideRun": 47,
+    "budgetEntries": 559,
+    "inspectionEntries": 1116,
+    "originalCheckpoints": 145,
+    "attempts": 24,
+    "actualRuns": 23
+  },
+  "assumptions": [
+    "Largest observed v5 checkpoint per run reused for every simulated checkpoint; other new v6 groups excluded.",
+    "Synthetic SHA-256-derived opaque identities and hypothetical metadata entries, never source text in the published result.",
+    "Reservation token values use reported counts solely to size JSON; they are not preflight bounds.",
+    "One checksummed default-level Zstandard frame per flushed checkpoint, matching backend append framing; no cross-frame dictionary.",
+    "Existing workflow checkpoint count H retained; filesystem-result entries coalesced before next reservation/workflow checkpoint, never each token/result.",
+    "Child transcript, generic per-attempt event and other non-checkpoint log bytes are excluded; this is not complete future v6 disk usage."
+  ],
+  "budgetEntryBytes": {
+    "count": 559,
+    "min": 684,
+    "max": 703,
+    "mean": 695.1341681574239
+  },
+  "inspectionEntryBytes": {
+    "count": 1116,
+    "min": 446,
+    "max": 499,
+    "mean": 482.14605734767025
+  },
+  "threePhase": {
+    "checkpointCount": 1822,
+    "uncompressedCheckpointBytes": 372710753,
+    "zstdCheckpointBytes": 39108844,
+    "maxCheckpointBytes": 424138,
+    "checkpointsPerActualRun": {
+      "count": 23,
+      "min": 38,
+      "max": 146,
+      "mean": 79.21739130434783
+    },
+    "zstdBytesPerActualRun": {
+      "count": 23,
+      "min": 498653,
+      "max": 5110523,
+      "mean": 1700384.5217391304
+    }
+  },
+  "twoPhase": {
+    "checkpointCount": 1263,
+    "uncompressedCheckpointBytes": 259851095,
+    "zstdCheckpointBytes": 27342097,
+    "maxCheckpointBytes": 424138,
+    "checkpointsPerActualRun": {
+      "count": 23,
+      "min": 27,
+      "max": 101,
+      "mean": 54.91304347826087
+    },
+    "zstdBytesPerActualRun": {
+      "count": 23,
+      "min": 357020,
+      "max": 3565781,
+      "mean": 1188786.8260869565
+    }
+  },
+  "rows": [
+    {
+      "study": "initial",
+      "caseId": "discovery",
+      "variant": "baseline",
+      "repetition": 1,
+      "modelCalls": 26,
+      "parentCalls": 2,
+      "budgetEntries": 24,
+      "inspectionEntries": 48,
+      "originalCheckpointCount": 5,
+      "largestObservedV5RecordBytes": 69376,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 77,
+          "uncompressedCheckpointBytes": 7301192,
+          "zstdCheckpointBytes": 1447329,
+          "maxCheckpointBytes": 114370,
+          "finalBudgetLedgerBytes": 16729,
+          "finalInspectionLedgerBytes": 23103
+        },
+        "twoPhase": {
+          "checkpointCount": 53,
+          "uncompressedCheckpointBytes": 5060101,
+          "zstdCheckpointBytes": 1004035,
+          "maxCheckpointBytes": 114370,
+          "finalBudgetLedgerBytes": 16729,
+          "finalInspectionLedgerBytes": 23103
+        }
+      }
+    },
+    {
+      "study": "initial",
+      "caseId": "discovery",
+      "variant": "baseline",
+      "repetition": 2,
+      "modelCalls": 23,
+      "parentCalls": 2,
+      "budgetEntries": 21,
+      "inspectionEntries": 39,
+      "originalCheckpointCount": 5,
+      "largestObservedV5RecordBytes": 69530,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 68,
+          "uncompressedCheckpointBytes": 6169779,
+          "zstdCheckpointBytes": 1205818,
+          "maxCheckpointBytes": 107640,
+          "finalBudgetLedgerBytes": 14623,
+          "finalInspectionLedgerBytes": 18779
+        },
+        "twoPhase": {
+          "checkpointCount": 47,
+          "uncompressedCheckpointBytes": 4294352,
+          "zstdCheckpointBytes": 840404,
+          "maxCheckpointBytes": 107640,
+          "finalBudgetLedgerBytes": 14623,
+          "finalInspectionLedgerBytes": 18779
+        }
+      }
+    },
+    {
+      "study": "initial",
+      "caseId": "discovery",
+      "variant": "baseline",
+      "repetition": 3,
+      "modelCalls": 25,
+      "parentCalls": 2,
+      "budgetEntries": 23,
+      "inspectionEntries": 44,
+      "originalCheckpointCount": 5,
+      "largestObservedV5RecordBytes": 58603,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 74,
+          "uncompressedCheckpointBytes": 6086736,
+          "zstdCheckpointBytes": 1238851,
+          "maxCheckpointBytes": 100708,
+          "finalBudgetLedgerBytes": 16007,
+          "finalInspectionLedgerBytes": 21146
+        },
+        "twoPhase": {
+          "checkpointCount": 51,
+          "uncompressedCheckpointBytes": 4227603,
+          "zstdCheckpointBytes": 861166,
+          "maxCheckpointBytes": 100708,
+          "finalBudgetLedgerBytes": 16007,
+          "finalInspectionLedgerBytes": 21146
+        }
+      }
+    },
+    {
+      "study": "initial",
+      "caseId": "discovery",
+      "variant": "candidate",
+      "repetition": 1,
+      "modelCalls": 29,
+      "parentCalls": 2,
+      "budgetEntries": 27,
+      "inspectionEntries": 47,
+      "originalCheckpointCount": 6,
+      "largestObservedV5RecordBytes": 66151,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 87,
+          "uncompressedCheckpointBytes": 8019411,
+          "zstdCheckpointBytes": 1594144,
+          "maxCheckpointBytes": 112958,
+          "finalBudgetLedgerBytes": 18765,
+          "finalInspectionLedgerBytes": 22548
+        },
+        "twoPhase": {
+          "checkpointCount": 60,
+          "uncompressedCheckpointBytes": 5574451,
+          "zstdCheckpointBytes": 1109359,
+          "maxCheckpointBytes": 112958,
+          "finalBudgetLedgerBytes": 18765,
+          "finalInspectionLedgerBytes": 22548
+        }
+      }
+    },
+    {
+      "study": "initial",
+      "caseId": "discovery",
+      "variant": "candidate",
+      "repetition": 2,
+      "modelCalls": 19,
+      "parentCalls": 2,
+      "budgetEntries": 17,
+      "inspectionEntries": 36,
+      "originalCheckpointCount": 5,
+      "largestObservedV5RecordBytes": 58305,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 56,
+          "uncompressedCheckpointBytes": 4313748,
+          "zstdCheckpointBytes": 878146,
+          "maxCheckpointBytes": 91681,
+          "finalBudgetLedgerBytes": 11832,
+          "finalInspectionLedgerBytes": 17298
+        },
+        "twoPhase": {
+          "checkpointCount": 39,
+          "uncompressedCheckpointBytes": 3030062,
+          "zstdCheckpointBytes": 617639,
+          "maxCheckpointBytes": 91681,
+          "finalBudgetLedgerBytes": 11832,
+          "finalInspectionLedgerBytes": 17298
+        }
+      }
+    },
+    {
+      "study": "initial",
+      "caseId": "discovery",
+      "variant": "candidate",
+      "repetition": 3,
+      "modelCalls": 29,
+      "parentCalls": 2,
+      "budgetEntries": 27,
+      "inspectionEntries": 52,
+      "originalCheckpointCount": 6,
+      "largestObservedV5RecordBytes": 60754,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 87,
+          "uncompressedCheckpointBytes": 7627906,
+          "zstdCheckpointBytes": 1580610,
+          "maxCheckpointBytes": 110351,
+          "finalBudgetLedgerBytes": 18788,
+          "finalInspectionLedgerBytes": 24989
+        },
+        "twoPhase": {
+          "checkpointCount": 60,
+          "uncompressedCheckpointBytes": 5308240,
+          "zstdCheckpointBytes": 1100836,
+          "maxCheckpointBytes": 110351,
+          "finalBudgetLedgerBytes": 18788,
+          "finalInspectionLedgerBytes": 24989
+        }
+      }
+    },
+    {
+      "study": "initial",
+      "caseId": "capture",
+      "variant": "baseline",
+      "repetition": 1,
+      "modelCalls": 21,
+      "parentCalls": 2,
+      "budgetEntries": 19,
+      "inspectionEntries": 32,
+      "originalCheckpointCount": 7,
+      "largestObservedV5RecordBytes": 262548,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 64,
+          "uncompressedCheckpointBytes": 18317420,
+          "zstdCheckpointBytes": 1350582,
+          "maxCheckpointBytes": 300343,
+          "finalBudgetLedgerBytes": 13230,
+          "finalInspectionLedgerBytes": 15347
+        },
+        "twoPhase": {
+          "checkpointCount": 45,
+          "uncompressedCheckpointBytes": 12914011,
+          "zstdCheckpointBytes": 956955,
+          "maxCheckpointBytes": 300343,
+          "finalBudgetLedgerBytes": 13230,
+          "finalInspectionLedgerBytes": 15347
+        }
+      }
+    },
+    {
+      "study": "initial",
+      "caseId": "capture",
+      "variant": "baseline",
+      "repetition": 2,
+      "modelCalls": 26,
+      "parentCalls": 2,
+      "budgetEntries": 24,
+      "inspectionEntries": 42,
+      "originalCheckpointCount": 8,
+      "largestObservedV5RecordBytes": 260558,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 80,
+          "uncompressedCheckpointBytes": 23029874,
+          "zstdCheckpointBytes": 1671103,
+          "maxCheckpointBytes": 306893,
+          "finalBudgetLedgerBytes": 16700,
+          "finalInspectionLedgerBytes": 20187
+        },
+        "twoPhase": {
+          "checkpointCount": 56,
+          "uncompressedCheckpointBytes": 16173645,
+          "zstdCheckpointBytes": 1180458,
+          "maxCheckpointBytes": 306893,
+          "finalBudgetLedgerBytes": 16700,
+          "finalInspectionLedgerBytes": 20187
+        }
+      }
+    },
+    {
+      "study": "initial",
+      "caseId": "capture",
+      "variant": "baseline",
+      "repetition": 3,
+      "modelCalls": 27,
+      "parentCalls": 2,
+      "budgetEntries": 25,
+      "inspectionEntries": 46,
+      "originalCheckpointCount": 7,
+      "largestObservedV5RecordBytes": 228831,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 82,
+          "uncompressedCheckpointBytes": 21074853,
+          "zstdCheckpointBytes": 1503055,
+          "maxCheckpointBytes": 277298,
+          "finalBudgetLedgerBytes": 17392,
+          "finalInspectionLedgerBytes": 22075
+        },
+        "twoPhase": {
+          "checkpointCount": 57,
+          "uncompressedCheckpointBytes": 14699028,
+          "zstdCheckpointBytes": 1055062,
+          "maxCheckpointBytes": 277298,
+          "finalBudgetLedgerBytes": 17392,
+          "finalInspectionLedgerBytes": 22075
+        }
+      }
+    },
+    {
+      "study": "initial",
+      "caseId": "capture",
+      "variant": "candidate",
+      "repetition": 1,
+      "modelCalls": 32,
+      "parentCalls": 2,
+      "budgetEntries": 30,
+      "inspectionEntries": 59,
+      "originalCheckpointCount": 7,
+      "largestObservedV5RecordBytes": 228437,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 97,
+          "uncompressedCheckpointBytes": 25562464,
+          "zstdCheckpointBytes": 1930178,
+          "maxCheckpointBytes": 288009,
+          "finalBudgetLedgerBytes": 20880,
+          "finalInspectionLedgerBytes": 28722
+        },
+        "twoPhase": {
+          "checkpointCount": 67,
+          "uncompressedCheckpointBytes": 17716183,
+          "zstdCheckpointBytes": 1345890,
+          "maxCheckpointBytes": 288009,
+          "finalBudgetLedgerBytes": 20880,
+          "finalInspectionLedgerBytes": 28722
+        }
+      }
+    },
+    {
+      "study": "initial",
+      "caseId": "capture",
+      "variant": "candidate",
+      "repetition": 2,
+      "modelCalls": 29,
+      "parentCalls": 1,
+      "budgetEntries": 28,
+      "inspectionEntries": 68,
+      "originalCheckpointCount": 7,
+      "largestObservedV5RecordBytes": 226645,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 91,
+          "uncompressedCheckpointBytes": 23879549,
+          "zstdCheckpointBytes": 1873532,
+          "maxCheckpointBytes": 290023,
+          "finalBudgetLedgerBytes": 19493,
+          "finalInspectionLedgerBytes": 33421
+        },
+        "twoPhase": {
+          "checkpointCount": 63,
+          "uncompressedCheckpointBytes": 16598773,
+          "zstdCheckpointBytes": 1310539,
+          "maxCheckpointBytes": 290023,
+          "finalBudgetLedgerBytes": 19493,
+          "finalInspectionLedgerBytes": 33421
+        }
+      }
+    },
+    {
+      "study": "initial",
+      "caseId": "capture",
+      "variant": "candidate",
+      "repetition": 3,
+      "modelCalls": 31,
+      "parentCalls": 2,
+      "budgetEntries": 29,
+      "inspectionEntries": 47,
+      "originalCheckpointCount": 6,
+      "largestObservedV5RecordBytes": 233399,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 93,
+          "uncompressedCheckpointBytes": 24467003,
+          "zstdCheckpointBytes": 1827952,
+          "maxCheckpointBytes": 285670,
+          "finalBudgetLedgerBytes": 20159,
+          "finalInspectionLedgerBytes": 22652
+        },
+        "twoPhase": {
+          "checkpointCount": 64,
+          "uncompressedCheckpointBytes": 16885105,
+          "zstdCheckpointBytes": 1268668,
+          "maxCheckpointBytes": 285670,
+          "finalBudgetLedgerBytes": 20159,
+          "finalInspectionLedgerBytes": 22652
+        }
+      }
+    },
+    {
+      "study": "followup",
+      "caseId": "discovery",
+      "variant": "baseline",
+      "repetition": 1,
+      "modelCalls": 19,
+      "parentCalls": 2,
+      "budgetEntries": 17,
+      "inspectionEntries": 32,
+      "originalCheckpointCount": 5,
+      "largestObservedV5RecordBytes": 68598,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 56,
+          "uncompressedCheckpointBytes": 4828549,
+          "zstdCheckpointBytes": 952869,
+          "maxCheckpointBytes": 99758,
+          "finalBudgetLedgerBytes": 11838,
+          "finalInspectionLedgerBytes": 15374
+        },
+        "twoPhase": {
+          "checkpointCount": 39,
+          "uncompressedCheckpointBytes": 3386726,
+          "zstdCheckpointBytes": 669240,
+          "maxCheckpointBytes": 99758,
+          "finalBudgetLedgerBytes": 11838,
+          "finalInspectionLedgerBytes": 15374
+        }
+      }
+    },
+    {
+      "study": "followup",
+      "caseId": "discovery",
+      "variant": "baseline",
+      "repetition": 2,
+      "modelCalls": 24,
+      "parentCalls": 2,
+      "budgetEntries": 22,
+      "inspectionEntries": 45,
+      "originalCheckpointCount": 5,
+      "largestObservedV5RecordBytes": 71205,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 71,
+          "uncompressedCheckpointBytes": 6696364,
+          "zstdCheckpointBytes": 1356288,
+          "maxCheckpointBytes": 113140,
+          "finalBudgetLedgerBytes": 15320,
+          "finalInspectionLedgerBytes": 21623
+        },
+        "twoPhase": {
+          "checkpointCount": 49,
+          "uncompressedCheckpointBytes": 4654660,
+          "zstdCheckpointBytes": 943823,
+          "maxCheckpointBytes": 113140,
+          "finalBudgetLedgerBytes": 15320,
+          "finalInspectionLedgerBytes": 21623
+        }
+      }
+    },
+    {
+      "study": "followup",
+      "caseId": "discovery",
+      "variant": "baseline",
+      "repetition": 3,
+      "modelCalls": 2,
+      "parentCalls": 2,
+      "budgetEntries": 0,
+      "inspectionEntries": 0,
+      "originalCheckpointCount": 0,
+      "largestObservedV5RecordBytes": 0,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 0,
+          "uncompressedCheckpointBytes": 0,
+          "zstdCheckpointBytes": 0,
+          "maxCheckpointBytes": 0,
+          "finalBudgetLedgerBytes": 2,
+          "finalInspectionLedgerBytes": 2
+        },
+        "twoPhase": {
+          "checkpointCount": 0,
+          "uncompressedCheckpointBytes": 0,
+          "zstdCheckpointBytes": 0,
+          "maxCheckpointBytes": 0,
+          "finalBudgetLedgerBytes": 2,
+          "finalInspectionLedgerBytes": 2
+        }
+      }
+    },
+    {
+      "study": "followup",
+      "caseId": "discovery",
+      "variant": "candidate",
+      "repetition": 1,
+      "modelCalls": 26,
+      "parentCalls": 2,
+      "budgetEntries": 24,
+      "inspectionEntries": 44,
+      "originalCheckpointCount": 5,
+      "largestObservedV5RecordBytes": 57882,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 77,
+          "uncompressedCheckpointBytes": 6265693,
+          "zstdCheckpointBytes": 1326980,
+          "maxCheckpointBytes": 100624,
+          "finalBudgetLedgerBytes": 16701,
+          "finalInspectionLedgerBytes": 21115
+        },
+        "twoPhase": {
+          "checkpointCount": 53,
+          "uncompressedCheckpointBytes": 4346851,
+          "zstdCheckpointBytes": 921164,
+          "maxCheckpointBytes": 100624,
+          "finalBudgetLedgerBytes": 16701,
+          "finalInspectionLedgerBytes": 21115
+        }
+      }
+    },
+    {
+      "study": "followup",
+      "caseId": "discovery",
+      "variant": "candidate",
+      "repetition": 2,
+      "modelCalls": 37,
+      "parentCalls": 2,
+      "budgetEntries": 35,
+      "inspectionEntries": 82,
+      "originalCheckpointCount": 7,
+      "largestObservedV5RecordBytes": 124669,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 112,
+          "uncompressedCheckpointBytes": 18274505,
+          "zstdCheckpointBytes": 3365325,
+          "maxCheckpointBytes": 196810,
+          "finalBudgetLedgerBytes": 24385,
+          "finalInspectionLedgerBytes": 39327
+        },
+        "twoPhase": {
+          "checkpointCount": 77,
+          "uncompressedCheckpointBytes": 12645163,
+          "zstdCheckpointBytes": 2333298,
+          "maxCheckpointBytes": 196809,
+          "finalBudgetLedgerBytes": 24385,
+          "finalInspectionLedgerBytes": 39327
+        }
+      }
+    },
+    {
+      "study": "followup",
+      "caseId": "discovery",
+      "variant": "candidate",
+      "repetition": 3,
+      "modelCalls": 23,
+      "parentCalls": 2,
+      "budgetEntries": 21,
+      "inspectionEntries": 43,
+      "originalCheckpointCount": 5,
+      "largestObservedV5RecordBytes": 58222,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 68,
+          "uncompressedCheckpointBytes": 5441762,
+          "zstdCheckpointBytes": 1145408,
+          "maxCheckpointBytes": 98204,
+          "finalBudgetLedgerBytes": 14615,
+          "finalInspectionLedgerBytes": 20629
+        },
+        "twoPhase": {
+          "checkpointCount": 47,
+          "uncompressedCheckpointBytes": 3793279,
+          "zstdCheckpointBytes": 799174,
+          "maxCheckpointBytes": 98204,
+          "finalBudgetLedgerBytes": 14615,
+          "finalInspectionLedgerBytes": 20629
+        }
+      }
+    },
+    {
+      "study": "followup",
+      "caseId": "capture",
+      "variant": "baseline",
+      "repetition": 1,
+      "modelCalls": 13,
+      "parentCalls": 2,
+      "budgetEntries": 11,
+      "inspectionEntries": 14,
+      "originalCheckpointCount": 5,
+      "largestObservedV5RecordBytes": 216657,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 38,
+          "uncompressedCheckpointBytes": 8782528,
+          "zstdCheckpointBytes": 498653,
+          "maxCheckpointBytes": 237564,
+          "finalBudgetLedgerBytes": 7644,
+          "finalInspectionLedgerBytes": 6723
+        },
+        "twoPhase": {
+          "checkpointCount": 27,
+          "uncompressedCheckpointBytes": 6251879,
+          "zstdCheckpointBytes": 357020,
+          "maxCheckpointBytes": 237564,
+          "finalBudgetLedgerBytes": 7644,
+          "finalInspectionLedgerBytes": 6723
+        }
+      }
+    },
+    {
+      "study": "followup",
+      "caseId": "capture",
+      "variant": "baseline",
+      "repetition": 2,
+      "modelCalls": 23,
+      "parentCalls": 2,
+      "budgetEntries": 21,
+      "inspectionEntries": 36,
+      "originalCheckpointCount": 7,
+      "largestObservedV5RecordBytes": 259749,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 70,
+          "uncompressedCheckpointBytes": 19953282,
+          "zstdCheckpointBytes": 1482983,
+          "maxCheckpointBytes": 300564,
+          "finalBudgetLedgerBytes": 14607,
+          "finalInspectionLedgerBytes": 17300
+        },
+        "twoPhase": {
+          "checkpointCount": 49,
+          "uncompressedCheckpointBytes": 14005265,
+          "zstdCheckpointBytes": 1045997,
+          "maxCheckpointBytes": 300564,
+          "finalBudgetLedgerBytes": 14607,
+          "finalInspectionLedgerBytes": 17300
+        }
+      }
+    },
+    {
+      "study": "followup",
+      "caseId": "capture",
+      "variant": "baseline",
+      "repetition": 3,
+      "modelCalls": 47,
+      "parentCalls": 2,
+      "budgetEntries": 45,
+      "inspectionEntries": 90,
+      "originalCheckpointCount": 11,
+      "largestObservedV5RecordBytes": 335321,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 146,
+          "uncompressedCheckpointBytes": 56349677,
+          "zstdCheckpointBytes": 5110523,
+          "maxCheckpointBytes": 424138,
+          "finalBudgetLedgerBytes": 31352,
+          "finalInspectionLedgerBytes": 43184
+        },
+        "twoPhase": {
+          "checkpointCount": 101,
+          "uncompressedCheckpointBytes": 39125379,
+          "zstdCheckpointBytes": 3565781,
+          "maxCheckpointBytes": 424138,
+          "finalBudgetLedgerBytes": 31352,
+          "finalInspectionLedgerBytes": 43184
+        }
+      }
+    },
+    {
+      "study": "followup",
+      "caseId": "capture",
+      "variant": "candidate",
+      "repetition": 1,
+      "modelCalls": 24,
+      "parentCalls": 2,
+      "budgetEntries": 22,
+      "inspectionEntries": 48,
+      "originalCheckpointCount": 7,
+      "largestObservedV5RecordBytes": 282119,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 73,
+          "uncompressedCheckpointBytes": 22787339,
+          "zstdCheckpointBytes": 1836770,
+          "maxCheckpointBytes": 330817,
+          "finalBudgetLedgerBytes": 15337,
+          "finalInspectionLedgerBytes": 23447
+        },
+        "twoPhase": {
+          "checkpointCount": 51,
+          "uncompressedCheckpointBytes": 15965320,
+          "zstdCheckpointBytes": 1292842,
+          "maxCheckpointBytes": 330817,
+          "finalBudgetLedgerBytes": 15337,
+          "finalInspectionLedgerBytes": 23447
+        }
+      }
+    },
+    {
+      "study": "followup",
+      "caseId": "capture",
+      "variant": "candidate",
+      "repetition": 2,
+      "modelCalls": 30,
+      "parentCalls": 2,
+      "budgetEntries": 28,
+      "inspectionEntries": 85,
+      "originalCheckpointCount": 7,
+      "largestObservedV5RecordBytes": 259720,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 91,
+          "uncompressedCheckpointBytes": 27543267,
+          "zstdCheckpointBytes": 2320243,
+          "maxCheckpointBytes": 332870,
+          "finalBudgetLedgerBytes": 19521,
+          "finalInspectionLedgerBytes": 41963
+        },
+        "twoPhase": {
+          "checkpointCount": 63,
+          "uncompressedCheckpointBytes": 19141235,
+          "zstdCheckpointBytes": 1621930,
+          "maxCheckpointBytes": 332870,
+          "finalBudgetLedgerBytes": 19521,
+          "finalInspectionLedgerBytes": 41963
+        }
+      }
+    },
+    {
+      "study": "followup",
+      "caseId": "capture",
+      "variant": "candidate",
+      "repetition": 3,
+      "modelCalls": 21,
+      "parentCalls": 2,
+      "budgetEntries": 19,
+      "inspectionEntries": 37,
+      "originalCheckpointCount": 7,
+      "largestObservedV5RecordBytes": 284993,
+      "policies": {
+        "threePhase": {
+          "checkpointCount": 64,
+          "uncompressedCheckpointBytes": 19937852,
+          "zstdCheckpointBytes": 1611502,
+          "maxCheckpointBytes": 325835,
+          "finalBudgetLedgerBytes": 13244,
+          "finalInspectionLedgerBytes": 18262
+        },
+        "twoPhase": {
+          "checkpointCount": 45,
+          "uncompressedCheckpointBytes": 14053784,
+          "zstdCheckpointBytes": 1140817,
+          "maxCheckpointBytes": 325835,
+          "finalBudgetLedgerBytes": 13244,
+          "finalInspectionLedgerBytes": 18262
+        }
+      }
+    }
+  ],
+  "sourceArtifactsUnchanged": true
+}
