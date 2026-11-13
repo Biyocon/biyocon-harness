@@ -12,6 +12,8 @@ The Conductor run engine is divided into reusable packages, but the installed pr
 
 Make one versioned Conductor engine distribution whose canonical runtime remains in `packages/conductor/*`. Thin host bundles compose that same engine and its packed role, protocol, template, and image assets for each supported Harness host line. A separate optional Web UI bundle owns Conductor-specific subagent and owner-question presentation. Biyocon and another Harness fork install the same engine packages without copying source; each selects its compatible host bundle. The generic base, Web bundle, preset picker, session reader, and question UI gain only small reusable plugin extension points where required. The core never imports Conductor. The [core dependency inventory](2026-11-05-conductor-core-dependencies.md) records each host change with its file, purpose, and PR.
 
+The [shared-view rollout proposal](2026-11-13-conductor-shared-process-view-and-rollout.md) adds a canonical versioned projection and cross-app qualification to this delivery order; its separate R5 owner/security decision is required before changing the adapter-v1 owner-action restriction. External coordination files grant no approval. This packaging proposal remains active.
+
 ### Package and composition ownership
 
 | Current binding | Proposed owner and behavior |

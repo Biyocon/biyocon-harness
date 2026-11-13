@@ -12,6 +12,8 @@ Conductor 运行引擎已分为可复用的软件包，但已安装的产品还�
 
 建立一套有版本的 Conductor 引擎发行物，规范运行时仍位于 `packages/conductor/*`。针对每条受支持的 Harness 宿主版本线，以轻量宿主 bundle 组合相同的引擎及打包好的角色、协议、模板和图像资源。另一个可选 Web UI bundle 持有 Conductor 专属的 subagent 及所有者问题呈现。Biyocon 与另一个 Harness fork 安装同一套引擎包，无需复制源码；各自选择兼容的宿主 bundle。通用基础包、Web bundle、preset 列表、会话读取器及问题 UI 只在必要处增加小型、可复用的插件扩展点。核心绝不导入 Conductor。[核心依赖清单](2026-11-05-conductor-core-dependencies.md)记录每项宿主改动的文件、用途和 PR。
 
+[共享视图更新提案](2026-11-13-conductor-shared-process-view-and-rollout.md)在此交付顺序中补充规范版本化投影及跨应用验证；改变适配器 v1 的所有者操作限制前，必须完成其独立的 R5 所有者／安全决策。外部协调文件不授予批准。本打包提案继续有效。
+
 ### 软件包与组合的归属
 
 | 当前绑定 | 建议的归属及行为 |
