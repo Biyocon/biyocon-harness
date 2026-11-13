@@ -10,7 +10,7 @@ Conductor 的安装资源原先只由 CLI 构建生成。修改正典角色或�
 
 ## 决策
 
-[仅用于源码的入口](../../../../apps/cli/scripts/source-launch.ts)先等待[共用生成器](../../../../apps/cli/scripts/generate-conductor-skills.ts)完成，再导入普通 CLI。路径相对于安装位置，而不是任务目录。CLI 构建使用同一生成器；发布的 bin 不导入源码准备逻辑。生成失败时输出明确指向 Conductor 的诊断，等待 stderr 排空，并在 CLI 命令分派前退出，包括信息查询命令。[已安装 skill 的校验与路由规则](2026-10-24-conductor-installed-skills.md)仍然有效。
+[仅用于源码的预加载](../../../../packages/conductor/conductor-presets/scripts/prepare-source.ts)先等待[共用生成器](../../../../packages/conductor/conductor-presets/scripts/prepare-assets.ts)完成，再由 Node 启动普通 CLI 入口。路径相对于安装位置，而不是任务目录。rc.7 宿主 bundle 构建使用同一生成器；发布的 bin 不导入源码准备逻辑。生成失败时输出明确指向 Conductor 的诊断，等待 stderr 排空，并在 CLI 命令分派前退出，包括信息查询命令。[已安装 skill 的校验与路由规则](2026-10-24-conductor-installed-skills.md)仍然有效。
 
 生成器先读取正典字节并与安装文件比较，再创建暂存输出。输入一致时不执行文件系统修改。变更文件在唯一的同级暂存目录中完整写入并关闭。首次安装通过一次 rename 发布完整目录，在 POSIX 上保留父目录的访问权限。更新逐个替换文件，不删除活动目录：POSIX 使用 rename；Windows 对已有目标使用现有的 [ReplaceFileW 辅助函数](../../../../packages/fs/fs-local/src/win32.ts)，包括普通 Node 读取者仍持有的文件。全部替换成功后才 unlink 过期文件；解析后的文件系统路径会保护仅大小写不同但指向保留文件的别名。每次调用仅清理自身的暂存目录。
 

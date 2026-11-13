@@ -173,6 +173,7 @@ flowchart TD
   end
   subgraph group_conductor["packages/conductor"]
     pkg_conductor["conductor"]
+    pkg_conductor_host_rc7["conductor-host-rc7"]
     pkg_conductor_presets["conductor-presets"]
     pkg_tool_conductor["tool-conductor"]
   end
@@ -350,6 +351,7 @@ flowchart TD
   pkg_client_web --> pkg_invariants
   pkg_client_web_react --> pkg_invariants
   pkg_code_runtime --> pkg_invariants
+  pkg_conductor_host_rc7 --> pkg_invariants
   pkg_e2b --> pkg_invariants
   pkg_sdk_jsonrpc_demo --> pkg_invariants
   pkg_host_directory_picker --> pkg_invariants
@@ -1482,6 +1484,7 @@ flowchart TD
 | [`client-web`](../packages/client/web) | `client` | [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`client-web-react`](../packages/client/web-react) | `client` | [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`code-runtime`](../packages/code-runtime/code-runtime) | `code-runtime` | [`invariants`](../packages/runtime-diagnostics/invariants) |
+| [`conductor-host-rc7`](../packages/conductor/conductor-host-rc7) | `conductor` | [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`e2b`](../packages/e2b/e2b) | `e2b` | [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`sdk-jsonrpc-demo`](../packages/examples/jsonrpc-demo) | `examples` | [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`host-directory-picker`](../packages/host/directory-picker) | `host` | [`invariants`](../packages/runtime-diagnostics/invariants) |

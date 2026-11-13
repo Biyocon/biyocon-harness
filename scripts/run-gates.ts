@@ -377,6 +377,7 @@ function ciStaticGates(options: { ownsBuild: boolean }): Gate[] {
 function ciArtifactGates(): Gate[] {
   return [
     pnpmScript('build', 'build'),
+    pnpmScript('conductor-pack', 'verify-conductor-pack', { needs: ['build'] }),
     pnpmScript('publint', 'publint', { needs: ['build'] }),
     pnpmScript('node-next-types', 'verify-node-next-types', {
       label: 'node-next types',
@@ -614,6 +615,7 @@ function docSyncLeafGates(options: {
     pnpmScript('public-repository-links', 'verify-public-repository-links', { label: 'public repository links' }),
     pnpmScript('doc-refs', 'verify-doc-refs', { label: 'doc refs' }),
     pnpmScript('package-paths', 'verify-package-paths', { label: 'package paths' }),
+    pnpmScript('conductor-resources', 'verify-conductor-resources'),
     pnpmScript('config-source-ownership', 'verify-config-source-ownership', { label: 'config source ownership' }),
     pnpmScript('package-readme-model-experience', 'verify-package-readme-model-experience', { label: 'package README model experience' }),
     pnpmScript('mermaid', 'verify-mermaid'),

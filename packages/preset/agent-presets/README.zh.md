@@ -152,3 +152,5 @@ Indirectly, through the plugins a standing composition registers, which own ever
 - **健康是形状检查，不是挂载** —— 发现过程只证明组装能以加载器方言解析、由具名行组成，不证明每一行的模块都能解析并激活；引用不存在的包的行仍在第一个会话处失败，并回滚该会话的创建。
 - **副本是会漂移的快照** —— 升级部署不会更新随附 preset 的副本，本层也没有表达「standard 加一处改动」的 patch 语义（那是 bundle 层 `cordis.patch.yml` 的能力）；随附集合自己也接受同样的代价——`cordis` 与 `code` 就是 `standard` 的完整副本——换来整份组装在一个文件里可读。
 - **根目录扫描不做监听** —— 每次读取都实际访问文件系统，这让名单保持新鲜，但每次 `list()` 会对每个根目录产生一次 `readdir`。
+
+跨 system 根目录的重复 preset id 会被拒绝，包括 CLI 与 bundle 根目录。user 根目录保持首个根目录优先，不能隐藏 system 根目录之间的冲突。

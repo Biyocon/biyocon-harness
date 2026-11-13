@@ -1,0 +1,3 @@
+name: Conductor mode
+description: Multi-role work with durable gates, bounded fresh specialists, independent audits, and explicit closeout authorization.
+order: 5

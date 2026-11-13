@@ -19,7 +19,9 @@ describe('source launch prepares installed Conductor instructions', () => {
     const initial = await f.launch()
     expect(initial.stderr).toBe('')
     expect(initial.exitCode).toBe(0)
-    expect(JSON.parse(initial.stdout)).toEqual({ mounted: true, roleFresh: false, sharedFresh: false, protocolFresh: false })
+    expect(JSON.parse(initial.stdout)).toEqual({
+      launchArgs: [], mounted: true, roleFresh: false, sharedFresh: false, protocolFresh: false,
+    })
     for (const [path, marker] of [
       ['conductor/roles/01-detective.md', 'ROLE'],
       ['conductor/README.md', 'SHARED'],
@@ -28,7 +30,9 @@ describe('source launch prepares installed Conductor instructions', () => {
     const next = await f.launch()
     expect(next.stderr).toBe('')
     expect(next.exitCode).toBe(0)
-    expect(JSON.parse(next.stdout)).toEqual({ mounted: true, roleFresh: true, sharedFresh: true, protocolFresh: true })
+    expect(JSON.parse(next.stdout)).toEqual({
+      launchArgs: [], mounted: true, roleFresh: true, sharedFresh: true, protocolFresh: true,
+    })
   }, 30_000)
 
   it('allows two simultaneous source launches with separate homes and one installation', async () => {
@@ -49,13 +53,13 @@ describe('source launch prepares installed Conductor instructions', () => {
     const result = await f.launch()
     expect(result.exitCode).not.toBe(0)
     expect(result.stdout).not.toContain('"mounted":true')
-    expect(result.stderr).toMatch(/conductor-detective|conductor-roles|YAML|end of the stream/)
+    expect(result.stderr).toMatch(/conductor-detective|01-detective.md|conductor-roles|YAML|end of the stream/)
   }, 30_000)
 
   it('reports generation failure and never boots with stale resources', async () => {
     const f = await fixture()
     expect((await f.launch()).exitCode).toBe(0)
-    const installed = join(f.cli, 'config/agent-presets/conductor/skills/README.md')
+    const installed = join(f.checkout, 'packages/conductor/conductor-host-rc7/presets/conductor/skills/README.md')
     const before = await readFile(installed)
     await rm(join(f.checkout, '.agents/conductor/README.md'))
     const result = await f.launch()
@@ -63,5 +67,30 @@ describe('source launch prepares installed Conductor instructions', () => {
     expect(result.stdout).toBe('')
     expect(result.stderr).toContain('dsh: could not prepare Conductor skills:')
     expect(await readFile(installed)).toEqual(before)
+  }, 30_000)
+})
+
+
+describe('bundle roots through the real source CLI composition', () => {
+  it('trusts only the CLI and explicit bundle roots, despite configured system trust', async () => {
+    const f = await fixture()
+    const result = await f.launch(undefined, 'combined')
+    expect(result.exitCode, result.stderr).toBe(0)
+    expect((JSON.parse(result.stdout) as { roster: Array<[string, string]> }).roster).toEqual([['cli', 'system'], ['bundle', 'system'], ['configured', 'user']])
+  }, 30_000)
+
+  it('does not promote a patch root or reject its duplicate id as a system collision', async () => {
+    const f = await fixture()
+    const result = await f.launch(undefined, 'patch-collision')
+    expect(result.exitCode, result.stderr).toBe(0)
+    expect((JSON.parse(result.stdout) as { roster: Array<[string, string]> }).roster).toEqual([['cli', 'system'], ['bundle', 'system']])
+    expect(result.stderr).not.toContain('duplicate system preset')
+  }, 30_000)
+
+  it('refuses a bundle id that collides with the CLI system root', async () => {
+    const f = await fixture()
+    const result = await f.launch(undefined, 'collision')
+    expect(result.exitCode).not.toBe(0)
+    expect(result.stderr).toContain('duplicate system preset "bundle"')
   }, 30_000)
 })

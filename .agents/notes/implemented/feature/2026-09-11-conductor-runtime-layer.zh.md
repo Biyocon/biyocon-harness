@@ -144,7 +144,7 @@ Gate G 是 The Arbiter。Runtime 加载 [`07-the-arbiter.md`](../../../../.agent
 - `packages/conductor/conductor/src/types.ts`、`state.ts`、`persistence.ts`、`routing.ts`、`run-id.ts`、`drive.ts` — run/gate 词汇、状态机、持久化/恢复、路由、run-id 生成以及分发驱动。
 - `packages/conductor/tool-conductor/src/index.ts`、`capability.ts`、`ralph.ts` — 面向模型的 `conductor` 工具、按 stage 的 executor 限制，以及与 `packages/workflow/tool-ralph` 所拥有的共享 Ralph runner 的 Headsman 集成。
 - `packages/conductor/conductor-presets/src/index.ts` — 专家角色 skill 元数据。
-- `apps/cli/config/agent-presets/conductor/agent.cordis.yml` — 挂载角色 loader（隔离的 `skill-filesystem`）和工具的 preset。
+- `packages/conductor/conductor-presets/presets/conductor/agent.cordis.yml` — 挂载角色 loader（隔离的 `skill-filesystem`）和工具的 preset。
 - `.agents/conductor/roles/*.md` 和 `.agents/conductor/templates/*.md` — 七个专家角色文件，以及 run、dispatch、envelope、gate、baseline 和 closeout 的操作模板。
 - `scripts/gen-tool-catalog.ts` — 注册 `@deepseek-ai/dsh-tool-conductor`；`docs/tool-catalog.md` 和 `docs/config-catalog.md` 已重新生成。
 

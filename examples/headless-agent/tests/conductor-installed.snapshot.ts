@@ -16,7 +16,7 @@ const root = fileURLToPath(new URL('../../../', import.meta.url))
 const configPath = join(root, 'examples/headless-agent/conductor-installed.cordis.snapshot.yml')
 const criticOwnerConfigPath = join(root, 'examples/headless-agent/conductor-critic-owner.cordis.snapshot.yml')
 const driver = join(root, 'examples/headless-agent/tests/fixtures/conductor-installed-driver.ts')
-const shipped = join(root, 'apps/cli/config/agent-presets/conductor')
+const shipped = join(root, 'packages/conductor/conductor-host-rc7/presets/conductor')
 const expectedDirectory = fileURLToPath(new URL('./snapshots/conductor-installed/', import.meta.url))
 
 const plan = '# Supplied plan\n\nScope: documentation only. Review ownership and propose examples. Do not implement.\n'
@@ -119,7 +119,7 @@ describe('installed Conductor through the headless example', () => {
         if (resolveExampleMode() === 'src') {
           const fresh = await sourceLaunchFixture()
           try {
-            const preset = join(fresh.cli, 'config/agent-presets/conductor')
+            const preset = join(fresh.checkout, 'packages/conductor/conductor-host-rc7/presets/conductor')
             await expect(readFile(join(preset, 'skills/README.md'))).rejects.toMatchObject({ code: 'ENOENT' })
             const launch = await fresh.launch(['--version'])
             expect(launch.exitCode, launch.stderr).toBe(0)
@@ -333,7 +333,7 @@ describe('installed Conductor through the headless example', () => {
       prepare: async (cwd) => {
         expect(relative(root, cwd)).toMatch(/^\.\./)
         await mkdir(join(cwd, '.git'))
-        await cp(join(root, 'apps/cli/config/agent-presets/conductor'), join(cwd, 'installed-presets/conductor'), { recursive: true })
+        await cp(join(root, 'packages/conductor/conductor-host-rc7/presets/conductor'), join(cwd, 'installed-presets/conductor'), { recursive: true })
         if (scenario === 'critic-budget') {
           const presetPath = join(cwd, 'installed-presets/conductor/agent.cordis.yml')
           const preset = await readFile(presetPath, 'utf8')
@@ -561,7 +561,7 @@ describe('installed Conductor through the headless example', () => {
       env: { DSH_SNAPSHOT: 'replay', DSH_TELEMETRY_DISABLED: '1', DSH_CONDUCTOR_INTAKE_SCENARIO: 'critic-resume-pause' },
       prepare: async (cwd) => {
         await mkdir(join(cwd, '.git'))
-        await cp(join(root, 'apps/cli/config/agent-presets/conductor'), join(cwd, 'installed-presets/conductor'), { recursive: true })
+        await cp(join(root, 'packages/conductor/conductor-host-rc7/presets/conductor'), join(cwd, 'installed-presets/conductor'), { recursive: true })
         await writeFile(join(cwd, 'plan.md'), plan)
         await writeFile(join(cwd, 'AGENTS.md'), contrary)
       },

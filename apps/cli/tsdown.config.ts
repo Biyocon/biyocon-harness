@@ -1,5 +1,4 @@
 import { defineConfig } from 'tsdown'
-import { generateConductorSkills } from './scripts/generate-conductor-skills.ts'
 
 /**
  * The dsh CLI ships one entry: the `bin` referenced by package.json `bin`.
@@ -16,5 +15,4 @@ export default defineConfig({
   fixedExtension: false,
   dts: false,
   clean: false,
-  onSuccess: generateConductorSkills,
 })

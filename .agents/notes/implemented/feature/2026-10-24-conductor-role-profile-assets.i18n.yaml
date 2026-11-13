@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-24-conductor-role-profile-assets.md
-2026-10-24-conductor-role-profile-assets.md: 65e89575eab51f2609c2cbe73582f9d0b87eb681
-2026-10-24-conductor-role-profile-assets.zh.md: b155c2fec533171ec848b46fa139add108744ca5
+2026-10-24-conductor-role-profile-assets.md: 7b94c1d2f58784657561caa3145648e9701569ad
+2026-10-24-conductor-role-profile-assets.zh.md: 45c8752367acb90e55a06996f836b35b901b873a

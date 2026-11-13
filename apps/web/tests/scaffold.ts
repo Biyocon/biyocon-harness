@@ -96,8 +96,9 @@ export function webSnapshotMode(): WebSnapshotMode {
   throw new Error(`DSH_SNAPSHOT must be replay, record, or refresh; got ${JSON.stringify(value)}`)
 }
 
-/** The shipped composition under test: the dsh-base and dsh-web-app bundle patches over the empty profile root. */
+/** The shipped base, Conductor host and web bundle patches over the empty profile root. */
 const BASE_PATCH_PATH = join(REPO_ROOT, 'packages/bundle/base/cordis.patch.yml')
+const CONDUCTOR_PATCH_PATH = join(REPO_ROOT, 'packages/conductor/conductor-host-rc7/cordis.patch.yml')
 const WEB_PATCH_PATH = join(REPO_ROOT, 'packages/bundle/web-app/cordis.patch.yml')
 /** The installation anchor whose dependency surface the profile module fallback mirrors. */
 const INSTALL_ANCHOR = join(REPO_ROOT, 'apps/cli/package.json')
@@ -366,7 +367,10 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
   // (bundle patches in dsh.profile.bundles order), applied over the SAME empty root (a
   // patch id that stops matching a row fails the boot sweep loudly instead of
   // drifting).
-  const basePatches = loadOverlayPatches('web e2e scaffold', BASE_PATCH_PATH)
+  const basePatches = [
+    ...loadOverlayPatches('web e2e scaffold', BASE_PATCH_PATH),
+    ...loadOverlayPatches('web e2e scaffold', CONDUCTOR_PATCH_PATH),
+  ]
   const surfacePatches = loadOverlayPatches('web e2e scaffold', WEB_PATCH_PATH)
   const extraOverlayPatches = options.extraOverlayPath === undefined
     ? []
@@ -392,7 +396,10 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       id: 'agent-presets',
       config: {
         default: 'standard',
-        roots: [{ path: SHIPPED_PRESET_DIR, trust: 'system' }],
+        roots: [
+          { path: SHIPPED_PRESET_DIR, trust: 'system' },
+          { path: join(REPO_ROOT, 'packages/conductor/conductor-host-rc7/presets'), trust: 'system' },
+        ],
         includeUserRoot: false,
       },
     },

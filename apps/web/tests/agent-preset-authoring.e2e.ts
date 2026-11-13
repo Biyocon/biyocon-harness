@@ -60,6 +60,7 @@ describe('web e2e: agent-preset authoring is a host-side copy', () => {
       agentPresets: {
         roots: [
           { path: SHIPPED_PRESETS, trust: 'system' },
+          { path: fileURLToPath(new URL('../../../packages/conductor/conductor-host-rc7/presets', import.meta.url)), trust: 'system' },
           { path: userRoot, trust: 'user' },
         ],
         default: 'standard',

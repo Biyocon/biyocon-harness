@@ -5,8 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 /**
  * Keyless smoke for SOURCE `dsh` execution: run `apps/cli/scripts/source-launch.ts`
- * with the exact production runtime vector (`node --import tsx/esm`, the
- * vector the root `dsh` script invokes directly) and assert the
+ * with the production ESM hook and package-owned preparation preload and assert the
  * required-config diagnostic. The Node compatibility matrix runs this
  * WHOLE file, so a Node release changing module hooks or TypeScript handling
  * breaks this gate instead of every developer's `pnpm dsh`; the built-bin
@@ -21,11 +20,11 @@ describe('dsh SOURCE launcher (node --import tsx/esm)', () => {
     const rootPackage = JSON.parse(await readFile(new URL('../../../package.json', import.meta.url), 'utf8')) as {
       readonly scripts?: Record<string, string>
     }
-    expect(rootPackage.scripts?.dsh).toBe('node --import tsx/esm apps/cli/scripts/source-launch.ts')
+    expect(rootPackage.scripts?.dsh).toBe('node --import tsx/esm --import ./packages/conductor/conductor-presets/scripts/prepare-source.ts apps/cli/scripts/source-launch.ts')
   })
 
   it('boots the source entry and requires a profile', async () => {
-    const result = await execa(process.execPath, ['--import', 'tsx/esm', dshSourceBin], {
+    const result = await execa(process.execPath, ['--import', 'tsx/esm', '--import', './packages/conductor/conductor-presets/scripts/prepare-source.ts', dshSourceBin], {
       cwd: repoRoot,
       input: '',
       timeout: 25_000,

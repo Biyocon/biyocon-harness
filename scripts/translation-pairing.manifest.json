@@ -3,7 +3,7 @@
     ".agents/notes/AGENTS.md",
     ".agents/notes/implemented/AGENTS.md",
     ".agents/notes/implemented/CLAUDE.md",
-    "apps/cli/config/agent-presets/conductor/skills/",
+    "packages/conductor/conductor-host-rc7/presets/",
     "docs/AGENTS.md",
     "docs/cordis-api/inherited.md",
     "docs/i18n/style-samples.md",

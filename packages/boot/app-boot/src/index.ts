@@ -46,6 +46,7 @@ export {
   type DshProfileManifest,
   type Profile,
   type ProfileLayer,
+  type ProfileBundleMigration,
   type ProfileManifest,
 } from './profile.ts'
 

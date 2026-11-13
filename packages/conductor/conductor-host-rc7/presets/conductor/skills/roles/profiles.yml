@@ -1,0 +1,33 @@
+version: 1
+profiles:
+  conductor:
+    displayName: The Conductor
+    avatar: 00-conductor.webp
+  detective:
+    skill: conductor-detective
+    displayName: Detective
+    avatar: 01-detective.webp
+  strategist:
+    skill: conductor-strategist
+    displayName: Strategist
+    avatar: 02-strategist.webp
+  devils-advocate:
+    skill: conductor-devils-advocate
+    displayName: Devil's Advocate
+    avatar: 03-devils-advocate.webp
+  headsman:
+    skill: conductor-headsman
+    displayName: Headsman
+    avatar: 04-headsman.webp
+  auditor:
+    skill: conductor-auditor
+    displayName: Auditor
+    avatar: 05-auditor.webp
+  integrator:
+    skill: conductor-integrator
+    displayName: Integrator
+    avatar: 06-integrator.webp
+  arbiter:
+    skill: conductor-arbiter
+    displayName: The Arbiter
+    avatar: 07-the-arbiter.webp

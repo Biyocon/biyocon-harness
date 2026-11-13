@@ -174,9 +174,9 @@ importers:
       '@deepseek-ai/dsh-compaction-tool-result-pruner':
         specifier: workspace:^
         version: link:../../packages/compaction/compaction-tool-result-pruner
-      '@deepseek-ai/dsh-conductor-presets':
+      '@deepseek-ai/dsh-conductor-host-rc7':
         specifier: workspace:^
-        version: link:../../packages/conductor/conductor-presets
+        version: link:../../packages/conductor/conductor-host-rc7
       '@deepseek-ai/dsh-cordis-client-runner':
         specifier: workspace:^
         version: link:../../packages/extensions/cordis-client-runner
@@ -255,9 +255,6 @@ importers:
       '@deepseek-ai/dsh-tool-bash-persistent':
         specifier: workspace:^
         version: link:../../packages/shell/tool-bash-persistent
-      '@deepseek-ai/dsh-tool-conductor':
-        specifier: workspace:^
-        version: link:../../packages/conductor/tool-conductor
       '@deepseek-ai/dsh-tool-cordis':
         specifier: workspace:^
         version: link:../../packages/extensions/tool-cordis
@@ -1049,9 +1046,6 @@ importers:
       '@deepseek-ai/dsh-compaction-tool-result-pruner':
         specifier: workspace:^
         version: link:../../compaction/compaction-tool-result-pruner
-      '@deepseek-ai/dsh-conductor':
-        specifier: workspace:^
-        version: link:../../conductor/conductor
       '@deepseek-ai/dsh-credentials-local':
         specifier: workspace:^
         version: link:../../credentials/credentials-local
@@ -3397,6 +3391,52 @@ importers:
         specifier: workspace:^
         version: link:../../session/session-projection
 
+  packages/conductor/conductor-host-rc7:
+    dependencies:
+      '@deepseek-ai/dsh-agent-instructions':
+        specifier: workspace:^
+        version: link:../../context/agent-instructions
+      '@deepseek-ai/dsh-conductor':
+        specifier: workspace:^
+        version: link:../conductor
+      '@deepseek-ai/dsh-conductor-presets':
+        specifier: workspace:^
+        version: link:../conductor-presets
+      '@deepseek-ai/dsh-persona':
+        specifier: workspace:^
+        version: link:../../preset/persona
+      '@deepseek-ai/dsh-skill':
+        specifier: workspace:^
+        version: link:../../skill/skill
+      '@deepseek-ai/dsh-tool-conductor':
+        specifier: workspace:^
+        version: link:../tool-conductor
+      '@deepseek-ai/dsh-tool-fs':
+        specifier: workspace:^
+        version: link:../../fs/tool-fs
+      '@deepseek-ai/dsh-tool-fs-search':
+        specifier: workspace:^
+        version: link:../../fs/tool-fs-search
+      '@deepseek-ai/dsh-workflow-worker-thread':
+        specifier: workspace:^
+        version: link:../../workflow/workflow-worker-thread
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-app-boot':
+        specifier: workspace:^
+        version: link:../../boot/app-boot
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:^
+        version: link:../../core/session
+      '@deepseek-ai/dsh-session-projection':
+        specifier: workspace:^
+        version: link:../../session/session-projection
+
   packages/conductor/conductor-presets:
     dependencies:
       '@deepseek-ai/dsh-scope':
@@ -3412,12 +3452,18 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-fs-local':
+        specifier: workspace:^
+        version: link:../../fs/fs-local
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
       '@deepseek-ai/dsh-skill':
         specifier: workspace:^
         version: link:../../skill/skill
+      execa:
+        specifier: ^10.0.0
+        version: 10.0.0
 
   packages/conductor/tool-conductor:
     dependencies:

@@ -70,7 +70,8 @@ describe('shipped UI translations', () => {
   })
 
   it.each(['standard', 'code', 'minimal', 'cordis', 'conductor'])('%s preset metadata contains no Chinese UI copy', (id) => {
-    expect(readFileSync(`apps/cli/config/agent-presets/${id}/preset.yml`, 'utf8')).not.toMatch(/\p{Script=Han}/u)
+    const root = id === 'conductor' ? 'packages/conductor/conductor-host-rc7/presets' : 'apps/cli/config/agent-presets'
+    expect(readFileSync(`${root}/${id}/preset.yml`, 'utf8')).not.toMatch(/\p{Script=Han}/u)
   })
 
   it.each(files)('%s has matching English and Danish keys and interpolation fields', (path) => {

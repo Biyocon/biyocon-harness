@@ -24,9 +24,9 @@
 
 import { createRequire } from 'node:module'
 import {
-  existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, symlinkSync, unlinkSync, writeFileSync,
+  existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, statSync, symlinkSync, unlinkSync, writeFileSync,
 } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import { applyEntryPatches, type PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
@@ -42,12 +42,16 @@ export const PROFILE_PATCH_FILENAME = 'cordis.patch.yml'
 export interface DshBundleManifest {
   /** The patch layer this bundle exports, relative to its package root. */
   patch: string
+  /** Optional rc.7 preset directory inside this explicitly enabled bundle. */
+  presetRoot?: string
 }
 
 /** The profile half of the `dsh` manifest section: what a profile directory composes. */
 export interface DshProfileManifest {
   /** Ordered bundle layer list (package names). */
   bundles?: string[]
+  /** Installation upgrades already applied; removing a bundle afterwards is respected. */
+  appliedBundleMigrations?: string[]
 }
 
 /**
@@ -79,6 +83,18 @@ export interface ProfileLayer {
   patchPath: string
   /** The parsed patch list. */
   patches: PatchOptions[]
+  /** Real installation-contained preset root declared by this explicit bundle. */
+  presetRoot?: string
+}
+
+/** One installation-owned extraction from an existing profile bundle. */
+export interface ProfileBundleMigration {
+  /** Stable identity recorded once in the profile manifest. */
+  id: string
+  /** Existing bundle whose formerly implicit behavior is being extracted. */
+  after: string
+  /** Bundle to record explicitly after that existing bundle. */
+  bundle: string
 }
 
 /** A loaded profile: resolved bundle layers plus the user's own patch layer. */
@@ -311,6 +327,41 @@ function normalizeShippedProfile(name: string, dir: string, manifest: ProfileMan
   return normalized
 }
 
+/** Preserve extracted behavior once, while permitting a later explicit opt-out. */
+function migrateProfileBundles(dir: string, manifest: ProfileManifest, migrations: readonly ProfileBundleMigration[]): ProfileManifest {
+  const profile = manifest.dsh?.profile
+  if (profile?.bundles === undefined || migrations.length === 0) return manifest
+  const applied = profile.appliedBundleMigrations ?? []
+  if (!Array.isArray(applied) || !applied.every(value => typeof value === 'string')) {
+    throw new Error('dsh: appliedBundleMigrations must be an array of strings')
+  }
+  const bundles = [...profile.bundles]
+  const completed = [...applied]
+  for (const migration of migrations) {
+    if (completed.includes(migration.id) || !bundles.includes(migration.after)) continue
+    if (!bundles.includes(migration.bundle)) bundles.splice(bundles.indexOf(migration.after) + 1, 0, migration.bundle)
+    completed.push(migration.id)
+  }
+  if (completed.length === applied.length) return manifest
+  const updated = { ...manifest, dsh: { ...manifest.dsh, profile: { ...profile, bundles, appliedBundleMigrations: completed } } }
+  writeProfileManifest(dir, updated)
+  return updated
+}
+
+/** Resolve a declared preset root, refusing absolute paths and package or symlink escapes. */
+function bundlePresetRoot(packageDir: string, declared: unknown): string | undefined {
+  if (declared === undefined) return undefined
+  if (typeof declared !== 'string' || declared.length === 0 || isAbsolute(declared)) {
+    throw new Error('dsh: dsh.bundle.presetRoot must be a nonempty package-relative directory')
+  }
+  const root = realpathSync(resolve(packageDir, declared))
+  const local = relative(realpathSync(packageDir), root)
+  if (isAbsolute(local) || local === '..' || local.startsWith('..' + sep) || !statSync(root).isDirectory()) {
+    throw new Error('dsh: dsh.bundle.presetRoot must remain inside its installed package')
+  }
+  return root
+}
+
 /**
  * Resolve a package's root directory from one anchor without depending on the
  * package exporting `./package.json` (`require.resolve` would need that):
@@ -370,11 +421,11 @@ export function resolveBundleDir(
  */
 export function loadProfile(
   binName: string, name: string, installAnchor: string, home: string = resolveDshHome(),
-  options: { userLayer?: boolean } = {},
+  options: { userLayer?: boolean; bundles?: readonly string[]; migrations?: readonly ProfileBundleMigration[] } = {},
 ): Profile {
   const dir = resolveProfileDir(name, home)
   if (!existsSync(join(dir, 'package.json'))) {
-    const template = PROFILE_TEMPLATES[name]
+    const template = options.bundles ?? PROFILE_TEMPLATES[name]
     if (template === undefined) {
       throw new Error(
         `${binName}: profile ${JSON.stringify(name)} does not exist; create it with 'dsh plugin --profile ${name} add <package>'`,
@@ -382,7 +433,8 @@ export function loadProfile(
     }
     initProfile(dir, template)
   }
-  const manifest = normalizeShippedProfile(name, dir, readProfileManifest(binName, dir))
+  const existing = normalizeShippedProfile(name, dir, readProfileManifest(binName, dir))
+  const manifest = migrateProfileBundles(dir, existing, options.migrations ?? [])
   // A hand-written profile manifest may omit the dsh section entirely.
   const bundles = manifest.dsh?.profile?.bundles ?? []
   const layers = bundles.map((packageName): ProfileLayer => {
@@ -393,7 +445,11 @@ export function loadProfile(
       throw new Error(`${binName}: profile bundle ${JSON.stringify(packageName)} declares no dsh.bundle in its package.json`)
     }
     const patchPath = join(packageDir, declared)
-    return { packageName, packageDir, patchPath, patches: loadOverlayPatches(binName, patchPath) }
+    const presetRoot = bundlePresetRoot(packageDir, bundleManifest.dsh?.bundle?.presetRoot)
+    return {
+      packageName, packageDir, patchPath, patches: loadOverlayPatches(binName, patchPath),
+      ...(presetRoot === undefined ? {} : { presetRoot }),
+    }
   })
   const patchPath = join(dir, PROFILE_PATCH_FILENAME)
   const patches = options.userLayer !== false && existsSync(patchPath)

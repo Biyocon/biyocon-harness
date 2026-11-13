@@ -44,6 +44,7 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
  * blocks. A package moves on or off this list with its context behavior.
  */
 const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
+  'packages/conductor/conductor-host-rc7': { kind: 'indirect', reason: 'The static bundle composes the same preset and projections; the owning runtime packages render model context.' },
   'packages/conductor/conductor-presets': { kind: 'indirect', reason: 'The installed providers supply role and protocol bodies; dsh-tool-conductor owns their model-visible injection.' },
   'packages/attachment/attachment': { kind: 'indirect', reason: 'The storage seam delegates model request rendering to provider adapters.' },
   'packages/attachment/attachment-local': { kind: 'indirect', reason: 'The local backend delegates model request rendering to provider adapters.' },

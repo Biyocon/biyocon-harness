@@ -144,7 +144,7 @@ Gate G is The Arbiter. The runtime loads [`07-the-arbiter.md`](../../../../.agen
 - `packages/conductor/conductor/src/types.ts`, `state.ts`, `persistence.ts`, `routing.ts`, `run-id.ts`, `drive.ts` — run/gate vocabulary, state machine, persistence/resume, routing, run-id minting, and the dispatch driver.
 - `packages/conductor/tool-conductor/src/index.ts`, `capability.ts`, `ralph.ts` — the model-facing `conductor` tool, per-stage executor restrictions, and Headsman integration with the shared Ralph runner owned by `packages/workflow/tool-ralph`.
 - `packages/conductor/conductor-presets/src/index.ts` — the specialist role-skill metadata.
-- `apps/cli/config/agent-presets/conductor/agent.cordis.yml` — preset that mounts the role loader (an isolated `skill-filesystem`) and the tool.
+- `packages/conductor/conductor-presets/presets/conductor/agent.cordis.yml` — preset that mounts the role loader (an isolated `skill-filesystem`) and the tool.
 - `.agents/conductor/roles/*.md` and `.agents/conductor/templates/*.md` — the seven specialist role files and the operational run, dispatch, envelope, gate, baseline, and closeout templates.
 - `scripts/gen-tool-catalog.ts` — registers `@deepseek-ai/dsh-tool-conductor`; `docs/tool-catalog.md` and `docs/config-catalog.md` regenerated.
 

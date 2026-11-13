@@ -788,6 +788,25 @@
       "ignoreDependencies": [
         "@deepseek-ai/.+"
       ]
+    },
+    "packages/conductor/conductor-host-rc7": {
+      "entry": [
+        "tests/**/*.e2e.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "tests/**/*.ts"
+      ],
+      "ignoreDependencies": [
+        "@deepseek-ai/dsh-tool-conductor",
+        "@deepseek-ai/dsh-persona",
+        "@deepseek-ai/dsh-agent-instructions",
+        "@deepseek-ai/dsh-tool-fs",
+        "@deepseek-ai/dsh-tool-fs-search",
+        "@deepseek-ai/dsh-workflow-worker-thread",
+        "@deepseek-ai/dsh-conductor-presets",
+        "@deepseek-ai/dsh-skill"
+      ]
     }
   }
 }

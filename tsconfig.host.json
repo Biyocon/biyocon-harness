@@ -91,6 +91,7 @@
     "examples/*/start.ts",
     "examples/*/tests/**/*.ts",
     "packages/*/*/tests/**/*.ts",
+    "packages/conductor/conductor-presets/scripts/**/*.ts",
     "scripts/**/*.ts",
     "website/**/*.ts",
     "website/.vitepress/**/*.ts"
@@ -276,6 +277,7 @@
     { "path": "./packages/conductor/conductor" },
     { "path": "./packages/conductor/tool-conductor" },
     { "path": "./packages/conductor/conductor-presets" },
+    { "path": "./packages/conductor/conductor-host-rc7" },
     { "path": "./packages/todo/tool-todo" },
     { "path": "./packages/plan/plan-mode" },
     { "path": "./packages/preset/agent-presets" },

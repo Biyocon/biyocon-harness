@@ -32,6 +32,10 @@ beforeEach(() => {
   fsHarness.nextReadError = undefined
 })
 
+it('rejects duplicate system ids even when an earlier user root shadows them', async () => {
+  await expect(discoverPresets([USER, SYSTEM, SYSTEM])).rejects.toThrow('duplicate system preset')
+})
+
 describe('display order', () => {
   it('puts declared order first, then everything else by id', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-order-'))

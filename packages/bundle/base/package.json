@@ -115,8 +115,7 @@
     "@deepseek-ai/dsh-web": "workspace:^",
     "@deepseek-ai/dsh-web-search-deepseek": "workspace:^",
     "@deepseek-ai/dsh-workflow-worker-thread": "workspace:^",
-    "@deepseek-ai/dsh-agent-instructions": "workspace:^",
-    "@deepseek-ai/dsh-conductor": "workspace:^"
+    "@deepseek-ai/dsh-agent-instructions": "workspace:^"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-invariants": "workspace:^",

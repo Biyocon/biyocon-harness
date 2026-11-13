@@ -194,7 +194,8 @@ export class AgentPresets extends Service {
 
   /**
    * Every preset the configured roots currently supply.
-   * @returns the presets, first-root-wins per id.
+   * @returns the presets, first-root-wins except duplicate system ids.
+   * @throws when two system roots provide the same preset id.
    */
   async list(): Promise<AgentPreset[]> {
     return await discoverPresets(this.resolvedRoots)

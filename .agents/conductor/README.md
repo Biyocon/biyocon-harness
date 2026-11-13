@@ -1,6 +1,6 @@
 # Conductor-team
 
-Dette er et sæt tilpassede rolle-instruktioner til en Conductor-session. Hver rollefil bærer frontmatter (`name: conductor-*`, `description`, `disable-model-invocation: true`) og loader derfor som en skill gennem filesystem-skill-provideren, som Conductor-preset'en (`apps/cli/config/agent-presets/conductor/agent.cordis.yml`) monterer; rollekroppen forbliver en manuel prompt. Filerne håndhæver ikke værktøjsrettigheder.
+Dette er et sæt tilpassede rolle-instruktioner til en Conductor-session. Hver rollefil bærer frontmatter (`name: conductor-*`, `description`, `disable-model-invocation: true`) og loader derfor som en skill gennem filesystem-skill-provideren, som Conductor-preset'en (`packages/conductor/conductor-presets/presets/conductor/agent.cordis.yml`) monterer; rollekroppen forbliver en manuel prompt. Filerne håndhæver ikke værktøjsrettigheder.
 
 [Intake og rapportafslutning i fase 1](../notes/implemented/feature/2026-10-25-conductor-intake-and-report-completion.md) ejer de tilladte ruter, indfanget input og den terminale rapports betydning.
 

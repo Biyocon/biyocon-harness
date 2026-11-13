@@ -97,7 +97,12 @@ export function resolveTelemetryPatch(disabledEnv: string | undefined, hasRow: b
  */
 export function prepareProfile(name: string, userLayer = true): Profile {
   healProfilesModuleFallback(INSTALL_ANCHOR)
-  const profile = loadProfile(NAME, name, INSTALL_ANCHOR, undefined, { userLayer })
+  const profile = loadProfile(NAME, name, INSTALL_ANCHOR, undefined, {
+    userLayer,
+    ...(name === 'web' ? { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-conductor-host-rc7', '@deepseek-ai/dsh-web-app'] } : {}),
+    ...(name === 'headless' ? { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-conductor-host-rc7', '@deepseek-ai/dsh-headless'] } : {}),
+    migrations: [{ id: 'conductor-host-rc7', after: '@deepseek-ai/dsh-base', bundle: '@deepseek-ai/dsh-conductor-host-rc7' }],
+  })
   writeFileSync(join(profile.dir, PROFILE_ROOT_FILENAME), PROFILE_ROOT_CONFIG)
   return profile
 }
@@ -152,6 +157,8 @@ function composeProfile(
     if (typeof row.id === 'string') rows.set(row.id, row)
   }
   const composedOverlays = [...overlays]
+  // Patch layers cannot grant system trust; only the installation and explicit
+  // profile bundles supply those roots.
   // The SHIPPED root is the part of the roster only this app can resolve: it
   // sits beside this app's own config, in both the source and built layouts.
   // The writable root the roster appends is `dsh-agent-presets`' own, so a
@@ -161,7 +168,12 @@ function composeProfile(
       id: 'agent-presets',
       config: {
         ...(rows.get('agent-presets')?.config ?? {}) as Record<string, unknown>,
-        roots: [{ path: SHIPPED_PRESET_ROOT, trust: 'system' }],
+        roots: [
+          { path: SHIPPED_PRESET_ROOT, trust: 'system' },
+          ...profile.layers.flatMap(layer => layer.presetRoot === undefined ? [] : [{ path: layer.presetRoot, trust: 'system' }]),
+          ...((rows.get('agent-presets')?.config as { roots?: Array<{ path: string }> } | undefined)?.roots ?? [])
+            .map(root => ({ ...root, trust: 'user' })),
+        ],
       },
     })
   }

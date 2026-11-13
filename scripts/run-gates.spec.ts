@@ -81,6 +81,7 @@ describe('gate graph validation', () => {
     const ids = withPnpmEntrypoint(() => gatesForMode('doc-sync').map(subject => subject.id))
 
     expect(ids).toContain('public-repository-links')
+    expect(ids).toContain('conductor-resources')
   })
 
   it.each(['ci-primary', 'ci-static', 'check-all'] as const)(
