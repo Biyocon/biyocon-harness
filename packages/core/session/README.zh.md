@@ -2,6 +2,8 @@
 
 [English](README.md) | 中文
 
+可选事件包在 manifest 中声明 `dsh.sessionEventRegistration: true`，使生成器将其事件排除在无条件宿主类型集合之外。挂载插件在持久化读取前调用 `ctx.sessions.registerEventTypes(types)`。注册归调用方 fiber 所有并按引用计数；`supportsEventType(type)` 检查当前宿主。它仅允许事件名称，不证明 payload 有效或授予所有者权限。见[必需插件决策](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md)。
+
 事件溯源的会话日志和内存存储。`Session` 是 agent（智能体）全部交互历史的仅追加真源，LLM（大语言模型）消息历史由它*派生*。原始日志之上维护一个 **surface** 层（产生消息事件的有序投影），以便高效派生和压缩（compaction）。
 
 可选配套入口 `@deepseek-ai/dsh-session/invariant` 将此包的关系轨迹检查注册到 `ctx.invariants`：序号单调递增、轮次／步骤闭合，以及同一步骤内的工具调用／结果配对。加载或重新加载时，它会回放现有会话；存储校验、快照、冻结、被引用的源事件校验和 surface 准入仍始终由根会话包负责。

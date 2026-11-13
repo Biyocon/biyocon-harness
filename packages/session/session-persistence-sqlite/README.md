@@ -2,6 +2,8 @@
 
 English | [中文](README.zh.md)
 
+Suffix reads also query required event types before the requested sequence, grouped by type with their first sequence. The coordinator validates these prefix witnesses before returning the suffix, including an empty suffix: cached projections cannot bypass a missing plugin. Only prefix type/sequence metadata is read, not its payloads; the database schema and stored events are unchanged.
+
 A SQLite durable session-persistence backend — a second `SessionPersistence` provider ([session persistence](../../../.agents/notes/implemented/architecture/2026-06-14-session-persistence.md)) satisfying the same contract as `dsh-session-persistence-jsonl` (append-only, contiguous-seq, lazy materialization, interrupted-turn close on load), expressed over `node:sqlite` rows instead of file bytes.
 
 `locate(meta)` returns `undefined`: all sessions share one database, so there is no honest independent per-session transcript path.

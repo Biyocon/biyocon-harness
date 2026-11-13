@@ -2,6 +2,8 @@
 
 [English](README.md) | 中文
 
+后缀读取还查询请求序号之前的必读事件类型，按类型分组并返回首次序号。协调器先验证这些前缀见证，再返回后缀，即使后缀为空也一样；缓存投影不能绕过缺少插件的拒绝。只读取前缀的类型／序号元数据，不读取 payload；数据库 schema 与已存事件均不变。
+
 SQLite 持久会话存储后端：第二个 `SessionPersistence` 提供方（见[会话持久化](../../../.agents/notes/implemented/architecture/2026-06-14-session-persistence.md)），满足与 `dsh-session-persistence-jsonl` 相同的约定（仅追加、连续 seq、延迟实体化、在 load 时关闭中断轮次），但用 `node:sqlite` 行而非文件字节表达。
 
 `locate(meta)` 返回 `undefined`：所有会话共享一个数据库，因此不存在真实、独立的逐会话 transcript（文本记录）路径。

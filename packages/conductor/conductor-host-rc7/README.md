@@ -2,6 +2,8 @@
 
 English | [中文](README.zh.md)
 
+The host mount also registers all seven required Conductor events before history access. Profiles without it refuse Conductor-bearing sessions before replay while continuing to read ordinary chat. Existing explicit Biyocon profiles retain the bundle. No stored events are migrated; unsupported run formats remain visible as unavailable with the bundle enabled. [Required-event admission](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md) owns this rule.
+
 Optional Conductor host bundle for Biyocon Harness rc.7. Enable it explicitly between `dsh-base` and the surface bundle in the profile's `dsh.profile.bundles` list. It registers both child and unavailable-run projections before session replay and contributes its package-contained `presets` directory through `dsh.bundle.presetRoot`.
 
 ## Resources and installation
@@ -20,4 +22,4 @@ The resource relocation preserves the same stable request prefixes; editing cano
 
 ## Known Limitations and Deferred Work
 
-- This bundle supports rc.7 only. Pre-read event registration, clean packed-install stopgate 4a, pinned-upstream stopgate 4b and optional UI extraction follow separately. The package is not publicly released; installing it into another host does not prove compatibility.
+- This bundle supports rc.7 only. Clean packed-install stopgate 4a, pinned-upstream stopgate 4b and optional UI extraction follow separately. The package is not publicly released; installing it into another host does not prove compatibility.

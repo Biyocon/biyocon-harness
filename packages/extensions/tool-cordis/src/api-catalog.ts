@@ -1277,6 +1277,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'In-memory session store (`ctx.sessions`).\n\nPersistence is intentionally not implemented here — persistence plugins subscribe to `session/event` and flush on `session/flush` / dispose.',
     methods: [
       {
+        signature: 'registerEventTypes(types: readonly SessionEventType[]): () => void',
+        description: 'Admit an installed plugin\'s declared event types for persistence reads. Registrations are reference-counted and owned by the calling fiber; this does not validate payloads or make a required event ignorable.',
+        parameters: [{ name: 'types', description: 'event names declared by this plugin\'s SessionEventMap merge.' }],
+        returns: 'the disposer for this registration.',
+      },
+      {
+        signature: 'supportsEventType(type: string): boolean',
+        description: 'Whether this host can read a required event through its built-in vocabulary or a currently mounted plugin. Payload validation belongs to its consumer.',
+        parameters: [{ name: 'type', description: 'event type from a stored envelope.' }],
+        returns: 'whether the type is admitted by this host instance.',
+      },
+      {
         signature: 'create(id?: SessionId, options?: CreateSessionOptions): Session',
         description: 'Create a session owned by the calling fiber: disposing that fiber stops event notification and removes the session from the store. `options.seed` populates the session with a copy of those events (replay/fork); `options.meta` attaches creation metadata (validated absolute `cwd`, seed and parent lineage, and delegation depth) as the immutable SessionHeader (the store fills `version`/`id`/`createdAt`).\n\nFor an agent whose session must be torn down IN ORDER with its loop (so the loop\'s final events are published before the store attachment ends), do NOT use this — fold the session lifecycle into the agent\'s own effect via prepare + enter + announce (see `dsh-agent-loop`\'s creation transaction).',
         parameters: [{ name: 'id', description: 'the session id; omitted, the store mints `session-<n>`.' }, { name: 'options', description: 'seed events and/or creation metadata for the header.' }],

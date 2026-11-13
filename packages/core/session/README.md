@@ -2,6 +2,8 @@
 
 English | [中文](README.zh.md)
 
+Optional event packages declare `dsh.sessionEventRegistration: true` in their manifest so the generator excludes their events from the unconditional host vocabulary. Their mounted plugin calls `ctx.sessions.registerEventTypes(types)` before persistence reads. Registrations follow the calling fiber and are reference-counted; `supportsEventType(type)` checks the current host. This admits event names, not payloads or owner authority. See the [required-plugin decision](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md).
+
 Event-sourced session log and in-memory store. A `Session` is the append-only source of truth for an agent's whole interaction history — the LLM message history is *derived* from it. A **surface** layer (an ordered projection of message-producing events) is maintained on top of the raw log for efficient derivation and compaction.
 
 The optional `@deepseek-ai/dsh-session/invariant` companion registers this package's relational trace checks with `ctx.invariants`: monotonic sequence numbers, turn/step enclosure, and same-step tool call/result pairing. It replays existing sessions when loaded or reloaded; storage validation, snapshotting, freezing, cited source-event validation, and surface acceptance remain always-on responsibilities of the root session package.

@@ -19,6 +19,7 @@ import { snapshotJsonValue } from './json.ts'
 import { deriveEventMessage, SurfaceManager } from './surface.ts'
 import type { SessionSurface } from './surface.ts'
 import { foldRequestHeader } from './request-header.ts'
+import { KNOWN_SESSION_EVENT_TYPES } from './known-event-types.ts'
 
 export * from './types.ts'
 export { SessionPreparation } from './preparation.ts'
@@ -792,6 +793,7 @@ export class SessionForkError extends Error {
 export class SessionStore extends Service {
   private store = new Map<SessionId, SessionEntry>()
   private counter = 0
+  private readonly registeredEventTypes = new Map<string, { refs: number }>()
 
   constructor(ctx: Context) {
     super(ctx, 'sessions')
@@ -804,6 +806,41 @@ export class SessionStore extends Service {
         resolve: sessionId => this.get(sessionId),
       })
     })
+  }
+
+  /**
+   * Admit an installed plugin's declared event types for persistence reads.
+   * Registrations are reference-counted and owned by the calling fiber; this
+   * does not validate payloads or make a required event ignorable.
+   * @param types - event names declared by this plugin's SessionEventMap merge.
+   * @returns the disposer for this registration.
+   */
+  registerEventTypes(types: readonly SessionEventType[]): () => void {
+    const names = [...new Set(types)]
+    const dispose = this.ctx.effect(() => {
+      const entries = names.map((type) => {
+        const entry = this.registeredEventTypes.get(type) ?? { refs: 0 }
+        entry.refs++
+        this.registeredEventTypes.set(type, entry)
+        return { type, entry }
+      })
+      return () => {
+        for (const { type, entry } of entries) {
+          if (--entry.refs === 0) this.registeredEventTypes.delete(type)
+        }
+      }
+    }, 'sessions.registerEventTypes()')
+    return () => void dispose()
+  }
+
+  /**
+   * Whether this host can read a required event through its built-in vocabulary
+   * or a currently mounted plugin. Payload validation belongs to its consumer.
+   * @param type - event type from a stored envelope.
+   * @returns whether the type is admitted by this host instance.
+   */
+  supportsEventType(type: string): boolean {
+    return KNOWN_SESSION_EVENT_TYPES.has(type) || this.registeredEventTypes.has(type)
   }
 
   /**

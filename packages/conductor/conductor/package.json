@@ -11,6 +11,9 @@
     "directory": "packages/conductor/conductor"
   },
   "type": "module",
+  "dsh": {
+    "sessionEventRegistration": true
+  },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {

@@ -2,6 +2,8 @@
 
 [English](README.md) | 中文
 
+必读事件准入在冷重建、恢复或发布前使用当前 SessionStore 注册，包括保留的 preparation 及活动会话检查。缺少注册时拒绝完整历史并要求启用兼容插件 bundle 或升级宿主，绝不静默跳过必读事件。可寻址后端提供 `StoredSuffix.requiredPrefixEvents`（后缀之前每个必读类型的首次序号），防止投影 watermark 隐藏不支持的历史。不涉及格式升级或历史迁移。
+
 会话持久化是一项能力 seam。抽象的 `SessionPersistence` 服务（`ctx.sessionPersistence`）是其 Service Definition。它要求持久化后端持久存储、重新加载和列出会话，但不规定具体存储实现。该 seam 采用与 `dsh-shell` 相同的角色划分（见[能力 seam](../../../.agents/notes/implemented/architecture/2026-06-13-capability-seams.md)）：本包负责 Service Definition，同级包负责 Service Provider，Consumer 注入该服务。
 
 持久化单元就是现有 `SessionEvent`（事件溯源模型：日志是唯一真源），因此不存在另一套并行的「持久消息」类型。不属于可回放对话状态的元数据（格式版本、cwd、血缘、种子边界、origin、委托深度）作为 `SessionHeader` 单独传输，该类型归 `dsh-session` 所有，并在此重新导出。
@@ -18,7 +20,7 @@
 | `prepare(id, signal?): Promise<SessionPreparation>` | 预留恢复所使用的那个未发布 Session。协调器会尽可能复用之前的检查结果、提交待处理恢复，并在 dispose（资源释放）时将未发布 reservation 释放回有界缓存。 |
 | `load(id): Promise<{ meta; events }>` | 转换同一格式版本中受支持的旧记录后，返回不可变、平衡的逻辑日志，并提交冷恢复。实时 load 先 flush 其快照，并在轮次开放时拒绝；冷 load 保留中断的最终轮次，并用合成 `tool/result`/`step/end?`/`turn/end {interrupted}` 事件持久关闭它。只丢弃撕裂尾部碎片；已提交损坏和格式错误的记录以 `SessionPersistenceCorruptionError` 拒绝，不支持的格式 `version` 或本构建不认识且信封未带 `ignorable` 标记的事件类型以 `SessionFormatUnsupportedError` 拒绝，消息说明拒绝方向，并在后端为每个会话保留独立文件时给出原始日志路径。 |
 | `inspect(id, signal?): Promise<{ meta; events }>` | 返回已经升级、验证和深度冻结的逻辑视图，但不提交恢复或发布 Session。冷视图会获得仅存在于内存的合成恢复 closer，物理撕裂尾部保持不变；实时状态下的视图则是当前不可变快照，可能包含开放的轮次。基于协调器的实现会在有界 LRU 中保留该冷状态下未发布的 Session 本身，供后续 `prepare` 使用，但已存储修订值变化后会丢弃并重新读取。同 id 检查共享进行中的读取。 |
-| `readFrom(id, fromSeq, signal?): Promise<{ meta; events }>` | 返回 `seq >= fromSeq` 的有效已存储事件，不进入 preparation 缓存、不截断、不合成 closer，也不发布协调器状态。`fromSeq` 达到或超过已存储末尾时返回空事件列表；负数或非安全整数 `fromSeq` 会被拒绝。可寻址后端（SQLite）只读后缀，除非转换受支持的旧记录需要读取更早的记录；顺序后端（JSONL）解析整个产物并向前跳过。未知类型拒绝遵循同一读取方式：寻址读取只检查返回的后缀，顺序回退路径还会拒绝窗口以下的未知必需事件。供 checkpoint 消费方只应用已存序号之后的事件。 |
+| `readFrom(id, fromSeq, signal?): Promise<{ meta; events }>` | 返回 `seq >= fromSeq` 的有效已存储事件，不进入 preparation 缓存、不截断、不合成 closer，也不发布协调器状态。`fromSeq` 达到或超过已存储末尾时返回空事件列表；负数或非安全整数 `fromSeq` 会被拒绝。可寻址后端（SQLite）只读后缀，除非转换受支持的旧记录需要读取更早的记录；顺序后端（JSONL）解析整个产物并向前跳过。两条路径均验证完整存储前缀中的必读事件类型，包括请求窗口之前的类型。供 checkpoint 消费方只应用已存序号之后的事件。 |
 | `list(signal?): Promise<SessionHeader[]>` | 从元数据轻量列出，不解析完整日志。可选信号取消后端列表工作。零事件延迟实体化会话不在 `list` 中。 |
 | `listSnapshots(signal?): Promise<SessionPersistenceSnapshot[]>` | 返回轻量元数据和每份日志一个不透明、带品牌类型的修订值，不加载事件日志。日志及其后端存储不变时，修订保持相等；append 或变更性 load 修复后会改变；不会仅因两个存储使用相同本地计数器而冲突。可选信号请求取消后端发现工作；第一方后端会先等待所有已启动的列出工作结束，再予以拒绝，因此调用返回拒绝时，相关工作已完全停稳。 |
 
@@ -50,7 +52,7 @@
 | `name` | dispose 失败 `AggregateError` 的后端标签。 |
 | `loadStored(id, signal?)` | 在全部存储范围中按 id 读取已存储前缀。用于恢复／加载、非修改式 inspect、活动会话接管和 create 冲突探测。可选信号属于仅观察读取。返回元数据标识 `id`；`revision` 精确标识返回的 header 和事件；当且仅当必须截断撕裂尾部时才存在不透明 `tornMarker`。 |
 | `readStoredRevision(id, signal?)` | 在不加载事件日志的情况下读取一个 id 当前的来源限定修订值。它使用与 `loadStored` 相同的修订值表示；id 不存在时返回 `undefined`。 |
-| `loadStoredFrom?(id, fromSeq, signal?)` | 服务 `readFrom` 背后的可选可寻址后缀读取：返回 header 和 `seq >= fromSeq` 的已存储事件，非修改式、无撕裂标记。SQLite 实现它（`WHERE seq >= ?`）；不实现的后端使用协调器回退——`loadStored` 加向前跳过。 |
+| `loadStoredFrom?(id, fromSeq, signal?)` | 服务 `readFrom` 背后的可选可寻址后缀读取：返回 header、`seq >= fromSeq` 的已存储事件及 `requiredPrefixEvents`，非修改式、无撕裂标记。SQLite 实现它（`WHERE seq >= ?`）；不实现的后端使用协调器回退——`loadStored` 加向前跳过。 |
 | `appendBatch(meta, events, isMaterialized)` | 持久追加连续批次；尚未实体化时以原子方式延迟实体化。 |
 | `commitRepair(meta, tornMarker, closers)` | 使崩溃修复持久：截断撕裂尾部（当且仅当 `tornMarker !== undefined`；标记可为 falsy，例如 seq/offset `0`），并追加 `closers`。不要求原子性。由 load（截断 + closer）和活动会话接管（仅截断）使用。 |
 | `list(signal?)` | 列出全部已存储元数据，并遵循可选的取消信号。 |

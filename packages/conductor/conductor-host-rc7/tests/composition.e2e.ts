@@ -5,16 +5,22 @@ import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
 import { boot, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
-import { ConductorRunId } from '@deepseek-ai/dsh-conductor'
+import { ConductorRunId, CONDUCTOR_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-conductor'
+import { collectLogEvents } from '../../../../scripts/gen-persistence-catalog.ts'
 
 it('registers both replay projections through the actual host bundle before a preset mounts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'conductor-host-composition-'))
   try {
     const config = join(directory, 'cordis.yml')
-    await writeFile(config, "- id: projections\n  name: '@deepseek-ai/dsh-session-projection'\n")
+    await writeFile(config, "- id: sessions\n  name: '@deepseek-ai/dsh-session'\n- id: projections\n  name: '@deepseek-ai/dsh-session-projection'\n")
     const patch = fileURLToPath(new URL('../cordis.patch.yml', import.meta.url))
     const ctx = await boot('test', config, loadOverlayPatches('test', patch), undefined, new URL('../', import.meta.url).href)
     try {
+      const declared = collectLogEvents().filter(event => event.source.startsWith('packages/conductor/conductor/'))
+      expect(declared).toHaveLength(7)
+      expect(declared.every(event => event.registrationRequired)).toBe(true)
+      expect([...CONDUCTOR_SESSION_EVENT_TYPES].sort()).toEqual(declared.map(event => event.name).sort())
+      for (const type of CONDUCTOR_SESSION_EVENT_TYPES) expect(ctx.sessions.supportsEventType(type)).toBe(true)
       const runId = ConductorRunId('CON-2026-0037')
       const session = Session.create(SessionId('synthetic-owner'))
       session.append('conductor/checkpoint', { runId, record: JSON.stringify({ recordFormatVersion: 4 }) })

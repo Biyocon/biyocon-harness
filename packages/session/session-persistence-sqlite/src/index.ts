@@ -219,8 +219,9 @@ export class SqliteSessionPersistence extends SessionPersistence implements Pers
 
   /**
    * Seek-capable suffix read: SQL selects `seq >= fromSeq` directly, so the
-   * read scales with the suffix, not the log. Torn rows past the preserved
-   * region are dropped, never repaired (non-mutating read).
+   * payload read scales with the suffix. A grouped prefix-type query prevents
+   * cached projections from hiding an unregistered required event. Torn rows
+   * past the preserved region are dropped, never repaired (non-mutating read).
    */
   async loadStoredFrom(id: SessionId, fromSeq: number, signal?: AbortSignal): Promise<StoredSuffix | undefined> {
     signal?.throwIfAborted()
@@ -234,7 +235,10 @@ export class SqliteSessionPersistence extends SessionPersistence implements Pers
       .all(id, fromSeq) as unknown as EventRow[]
     signal?.throwIfAborted()
     const { preserved } = scanRows(eventRows, fromSeq)
-    return { meta, events: preserved }
+    const requiredPrefixEvents = this.db.prepare(
+      'SELECT type, MIN(seq) AS seq FROM events WHERE session_id = ? AND seq < ? AND (ignorable IS NULL OR ignorable != 1) GROUP BY type ORDER BY seq',
+    ).all(id, fromSeq) as { type: string; seq: number }[]
+    return { meta, events: preserved, requiredPrefixEvents }
   }
 
   /**
