@@ -1,5 +1,5 @@
 # Minimal real host: no provider, credentials, network tools or auto-started agents.
-- id: sessions
+- id: session
   name: '@deepseek-ai/dsh-session'
 - id: agents
   name: '@deepseek-ai/dsh-agent'

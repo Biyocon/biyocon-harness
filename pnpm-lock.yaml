@@ -485,6 +485,9 @@ importers:
       '@deepseek-ai/dsh-conductor':
         specifier: workspace:^
         version: link:../packages/conductor/conductor
+      '@deepseek-ai/dsh-conductor-host-rc7':
+        specifier: workspace:^
+        version: link:../packages/conductor/conductor-host-rc7
       '@deepseek-ai/dsh-conductor-presets':
         specifier: workspace:^
         version: link:../packages/conductor/conductor-presets

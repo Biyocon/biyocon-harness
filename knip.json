@@ -39,6 +39,7 @@
         "headless-agent/tests/fixtures/conductor-snapshot-approval.ts",
         "headless-agent/tests/fixtures/conductor-snapshot-sandbox.ts",
         "headless-agent/tests/fixtures/conductor-installed-driver.ts",
+        "headless-agent/tests/fixtures/conductor-event-admission-driver.ts",
         "headless-agent/tests/fixtures/conductor-installed-mock.ts",
         "headless-agent/tests/fixtures/conductor-owner-mock.ts",
         "headless-agent/tests/fixtures/conductor-owner-script.ts",

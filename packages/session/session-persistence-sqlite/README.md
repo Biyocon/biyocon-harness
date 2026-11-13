@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Suffix reads also query required event types before the requested sequence, grouped by type with their first sequence. The coordinator validates these prefix witnesses before returning the suffix, including an empty suffix: cached projections cannot bypass a missing plugin. Only prefix type/sequence metadata is read, not its payloads; the database schema and stored events are unchanged.
+Suffix reads also query required event types before the requested sequence, grouped by type with their first sequence. The coordinator validates these prefix witnesses before returning the suffix, including an empty suffix: cached projections cannot bypass a missing plugin. Each suffix read scans the session's preceding event rows for this metadata, so its cost grows with prefix length even when the suffix is empty. Prefix payloads are not decoded; the database schema and stored events are unchanged.
 
 A SQLite durable session-persistence backend — a second `SessionPersistence` provider ([session persistence](../../../.agents/notes/implemented/architecture/2026-06-14-session-persistence.md)) satisfying the same contract as `dsh-session-persistence-jsonl` (append-only, contiguous-seq, lazy materialization, interrupted-turn close on load), expressed over `node:sqlite` rows instead of file bytes.
 

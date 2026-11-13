@@ -186,6 +186,10 @@ export interface WebScaffold {
 
 /** Options for {@link launchWebScaffold}. */
 export interface LaunchOptions {
+  /** Omit the optional Conductor host layer to qualify a profile without it. */
+  conductorHostBundle?: boolean
+  /** Install deterministic startup probes before any entry in the shipped tree mounts. */
+  prepareHost?: (ctx: Context, paths: { workspaceCwd: string; persistenceRoot: string }) => Promise<void> | void
   /**
    * Optional product overlay applied after the shipped Web surface and before
    * the scaffold's hermetic test patches, matching the launcher's `--patch`
@@ -369,7 +373,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
   // drifting).
   const basePatches = [
     ...loadOverlayPatches('web e2e scaffold', BASE_PATCH_PATH),
-    ...loadOverlayPatches('web e2e scaffold', CONDUCTOR_PATCH_PATH),
+    ...options.conductorHostBundle === false ? [] : loadOverlayPatches('web e2e scaffold', CONDUCTOR_PATCH_PATH),
   ]
   const surfacePatches = loadOverlayPatches('web e2e scaffold', WEB_PATCH_PATH)
   const extraOverlayPatches = options.extraOverlayPath === undefined
@@ -527,6 +531,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       },
     })
     await ctx.plugin(Loader)
+    await options.prepareHost?.(ctx, { workspaceCwd, persistenceRoot })
     ctx.loader.builtins.include = Include
     // `cordis:group` beside it, exactly as `boot()` registers it: a group row is
     // how a preset gives one `isolate` realm to a provider and its consumers,

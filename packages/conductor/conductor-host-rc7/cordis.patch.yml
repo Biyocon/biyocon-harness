@@ -1,4 +1,9 @@
-# Both replay projections are registered by this host-wide mount, before any agent preset.
+# Consumers cannot obtain sessions before required types and both projections exist.
+- id: session
+  disabled: true
+
 - insert:
+    - id: conductor-session
+      name: '@deepseek-ai/dsh-conductor-host-rc7'
     - id: conductor-presentation
       name: '@deepseek-ai/dsh-conductor'

@@ -12,7 +12,7 @@ it('registers both replay projections through the actual host bundle before a pr
   const directory = await mkdtemp(join(tmpdir(), 'conductor-host-composition-'))
   try {
     const config = join(directory, 'cordis.yml')
-    await writeFile(config, "- id: sessions\n  name: '@deepseek-ai/dsh-session'\n- id: projections\n  name: '@deepseek-ai/dsh-session-projection'\n")
+    await writeFile(config, "- id: session\n  name: '@deepseek-ai/dsh-session'\n- id: projections\n  name: '@deepseek-ai/dsh-session-projection'\n")
     const patch = fileURLToPath(new URL('../cordis.patch.yml', import.meta.url))
     const ctx = await boot('test', config, loadOverlayPatches('test', patch), undefined, new URL('../', import.meta.url).href)
     try {
