@@ -55,6 +55,7 @@ The historical `packages/extensions/tool-cordis/src/api-catalog.ts`, `packages/e
 | `knip.json`; `scripts/ui-locales.spec.ts`; `scripts/translation-pairing.manifest.json` | Name Conductor example fixtures, built-in preset metadata and generated skill assets. | Move fixture and preset checks with plugin examples; update the generic pairing exclusions when asset generation moves. |
 | `scripts/type-equiv.manifest.json`; `scripts/verify-package-readme-model-experience.ts` | Pin Conductor type-to-doc mappings and Conductor README exceptions. | Move mappings and documentation checks with plugin docs; remove host-only exceptions. |
 | `examples/headless-agent/conductor*.cordis.snapshot.yml` | Assemble Conductor-specific replay examples and their fixtures. | Ship them in the optional plugin integration examples alongside their dependencies. |
+| `scripts/conductor-cost/*`; `scripts/conductor-cost-report.ts`; `scripts/conductor-cost-report.spec.ts` | Measure the built headless composition and CLI-owned Conductor preset with public synthetic sources. | Move the experiment to plugin integration tooling and resolve the optional bundle's preset/distribution paths. |
 
 ### App-level coupling
 

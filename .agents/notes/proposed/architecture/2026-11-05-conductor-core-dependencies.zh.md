@@ -55,6 +55,7 @@ Biyocon Harness 保持 rc.7 基础；所有者已取消 [#68](https://github.com
 | `knip.json`; `scripts/ui-locales.spec.ts`; `scripts/translation-pairing.manifest.json` | 指向 Conductor 示例 fixture、内置 preset 元数据和生成的技能资源。 | 将 fixture 与 preset 检查移至插件示例；资源生成迁移时更新通用双语配对排除项。 |
 | `scripts/type-equiv.manifest.json`; `scripts/verify-package-readme-model-experience.ts` | 固定 Conductor 类型到文档的映射以及 Conductor README 例外。 | 将映射和文档检查移至插件文档；移除宿主专属例外。 |
 | `examples/headless-agent/conductor*.cordis.snapshot.yml` | 装配 Conductor 专属回放示例及其 fixture。 | 将其与依赖一并放入可选插件的集成示例。 |
+| `scripts/conductor-cost/*`; `scripts/conductor-cost-report.ts`; `scripts/conductor-cost-report.spec.ts` | 使用公开合成来源，测量已构建的 headless 组合及 CLI 所有的 Conductor 预设。 | 将实验移至插件集成工具，并解析可选 bundle 的预设和发行版路径。 |
 
 ### App-level coupling
 
