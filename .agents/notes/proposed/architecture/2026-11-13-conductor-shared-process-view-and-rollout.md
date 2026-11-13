@@ -59,7 +59,7 @@ Use isolated per-host data and one host per run. Shared-home writers or same-run
 
 ## Acceptance criteria
 
-Every row runs against both exact candidates with synthetic inputs, acknowledged backend receipts, projection version/hash, native evidence and explicit pass/fail/not-run. Lower-layer tests are not whole-app acceptance; keyless fixtures are not live-model quality.
+Every row runs against both exact candidates with synthetic inputs, acknowledged backend receipts, projection version/hash, native evidence and explicit pass/fail/not-run. Lower-layer tests are not whole-app acceptance; keyless fixtures are not live-model quality. R8/P03 keyless qualification does not wait for v6. Any requested live-model supplement depends on the owner's explicit [quality-plan choice](../testing/2026-11-13-conductor-isolated-quality-rehearsal.md#consumption-estimate-and-paid-run-stop-condition): (a) qualified v6/equivalent hard bounds, or (b) separate acceptance of one configuration-limited attempt without a monetary code guarantee. Neither option is selected here.
 
 | ID | Required scenario and observable result |
 | --- | --- |
