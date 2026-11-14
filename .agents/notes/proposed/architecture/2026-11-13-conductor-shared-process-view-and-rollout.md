@@ -19,7 +19,7 @@ Harness-Codex owns engine, host bundles and Harness rendering; the PI owner owns
 | Milestone | Required delivery and dependency |
 | --- | --- |
 | R0 | Record source/base, host, engine/resource hashes, built artifact and actual running identities separately. Define scope and ownership; a merged source is not an updated app. |
-| R1 | After [#113](https://github.com/Biyocon/biyocon-harness/pull/113) is merged, open one draft implementation PR against master with `## Resumé (dansk)`. Register required event declarations from the composed profile before persistence reads/replay; preserve the four proofs below. |
+| R1 | After the critic snapshot settlement fix is merged, open one draft implementation PR against master with `## Resumé (dansk)`. Register required event declarations from the composed profile before persistence reads/replay; preserve the four proofs below. |
 | R2 / 4a | After R1 delivery, qualify a clean rc.7 installation solely from packed artifacts, without workspace links, source copies or manual preset transfer. |
 | R3 / 4b | After 4a, repeat compatibility against one pinned newer host with the same canonical engine artifacts and its thin host bundle. Biyocon stays on rc.7. |
 | R4U | After 4b, deliver the shared projection below and optional Web UI plugin; preserve child/critic, unavailable-run and owner-question/receipt presentation. Optional describes installation, not permission to omit this delivery. |
@@ -43,11 +43,11 @@ Keyless tests use synthetic valid, invalid and unsupported records, stale/wrong-
 
 ### R5 owner decision and common chat target
 
-Identical owner forms in both apps change the [#111](https://github.com/Biyocon/biyocon-harness/pull/111) decision: adapter v1 permits only start/status/result/resume, refuses pending-owner resume, and leaves owner answers/approvals in host UI. Neither this roadmap nor projection exports approve that change. R5 requires an explicit new owner decision and security review of session/transport binding, trusted host ownership, stale/double answers, persistence and replay before implementation. Internal types are references, not an approved external owner API.
+Identical owner forms in both apps change the portable-bundle decision: adapter v1 permits only start/status/result/resume, refuses pending-owner resume, and leaves owner answers/approvals in host UI. Neither this roadmap nor projection exports approve that change. R5 requires an explicit new owner decision and security review of session/transport binding, trusted host ownership, stale/double answers, persistence and replay before implementation. Internal types are references, not an approved external owner API.
 
 Review one in-chat process card/timeline, matching role/attempt/gate order, reports/evidence, rework, errors and one active owner area with historical receipts. A separate dashboard or a link to another host form alone is not full in-chat parity. Freeze EN/DA references, keyboard/focus behavior and declared platform exceptions. Super-Desktop Danish support is planned, not assumed from its existing locales.
 
-Use isolated per-host data and one host per run. Shared-home writers or same-run concurrent clients require separately approved/implemented [#87](https://github.com/Biyocon/biyocon-harness/pull/87) and qualified host access. Protect the owner's active apps/data; do not migrate or resume private runs during qualification. The shared v6 design for #75/#30/#58 remains separate: no record bump or invented `incomplete` status is needed for current-format UI qualification.
+Use isolated per-host data and one host per run. Shared-home writers or same-run concurrent clients require a revised, reviewed, owner-approved and implemented exclusive home/session lock and qualified host access. Protect the owner's active apps/data; do not migrate or resume private runs during qualification. The shared v6 design for claims verification, entry routing and budgets remains separate: no record bump or invented `incomplete` status is needed for current-format UI qualification.
 
 ## Alternatives considered
 
@@ -65,7 +65,7 @@ Every row runs against both exact candidates with synthetic inputs, acknowledged
 | --- | --- |
 | P01 | Open history without dispatch, provider calls or writes. |
 | P02 | Read-only analysis shows actual roles, explicit skips and its real result; no writes. |
-| P03 | Implementation proves Conductor plus all seven specialist dispatches, an actual harmless scoped change, exact C approval/applicable tool permission and fresh independent D/E executions. Printed role names do not count; Ralph requires real dispatch. |
+| P03 | Implementation proves Conductor plus all seven specialist dispatches, an actual harmless scoped change, exact C approval/applicable tool permission and fresh independent D/E executions. Printed role names do not count; the rehearsal sets `maxRalphRounds: 1` and proves real Ralph dispatch. |
 | P04 | Clarification and mandate amendment bind exact question/revision/items and proposal hash; no implicit execution approval. |
 | P05 | Gate C and tool permission stay separate; changed baseline invalidates consent. |
 | P06 | Wrong-run, stale, duplicate and concurrent answers fail without duplicate continuation or premature success. |
@@ -84,4 +84,4 @@ Every row runs against both exact candidates with synthetic inputs, acknowledged
 
 A durable frontier may require a small generic host extension; do not infer acknowledgement or relax security to avoid it. Partial UI refactoring can break existing cards; preserve their evidence and runnable snapshots. Scope-specific inputs, hashes and errors must not leak secrets. Owner review can reject R5; the preceding v1 installation/view work remains useful without claiming full form parity.
 
-Supersession audit: the portable-bundle proposal retains packaging, replay and v1 authority; this note adds delivery/projection detail and an explicit later decision point. The [rc.7 slice](../../implemented/architecture/2026-11-12-conductor-rc7-host-bundle.md), [owner resumption](../../implemented/feature/2026-10-30-conductor-owner-escalation-resumption.md), [child status](../../implemented/bug-fix/2026-10-28-conductor-child-role-status.md), [unavailable history](../../implemented/bug-fix/2026-11-06-conductor-unsupported-record-history.md) and [session format rule](../../implemented/architecture/2026-08-10-session-log-version-mechanism.md) retain independent active guarantees. No implemented triplet is fully superseded or archived.
+The portable-bundle proposal retains packaging, replay and v1 authority; this note adds delivery/projection detail and an explicit later decision point. The [rc.7 slice](../../implemented/architecture/2026-11-12-conductor-rc7-host-bundle.md), [owner resumption](../../implemented/feature/2026-10-30-conductor-owner-escalation-resumption.md), [child status](../../implemented/bug-fix/2026-10-28-conductor-child-role-status.md), [unavailable history](../../implemented/bug-fix/2026-11-06-conductor-unsupported-record-history.md) and [session format rule](../../implemented/architecture/2026-08-10-session-log-version-mechanism.md) retain independent active guarantees. These decisions remain active.

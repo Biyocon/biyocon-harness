@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/testing/2026-11-13-conductor-isolated-quality-rehearsal.md
-2026-11-13-conductor-isolated-quality-rehearsal.md: 2288000b55b47097a38f731f6af5ebe2ae7881fd
-2026-11-13-conductor-isolated-quality-rehearsal.zh.md: a5250fcd4e05d08d8065223c9f96cc7405f39d62
+2026-11-13-conductor-isolated-quality-rehearsal.md: 7a4182511f07f7ed053264b0c1bef69bc56b33e4
+2026-11-13-conductor-isolated-quality-rehearsal.zh.md: 1ac8c47e444d0f71f3d1af304969c93f03d5c49b

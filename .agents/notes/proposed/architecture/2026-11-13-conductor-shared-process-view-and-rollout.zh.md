@@ -19,7 +19,7 @@ Harness-Codex 负责引擎、宿主组合包及 Harness 绘制层；PI 侧负责
 | 里程碑 | 必需交付及依赖 |
 | --- | --- |
 | R0 | 分别记录源码及基线、宿主、引擎和资源哈希、构建产物与实际运行身份。明确范围和归属；源码合并不等于应用已更新。 |
-| R1 | [#113](https://github.com/Biyocon/biyocon-harness/pull/113) 合并后，向 master 提交一个草稿实现 PR，包含 `## Resumé (dansk)`。在持久化读取或重放前，注册来自已组合配置的必需事件声明，并保留下述四项证明。 |
+| R1 | critic snapshot 稳定等待修复合并后，向 master 提交一个草稿实现 PR，包含 `## Resumé (dansk)`。在持久化读取或重放前，注册来自已组合配置的必需事件声明，并保留下述四项证明。 |
 | R2 / 4a | R1 交付后，仅使用打包产物验证干净的 rc.7 安装，不使用 workspace 链接、源码副本或手动 preset 转移。 |
 | R3 / 4b | 4a 通过后，使用相同规范引擎产物及对应的薄宿主组合包，对一个固定修订版的新宿主重复兼容性验证。Biyocon 继续使用 rc.7。 |
 | R4U | 4b 之后交付下述共享投影及可选 Web UI 插件，保留子会话／critic、不可用运行、所有者问题和回执的显示。可选指安装选择，不表示可以省略此交付。 |
@@ -43,11 +43,11 @@ R4U 在 `packages/conductor/*` 中维护一个纯事件／运行记录投影，�
 
 ### R5 所有者决策与共同聊天目标
 
-在两个应用中提供相同的所有者表单，会改变 [#111](https://github.com/Biyocon/biyocon-harness/pull/111) 的决策：适配器 v1 仅允许 start/status/result/resume，拒绝在等待所有者时 resume，并将所有者回答和批准留在宿主 UI。本路线图或投影导出均不批准此变更。实现前，R5 必须取得所有者明确的新决策，并评审会话／传输绑定、可信宿主归属、过期／重复回答、持久化和重放的安全性。内部类型是设计参考，不是已批准的外部所有者 API。
+在两个应用中提供相同的所有者表单，会改变 可移植组合包 的决策：适配器 v1 仅允许 start/status/result/resume，拒绝在等待所有者时 resume，并将所有者回答和批准留在宿主 UI。本路线图或投影导出均不批准此变更。实现前，R5 必须取得所有者明确的新决策，并评审会话／传输绑定、可信宿主归属、过期／重复回答、持久化和重放的安全性。内部类型是设计参考，不是已批准的外部所有者 API。
 
 评审一套聊天内流程卡片／时间线，统一角色／尝试／gate 顺序、报告／证据、返工、错误，以及带历史回执的单一活动所有者区域。单独仪表盘或指向其他宿主表单的链接，本身不算完整的聊天内一致性。固定 EN/DA 参考视图、键盘／焦点行为和明确列出的平台例外。Super-Desktop 的丹麦语支持是计划工作，不能从现有语言数量推断。
 
-各宿主使用隔离数据，每个运行由一个宿主拥有。共享主目录的写入者或同一运行的并发客户端，要求单独批准并实现 [#87](https://github.com/Biyocon/biyocon-harness/pull/87)，并验证宿主访问。保护所有者的活动应用／数据；验证期间不迁移或恢复私有运行。#75/#30/#58 的共享 v6 设计仍独立处理；当前格式的 UI 验证不需要记录升级或虚构 `incomplete` 状态。
+各宿主使用隔离数据，每个运行由一个宿主拥有。共享主目录的写入者或同一运行的并发客户端，要求单独批准并实现 home／会话独占锁，并验证宿主访问。保护所有者的活动应用／数据；验证期间不迁移或恢复私有运行。事实验证／入口路由／预算 的共享 v6 设计仍独立处理；当前格式的 UI 验证不需要记录升级或虚构 `incomplete` 状态。
 
 ## 考虑过的替代方案
 
@@ -65,7 +65,7 @@ R4U 在 `packages/conductor/*` 中维护一个纯事件／运行记录投影，�
 | --- | --- |
 | P01 | 打开历史不触发 dispatch、提供方调用或写入。 |
 | P02 | 只读分析显示实际角色、明确跳过的步骤及真实结果；没有写入。 |
-| P03 | 实现流程证明 Conductor 加上七个专家的实际 dispatch、真实且无害的范围内修改、精确 C 批准／适用工具许可，以及新鲜独立的 D/E 执行。打印角色名不算证明；Ralph 必须有真实 dispatch。 |
+| P03 | 实现流程证明 Conductor 加上七个专家的实际 dispatch、真实且无害的范围内修改、精确 C 批准／适用工具许可，以及新鲜独立的 D/E 执行。打印角色名不算证明；演练设置 `maxRalphRounds: 1` 并证明真实 Ralph dispatch。 |
 | P04 | 澄清和授权范围修改绑定精确问题／修订／条目及提案哈希；不隐式批准执行。 |
 | P05 | Gate C 与工具许可相互独立；基线变化使同意失效。 |
 | P06 | 错误运行、过期、重复及并发回答失败，不重复继续执行，也不提前显示成功。 |
@@ -84,4 +84,4 @@ R4U 在 `packages/conductor/*` 中维护一个纯事件／运行记录投影，�
 
 持久化位置可能需要小型通用宿主扩展；不得推断确认或放宽安全要求来回避它。部分 UI 重构可能破坏现有卡片，须保留对应证据和可运行 snapshot。范围相关的输入、哈希和错误不得泄漏秘密。所有者可以拒绝 R5；先前的 v1 安装／视图工作仍有价值，但不能声称已实现完整表单一致性。
 
-替代审计：可移植组合包提案继续负责打包、重放及 v1 权限；本注记补充交付／投影细节和明确的后续决策点。[rc.7 交付片段](../../implemented/architecture/2026-11-12-conductor-rc7-host-bundle.md)、[所有者恢复](../../implemented/feature/2026-10-30-conductor-owner-escalation-resumption.md)、[子会话状态](../../implemented/bug-fix/2026-10-28-conductor-child-role-status.md)、[不可用历史](../../implemented/bug-fix/2026-11-06-conductor-unsupported-record-history.md)及[会话格式规则](../../implemented/architecture/2026-08-10-session-log-version-mechanism.md)继续保有独立、有效的保证。没有已实现的完整三文件组被完全替代或归档。
+可移植组合包提案继续负责打包、重放及 v1 权限；本注记补充交付／投影细节和明确的后续决策点。[rc.7 交付片段](../../implemented/architecture/2026-11-12-conductor-rc7-host-bundle.md)、[所有者恢复](../../implemented/feature/2026-10-30-conductor-owner-escalation-resumption.md)、[子会话状态](../../implemented/bug-fix/2026-10-28-conductor-child-role-status.md)、[不可用历史](../../implemented/bug-fix/2026-11-06-conductor-unsupported-record-history.md)及[会话格式规则](../../implemented/architecture/2026-08-10-session-log-version-mechanism.md)继续保有独立、有效的保证。这些决策保持有效。

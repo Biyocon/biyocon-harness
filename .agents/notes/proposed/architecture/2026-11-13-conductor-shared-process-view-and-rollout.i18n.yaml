@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-11-13-conductor-shared-process-view-and-rollout.md
-2026-11-13-conductor-shared-process-view-and-rollout.md: 3210369d99028653d4162dc01d1cee5b1f1fab7d
-2026-11-13-conductor-shared-process-view-and-rollout.zh.md: 7fc19cac934a22329258b10d6c40f35658277f28
+2026-11-13-conductor-shared-process-view-and-rollout.md: 8dd0270c958cc721d705c09da46e43d4e3d37028
+2026-11-13-conductor-shared-process-view-and-rollout.zh.md: fcd1c1904e6b7004e6ff2787ae317e880bacc519
