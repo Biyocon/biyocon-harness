@@ -1202,6 +1202,7 @@ describe('workspace authority and lineage redaction', () => {
 
   it('rejects a default self read when its same-id observation moved after caller capture', async () => {
     const mounted = await mount()
+    mounted.ctx.sessions.registerEventTypes(['context/message'])
     const appendLegacy = mounted.caller.append.bind(mounted.caller) as unknown as (
       type: string,
       data: unknown,
@@ -1985,6 +1986,7 @@ describe('trace and exact read rendering', () => {
 
   it('renders unabridged fenced target JSON and readable semantic or log-only neighbor summaries', async () => {
     const mounted = await mount()
+    mounted.ctx.sessions.registerEventTypes(['context/message'])
     const session = createSession(mounted.ctx, 'read', '/work')
     session.append(
       'user/message',
