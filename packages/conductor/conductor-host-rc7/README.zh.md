@@ -2,6 +2,8 @@
 
 [English](README.md) | 中文
 
+此 bundle 在 `dsh.bundle.sessionEventTypes` 声明七个必读名称；app-boot 在普通会话提供方激活前传入显式 profile 声明。它挂载唯一投影所有者 `conductor-presentation`，并通过 Loader 现有 `inject` 依赖使 `sessions` 在两个投影注册前保持不可用。不替换会话提供方。缺少 bundle 时拒绝含 Conductor 事件的历史，普通聊天仍可读取。不迁移存储事件。见[必读事件准入决策](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md)。
+
 Biyocon Harness rc.7 的可选 Conductor 宿主 bundle。须在 profile 的 `dsh.profile.bundles` 列表中，显式放在 `dsh-base` 与界面 bundle 之间。它在会话回放前注册 subagent 与不可用运行两种投影，并通过 `dsh.bundle.presetRoot` 提供包内的 `presets` 目录。
 
 ## 资源与安装
@@ -20,4 +22,4 @@ preset 保留相同的工具、persona 与角色指令。打包不改变模型�
 
 ## 已知限制与后续工作
 
-- 此 bundle 仅支持 rc.7。读取前事件注册、打包安装停止门禁 4a、固定版本上游停止门禁 4b 及可选 UI 拆分另行交付。此包未公开发布；安装到另一宿主不能证明兼容性。
+- 此 bundle 仅支持 rc.7。打包安装停止门禁 4a、固定版本上游停止门禁 4b 及可选 UI 拆分另行交付。此包未公开发布；安装到另一宿主不能证明兼容性。

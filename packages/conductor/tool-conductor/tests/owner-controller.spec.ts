@@ -1,3 +1,4 @@
+import { CONDUCTOR_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-conductor'
 import { Context } from '@deepseek-ai/cordis'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
@@ -44,6 +45,7 @@ async function setup(
   const ctx = new Context()
   contexts.push(ctx)
   await mountAgentLoopTestDependencies(ctx)
+  ctx.sessions.registerEventTypes(CONDUCTOR_SESSION_EVENT_TYPES)
   await ctx.plugin(AgentLoop, { agents: [] })
   const questionFiber = await ctx.plugin(UserQuestionService)
   if (provider !== undefined) ctx.userQuestions.registerProvider(provider)

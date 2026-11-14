@@ -2,6 +2,8 @@
 
 [English](README.md) | 中文
 
+挂载要求会话存储准入全部必需的 Conductor 事件类型。缺少准入时，在注册工具或所有者控制器前失败，并要求启用兼容的 Conductor 宿主 bundle；仅通过 patch 挂载不授予准入。`dsh-conductor` 的展示插件拥有两个回放投影；工具不注册它们。
+
 面向模型的 Conductor 工具（`conductor`）。它要求目标、purpose、A/B/C 入口及 mandate owner 归属信息；新运行还要求 intake 理由，分析在任何专家启动前要求 answer/recommendations 和至少一项可衡量的 `acceptanceCriteria`。约束描述限制，交付要求属于验收标准。其他输入包括引用材料 selector 和恢复 id。代码准入路线，为每个适用阶段生成全新结构化输出专家。模型不能授予写入、quality execution 或 closeout 权限。Gate C 验证精确 baseline 后，工具会通过 host approval seam 发起一次请求，其中包含 baseline hash、规范化绝对路径、所选 command binding 和必需 effect profile；拒绝、取消或无法审批都会在任何可写 child 或 quality child 启动前停止。它返回实现 GO/NO-GO、已审计分析报告或阻塞；GO 本身不会提交、推送、合并或部署。
 
 状态机、gate 引擎和 Session 日志持久化位于 [`@deepseek-ai/dsh-conductor`](../conductor/README.md)；专家角色 skill 来自 [`@deepseek-ai/dsh-conductor-presets`](../conductor-presets/README.md)。每个 stage 都通过现有 workflow engine 运行一个单 agent workflow。Runtime 加载对应角色和 `conductor-specialist`，要求结构化输出，并在 child executor 中同时应用工具名称 allowlist 与参数感知 guard。Headsman 的 `allowed_paths`/`excluded_paths` 检查前会规范化写入目标；Integrator 还仅限 `docs` 与 `.agents/notes`。

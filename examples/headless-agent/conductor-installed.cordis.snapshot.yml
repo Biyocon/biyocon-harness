@@ -1,5 +1,8 @@
 # The example's runtime with the real shipped Conductor preset mounted by its
 # normal agent-preset service. Only the model adapter is deterministic.
+- id: conductor-presentation
+  name: '@deepseek-ai/dsh-conductor'
+
 - id: conductor-installed-mock
   name: ./tests/fixtures/conductor-installed-mock.ts
 

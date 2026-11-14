@@ -1,3 +1,4 @@
+import { CONDUCTOR_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-conductor'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -119,6 +120,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
   it('rejects a provider that cannot apply the required child persona', async () => {
     const ctx = new Context()
     await mountAgentLoopTestDependencies(ctx)
+    ctx.sessions.registerEventTypes(CONDUCTOR_SESSION_EVENT_TYPES)
     await mountQualityServices(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
     await ctx.plugin(SubagentRuntime)
@@ -171,6 +173,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     const ctx = new Context()
     const adapter = new MockAdapter(script)
     await mountAgentLoopTestDependencies(ctx)
+    ctx.sessions.registerEventTypes(CONDUCTOR_SESSION_EVENT_TYPES)
     await mountQualityServices(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
     const approvalReasons: string[] = []
@@ -330,6 +333,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
       const ctx = new Context()
       const adapter = new MockAdapter(script)
       await mountAgentLoopTestDependencies(ctx)
+      ctx.sessions.registerEventTypes(CONDUCTOR_SESSION_EVENT_TYPES)
       await mountQualityServices(ctx)
       await ctx.plugin(AgentLoop, { agents: [] })
       await mountExecutionApproval(ctx, approvalOutcome)
@@ -452,6 +456,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     const ctx = new Context()
     const adapter = new MockAdapter(script)
     await mountAgentLoopTestDependencies(ctx)
+    ctx.sessions.registerEventTypes(CONDUCTOR_SESSION_EVENT_TYPES)
     await mountQualityServices(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
     await mountExecutionApproval(ctx)
@@ -549,6 +554,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     const ctx = new Context()
     const adapter = new MockAdapter(script)
     await mountAgentLoopTestDependencies(ctx)
+    ctx.sessions.registerEventTypes(CONDUCTOR_SESSION_EVENT_TYPES)
     await mountQualityServices(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
     await mountExecutionApproval(ctx)
@@ -653,6 +659,7 @@ describe('dsh-tool-conductor over the real spawn stack', () => {
     const ctx = new Context()
     const adapter = new MockAdapter(script)
     await mountAgentLoopTestDependencies(ctx)
+    ctx.sessions.registerEventTypes(CONDUCTOR_SESSION_EVENT_TYPES)
     await mountQualityServices(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
     await mountExecutionApproval(ctx)

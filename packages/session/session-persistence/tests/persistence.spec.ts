@@ -397,6 +397,56 @@ describe('PersistenceCoordinator bounded writes', () => {
 })
 
 describe('PersistenceCoordinator stored identity', () => {
+  it.each([
+    { kind: 'aborted', reason: { kind: 'legacy' } },
+    { kind: 'error', error: { message: 'Synthetic failure.', code: 'UNKNOWN' } },
+  ])('preserves an already-current stored turn ending: %j', async (reason) => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const backend = new ControlledBackend()
+    const id = SessionId('current-stored-turn-end')
+    const events: SessionEvent[] = [
+      { type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } },
+      { type: 'turn/end', seq: 1, time: 2, data: { turn: 1, reason } } as SessionEvent,
+    ]
+    backend.store.set(id, { meta: meta(id), events })
+    let coordinator!: PersistenceCoordinator<never>
+    await ctx.plugin(Object.assign((inner: Context) => {
+      coordinator = new PersistenceCoordinator(inner, backend)
+    }, { inject: ['sessions'] }))
+    try {
+      expect((await coordinator.inspect(id)).events).toEqual(events)
+      expect(backend.repairAttempts).toBe(0)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it.each([
+    { kind: 'aborted', extra: true },
+    { kind: 'error', step: -1 },
+  ])('rejects a malformed legacy turn ending read directly from storage: %j', async (reason) => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const backend = new ControlledBackend()
+    const id = SessionId('invalid-stored-turn-end')
+    backend.store.set(id, { meta: meta(id), events: [
+      { type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } },
+      { type: 'turn/end', seq: 1, time: 2, data: { turn: 1, reason } } as unknown as SessionEvent,
+    ] })
+    let coordinator!: PersistenceCoordinator<never>
+    await ctx.plugin(Object.assign((inner: Context) => {
+      coordinator = new PersistenceCoordinator(inner, backend)
+    }, { inject: ['sessions'] }))
+    try {
+      await expect(coordinator.inspect(id)).rejects.toThrow('malformed pre-react-loop turn/end')
+      expect(backend.repairAttempts).toBe(0)
+      expect(ctx.sessions.get(id)).toBeUndefined()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('rejects a mismatched backend header before repair or state publication', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
@@ -1298,7 +1348,8 @@ describe('PersistenceCoordinator observation cancellation', () => {
       backend.seekHook = async (hookId, fromSeq) => {
         const entry = backend.store.get(hookId)
         if (entry === undefined) return undefined
-        return { meta: structuredClone(entry.meta), events: entry.events.filter(e => e.seq >= fromSeq) }
+        return { meta: structuredClone(entry.meta), events: entry.events.filter(e => e.seq >= fromSeq),
+          requiredPrefixEvents: entry.events.filter(e => e.seq < fromSeq && e.ignorable !== true) }
       }
       const suffix = await coordinator.readFrom(id, 3)
       expect(suffix.events).toEqual(log.slice(3))

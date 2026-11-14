@@ -485,6 +485,9 @@ importers:
       '@deepseek-ai/dsh-conductor':
         specifier: workspace:^
         version: link:../packages/conductor/conductor
+      '@deepseek-ai/dsh-conductor-host-rc7':
+        specifier: workspace:^
+        version: link:../packages/conductor/conductor-host-rc7
       '@deepseek-ai/dsh-conductor-presets':
         specifier: workspace:^
         version: link:../packages/conductor/conductor-presets
@@ -974,6 +977,9 @@ importers:
       '@deepseek-ai/dsh-launch-environment':
         specifier: workspace:^
         version: link:../../util/launch-environment
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:^
+        version: link:../../core/session
       '@deepseek-ai/dsh-system-prompt':
         specifier: workspace:^
         version: link:../../core/system-prompt
@@ -3825,6 +3831,10 @@ importers:
         version: link:../../runtime-diagnostics/invariants
 
   packages/core/session:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:^

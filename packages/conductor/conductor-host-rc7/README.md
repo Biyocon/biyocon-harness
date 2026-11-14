@@ -2,6 +2,8 @@
 
 English | [中文](README.zh.md)
 
+This bundle declares seven required names in `dsh.bundle.sessionEventTypes`; app-boot passes the explicit profile declarations to the ordinary session provider before activation. It mounts the sole projection owner, `conductor-presentation`, and uses the Loader's existing `inject` dependency to keep `sessions` unavailable until both projections are registered. No session provider is replaced. Profiles without the bundle refuse Conductor-bearing history while ordinary chat remains readable. No stored events are migrated. [Required-event admission](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md) owns this rule.
+
 Optional Conductor host bundle for Biyocon Harness rc.7. Enable it explicitly between `dsh-base` and the surface bundle in the profile's `dsh.profile.bundles` list. It registers both child and unavailable-run projections before session replay and contributes its package-contained `presets` directory through `dsh.bundle.presetRoot`.
 
 ## Resources and installation
@@ -20,4 +22,4 @@ The resource relocation preserves the same stable request prefixes; editing cano
 
 ## Known Limitations and Deferred Work
 
-- This bundle supports rc.7 only. Pre-read event registration, clean packed-install stopgate 4a, pinned-upstream stopgate 4b and optional UI extraction follow separately. The package is not publicly released; installing it into another host does not prove compatibility.
+- This bundle supports rc.7 only. Clean packed-install stopgate 4a, pinned-upstream stopgate 4b and optional UI extraction follow separately. The package is not publicly released; installing it into another host does not prove compatibility.

@@ -1,3 +1,4 @@
+import { CONDUCTOR_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-conductor'
 import { implementationAdmission } from './intake-fixtures.ts'
 import { Context } from '@deepseek-ai/cordis'
 import InvariantRegistry, { InvariantError } from '@deepseek-ai/dsh-invariants'
@@ -15,7 +16,7 @@ function record(runId = ConductorRunId('CON-2026-0001')): string {
 
 async function setup(): Promise<Context> {
   const ctx = new Context()
-  await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionStore, { sessionEventTypes: [...CONDUCTOR_SESSION_EVENT_TYPES] })
   await ctx.plugin(InvariantRegistry, { enabled: true })
   await ctx.plugin(ConductorInvariant)
   return ctx
@@ -60,7 +61,7 @@ describe('dsh-conductor checkpoint invariant', () => {
 
   it('validates checkpoints that predate companion installation', async () => {
     const ctx = new Context()
-    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionStore, { sessionEventTypes: [...CONDUCTOR_SESSION_EVENT_TYPES] })
     const session = ctx.sessions.create(SessionId('conductor-invariant-existing'))
     session.append('turn/start', { turn: 1 })
     session.append('conductor/checkpoint', {
@@ -73,7 +74,7 @@ describe('dsh-conductor checkpoint invariant', () => {
 
   it('keeps an existing format-4 checkpoint readable but rejects a new one', async () => {
     const ctx = new Context()
-    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionStore, { sessionEventTypes: [...CONDUCTOR_SESSION_EVENT_TYPES] })
     const session = ctx.sessions.create(SessionId('conductor-invariant-old'))
     const old = JSON.stringify({ recordFormatVersion: 4, privatePayload: 'synthetic secret' })
     session.append('conductor/checkpoint', { runId: ConductorRunId('CON-2026-0001'), record: old })

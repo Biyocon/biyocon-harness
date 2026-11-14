@@ -1,4 +1,7 @@
-# Both replay projections are registered by this host-wide mount, before any agent preset.
+# Replay consumers wait for the sole projection owner before sessions activate.
+- id: session
+  inject: [conductorPresentation]
+
 - insert:
     - id: conductor-presentation
       name: '@deepseek-ai/dsh-conductor'

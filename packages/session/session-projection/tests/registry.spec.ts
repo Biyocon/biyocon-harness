@@ -51,7 +51,7 @@ const countUnit = (): ProjectionDefinition<'test/count', number> => ({
 
 async function harness(): Promise<{ ctx: Context; session: Session }> {
   const ctx = new Context()
-  await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionStore, { sessionEventTypes: ['test/mark'] })
   await ctx.plugin(SessionProjectionRegistry)
   return { ctx, session: ctx.sessions.create() }
 }

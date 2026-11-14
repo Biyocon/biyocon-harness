@@ -80,7 +80,7 @@ async function harness(options: HarnessOptions = {}) {
   const facility = new DomainFacility(ctx, { backend: 'memory', routes: {} })
   ctx.storage.mount('domain', facility)
   ctx.provide('storageDomain', facility)
-  await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionStore, { sessionEventTypes: ['cache-test/mark'] })
   await ctx.plugin(SessionProjectionRegistry)
   ctx.sessionProjections.register(marksUnit(options.stateVersion))
   const persistence = fakePersistence(logs)

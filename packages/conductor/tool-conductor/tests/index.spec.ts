@@ -1,3 +1,5 @@
+import * as ConductorPresentation from '@deepseek-ai/dsh-conductor'
+import { CONDUCTOR_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-conductor'
 import { toolAdmission } from './intake-fixtures.ts'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -33,13 +35,16 @@ import { resolveQualityCatalog } from '../src/quality-catalog.ts'
 
 const signal = new AbortController().signal
 
-it('removes the standalone child projection when the tool fiber is disposed', async () => {
+it('leaves replay projections owned by the presentation plugin when the tool is disposed', async () => {
   const ctx = await services()
   await ctx.plugin(SessionProjections)
+  const presentation = await ctx.plugin(ConductorPresentation)
   const fiber = await ctx.plugin(toolConductor, { subagentProvider: 'fresh' })
   const session = ctx.sessions.create(SessionId('projection-disposal'))
   expect(ctx.sessionProjections.snapshot(session).values.conductorChildren).toEqual({})
   await fiber.dispose()
+  expect(ctx.sessionProjections.snapshot(session).values.conductorChildren).toEqual({})
+  await presentation.dispose()
   expect(ctx.sessionProjections.snapshot(session).values.conductorChildren).toBeUndefined()
 })
 const roleSkills = [
@@ -180,9 +185,9 @@ class StubProvider implements SubagentProvider {
   }
 }
 
-async function services(provider: SubagentProvider = new StubProvider()): Promise<Context> {
+async function services(provider: SubagentProvider = new StubProvider(), admit = true): Promise<Context> {
   const ctx = new Context()
-  await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionStore, { sessionEventTypes: admit ? [...CONDUCTOR_SESSION_EVENT_TYPES] : [] })
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
@@ -1255,4 +1260,13 @@ describe('dsh-tool-conductor unit boundary', () => {
     expect(premature.isError).toBe(true)
     expect((premature.content[0] as { text: string }).text).toMatch(/closeout authorization is host-only/)
   })
+})
+
+
+it('refuses a producer mount before tool registration when its bundle event admission is absent', async () => {
+  const ctx = await services(undefined, false)
+  try {
+    expect(() => { toolConductor.apply(ctx, { subagentProvider: 'fresh' }) }).toThrow('enable the compatible Conductor host bundle')
+    expect(ctx.tools.get('conductor')).toBeUndefined()
+  } finally { await ctx.fiber.dispose() }
 })

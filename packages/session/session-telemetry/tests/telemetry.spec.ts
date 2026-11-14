@@ -64,7 +64,7 @@ async function setup(
   capture: SessionTelemetryCapture = 'live',
 ) {
   const ctx = new Context()
-  await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionStore, { sessionEventTypes: ['telemetry-test/opaque'] })
   let coordinator!: SessionTelemetryCoordinator
   const fiber = await ctx.plugin({
     name: 'fake-telemetry',

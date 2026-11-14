@@ -6,15 +6,10 @@
  */
 
 /**
- * Every `SessionEventMap` member declared in this repository — the event
- * vocabulary this build understands. The persistence read path refuses to
- * interpret a log containing a type outside this set unless the event
- * carries the envelope's `ignorable` marker (see `SessionEvent.ignorable`
- * in `./types.ts`): such a log was likely written by a newer harness, and
- * silently skipping a required event would reconstruct a wrong session.
- * Downstream (out-of-repo) plugin events are outside this list by
- * construction; a registration surface for them is deferred until such a
- * consumer exists.
+ * The host's unconditional SessionEventMap vocabulary. Packages declaring
+ * dsh.sessionEventRegistration in their manifest are excluded: their mounted
+ * plugin registers declared types through SessionStore.registerEventTypes.
+ * Persistence refuses an unregistered type unless its envelope is ignorable.
  */
 export const KNOWN_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
   'agent-preset/selected',
@@ -30,13 +25,6 @@ export const KNOWN_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
   'compaction/prune',
   'compaction/start',
   'compaction/summary',
-  'conductor/checkpoint',
-  'conductor/child',
-  'conductor/owner-continuation-consumed',
-  'conductor/owner-question-created',
-  'conductor/owner-response-acknowledged',
-  'conductor/owner-response-recorded',
-  'conductor/owner-terminal-rejection',
   'feedback/record',
   'goal/change',
   'hook/invoked',

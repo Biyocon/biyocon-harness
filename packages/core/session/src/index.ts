@@ -7,6 +7,7 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import { isAbsolute } from 'node:path'
 import { deepFreeze } from '@deepseek-ai/dsh-llm'
 import { scopeOf, scopeTarget } from '@deepseek-ai/dsh-scope'
@@ -19,6 +20,7 @@ import { snapshotJsonValue } from './json.ts'
 import { deriveEventMessage, SurfaceManager } from './surface.ts'
 import type { SessionSurface } from './surface.ts'
 import { foldRequestHeader } from './request-header.ts'
+import { KNOWN_SESSION_EVENT_TYPES } from './known-event-types.ts'
 
 export * from './types.ts'
 export { SessionPreparation } from './preparation.ts'
@@ -404,6 +406,8 @@ interface SessionEntry {
   readonly session: Session
   readonly carrier: Scoped<Session>
   readonly emitCtx: Context
+  assertAdmitted(event: SessionEvent): void
+  assertReadable(events: readonly SessionEvent[]): void
   announced: boolean
   announcing: boolean
   appending: boolean
@@ -555,8 +559,10 @@ export class Session {
    * until the next append; a previously returned array does not grow later.
    * Events and their nested data are deep-frozen at acceptance, so neither a
    * cast nor ordinary JavaScript can rewrite durable history.
+   * Attached sessions reject reads if a required event loses host admission.
    */
   get events(): readonly SessionEvent[] {
+    attachments.get(this)?.assertReadable(this.log)
     this.eventsSnapshot ??= Object.freeze([...this.log])
     return this.eventsSnapshot
   }
@@ -573,6 +579,7 @@ export class Session {
    * the log, the append is committed: observer failures are logged and
    * contained per listener, so they do not change the return value or prevent
    * later listeners from observing the same accepted event.
+   * Attached sessions require host admission before committing a required event.
    *
    * @param type - The event type (key of {@link SessionEventMap}).
    * @param data - The event payload; must be JSON-serializable.
@@ -640,6 +647,7 @@ export class Session {
       if (entry !== undefined) {
         callbacks = collectSessionCallbacks(entry.emitCtx, [entry.carrier, 'session/event', ...callbackArgs])
       }
+      entry?.assertAdmitted(event as SessionEvent)
       this.log.push(event as SessionEvent)
       this.eventsSnapshot = undefined
       if (callbacks !== undefined && entry !== undefined) {
@@ -783,6 +791,12 @@ export class SessionForkError extends Error {
   }
 }
 
+/** Session admission supplied by the host before this service activates. */
+export interface Config {
+  /** Additional required event names declared by explicitly enabled bundles. */
+  sessionEventTypes: string[]
+}
+
 /**
  * In-memory session store (`ctx.sessions`).
  *
@@ -790,11 +804,17 @@ export class SessionForkError extends Error {
  * subscribe to `session/event` and flush on `session/flush` / dispose.
  */
 export class SessionStore extends Service {
+  static Config: z<Config> = z.object({
+    sessionEventTypes: z.array(z.string().pattern(/^[^\s\x00-\x08\x0e-\x1f\x7f]+$/)).default([]),
+  })
   private store = new Map<SessionId, SessionEntry>()
   private counter = 0
+  private readonly registeredEventTypes = new Map<string, { refs: number }>()
+  private admissionRevision = 0
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, config: Config = { sessionEventTypes: [] }) {
     super(ctx, 'sessions')
+    this.registerEventTypes(config.sessionEventTypes)
     ctx.inject(['typert'], (typeCtx) => {
       typeCtx.typert.lookups.register('session', {
         parameter: 'session',
@@ -804,6 +824,50 @@ export class SessionStore extends Service {
         resolve: sessionId => this.get(sessionId),
       })
     })
+  }
+
+  /**
+   * Admit an installed plugin's declared event types for session reads and writes.
+   * Registrations are reference-counted and owned by the calling fiber; this
+   * does not validate payloads or make a required event ignorable.
+   * @param types - event names declared by this plugin or its explicit bundle.
+   * @returns the disposer for this registration.
+   */
+  registerEventTypes(types: readonly string[]): () => void {
+    const names = [...new Set(types)]
+    const dispose = this.ctx.effect(() => {
+      const entries = names.map((type) => {
+        const entry = this.registeredEventTypes.get(type) ?? { refs: 0 }
+        entry.refs++
+        this.registeredEventTypes.set(type, entry)
+        return { type, entry }
+      })
+      this.admissionRevision++
+      return () => {
+        for (const { type, entry } of entries) {
+          if (--entry.refs === 0) this.registeredEventTypes.delete(type)
+        }
+        this.admissionRevision++
+      }
+    }, 'sessions.registerEventTypes()')
+    return () => void dispose()
+  }
+
+  /**
+   * Whether this host admits a required event through its built-in vocabulary
+   * or a currently mounted plugin. Payload validation belongs to its consumer.
+   * @param type - event type produced or read by a plugin.
+   * @returns whether the type is admitted by this host instance.
+   */
+  supportsEventType(type: string): boolean {
+    return KNOWN_SESSION_EVENT_TYPES.has(type) || this.registeredEventTypes.has(type)
+  }
+
+  /** Reject unsupported required events without exposing their payloads. */
+  private assertEventAdmitted(event: SessionEvent, id: SessionId): void {
+    if (event.ignorable !== true && !this.supportsEventType(event.type)) {
+      throw new Error(`session "${id}" event type "${event.type}" (seq ${event.seq}) is not admitted by this host; enable the compatible plugin bundle before producing or reading its events`)
+    }
   }
 
   /**
@@ -908,7 +972,8 @@ export class SessionStore extends Service {
    * @returns the detach disposer (publication hooks + store removal). When called from
    *   a synchronous `session/created` listener, removal and disposal wait until
    *   that creation dispatch unwinds.
-   * @throws if a session with this id is already in the store.
+   * @throws if the session is already attached, its id is occupied, or its seed
+   *   contains a required event type this host has not admitted.
    */
   enter(session: Session): () => void {
     const id = session.id
@@ -917,11 +982,19 @@ export class SessionStore extends Service {
     // preparation. Only one exact same-id transaction can publish.
     if (this.store.has(id)) throw new Error(`session "${id}" already exists`)
     if (attachments.has(session)) throw new Error(`session "${id}" is already attached to a store`)
+    for (const event of session.events) this.assertEventAdmitted(event, id)
+    let checkedAdmission = this.admissionRevision
     const entry: SessionEntry = {
       id,
       session,
       carrier,
       emitCtx: this.ctx,
+      assertAdmitted: (event) => { this.assertEventAdmitted(event, id) },
+      assertReadable: (events) => {
+        if (checkedAdmission === this.admissionRevision) return
+        for (const event of events) this.assertEventAdmitted(event, id)
+        checkedAdmission = this.admissionRevision
+      },
       announced: false,
       announcing: false,
       appending: false,

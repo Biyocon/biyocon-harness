@@ -27,7 +27,7 @@ import {
   admitIntake,
   admittedRoute,
   currentAuditHash,
-  conductorChildrenProjection,
+  CONDUCTOR_SESSION_EVENT_TYPES,
   effectiveOwnerMandate,
   ownerCommandAllowed,
   validateAnalysisChallenge,
@@ -875,11 +875,13 @@ function presentResult(_args: ConductorCallArgs, _result: { content: ContentBloc
 
 /** Register the Conductor tool and its gated specialist driver. */
 export function apply(ctx: Context, config: Config): void {
-  ctx.inject(['sessionProjections'], (projectionCtx) => {
-    projectionCtx.sessionProjections.register(conductorChildrenProjection)
-  })
   const resolved = resolveConfig(config)
   requireFreshProvider(ctx, resolved.subagentProvider)
+  for (const type of CONDUCTOR_SESSION_EVENT_TYPES) {
+    if (!ctx.sessions.supportsEventType(type)) {
+      throw new Error(`Conductor cannot produce required event type "${type}"; enable the compatible Conductor host bundle before mounting tool-conductor`)
+    }
+  }
   const ownerController = new ConductorOwnerController(ctx, config.ownerQuestions === true)
   if (config.routeTasks === true) installModeRouting(ctx, ownerController)
 

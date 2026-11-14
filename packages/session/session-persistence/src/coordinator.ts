@@ -9,7 +9,6 @@ import { Context } from '@deepseek-ai/cordis'
 import {
   adoptSessionEvent,
   interruptedTurnClosers,
-  KNOWN_SESSION_EVENT_TYPES,
   SESSION_FORMAT_VERSION,
   SessionPreparation,
   snapshotJsonValue,
@@ -112,6 +111,8 @@ export interface StoredPrefix<TornMarker = unknown> {
 export interface StoredSuffix {
   meta: SessionHeader
   events: SessionEvent[]
+  /** Required event types before the suffix, with their first seq in that prefix. */
+  requiredPrefixEvents: { type: string; seq: number }[]
 }
 
 /**
@@ -856,6 +857,7 @@ export class PersistenceCoordinator<TornMarker = unknown> {
       if (suffix === undefined) throw new Error(`session "${id}" not found`)
       this.assertStoredId(id, suffix.meta)
       this.assertVersion(suffix.meta)
+      this.assertEventsSupported(suffix.meta, suffix.requiredPrefixEvents)
       if (suffix.events.some(needsLegacyPrefix)) {
         const whole = await this.readStoredPrefix(id, signal)
         return { meta: whole.meta, events: whole.events.filter(event => event.seq >= fromSeq) }
@@ -967,12 +969,14 @@ export class PersistenceCoordinator<TornMarker = unknown> {
     source: PreparedSessionSource<TornMarker>,
     signal?: AbortSignal,
   ): Promise<boolean> {
+    this.assertEventsSupported(source.inspection.meta, source.inspection.events)
     return await this.backend.readStoredRevision(source.inspection.meta.id, signal) === source.revision
   }
 
   /** Return one durable immutable view of an already-live Session. */
   private async loadLiveSnapshot(session: Session): Promise<SessionInspection> {
     const events = session.events
+    this.assertEventsSupported(session.header, events)
     await this.flush(session)
     const state = this.states.get(session.id)
     /* v8 ignore next -- successful flush always publishes this live session's durable state */
@@ -986,6 +990,7 @@ export class PersistenceCoordinator<TornMarker = unknown> {
 
   /** Borrow one immutable view from an already-live Session. */
   private inspectLive(session: Session): SessionInspection {
+    this.assertEventsSupported(session.header, session.events)
     return Object.freeze({ meta: session.header, events: session.events })
   }
 
@@ -1058,10 +1063,10 @@ export class PersistenceCoordinator<TornMarker = unknown> {
    * this build still reads and rejected the ones it does not, so those keep
    * their specific diagnostics.
    */
-  private assertEventsSupported(meta: SessionHeader, events: readonly SessionEvent[]): void {
+  private assertEventsSupported(meta: SessionHeader, events: readonly { type: string; seq: number; ignorable?: true }[]): void {
     for (const event of events) {
-      if (KNOWN_SESSION_EVENT_TYPES.has(event.type) || event.ignorable === true) continue
-      throw this.unsupported(meta, `session "${meta.id}" contains event type "${event.type}" (seq ${event.seq}) unknown to this harness and not marked ignorable; refusing to interpret the log — it was likely written by a newer harness`)
+      if (this.ctx.sessions.supportsEventType(event.type) || event.ignorable === true) continue
+      throw this.unsupported(meta, `session "${meta.id}" contains event type "${event.type}" (seq ${event.seq}) unknown to this harness and not marked ignorable; refusing to interpret the log — enable the compatible plugin bundle or upgrade the harness`)
     }
   }
 

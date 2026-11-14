@@ -100,10 +100,29 @@ export { executionBaselineHash, executionEffectProfile, nextQualityCycle, snapsh
 export { isValidRunId, mintRunId } from './run-id.ts'
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { SessionEventType } from '@deepseek-ai/dsh-session'
 import { conductorChildrenProjection } from './child-projection.ts'
 import { conductorUnavailableRunsProjection } from './run-availability.ts'
 export { conductorChildrenProjection }
 export { conductorUnavailableRunsProjection }
+
+/** Required Conductor event declarations admitted only by the installed host plugin. */
+export const CONDUCTOR_SESSION_EVENT_TYPES = [
+  'conductor/checkpoint',
+  'conductor/child',
+  'conductor/owner-question-created',
+  'conductor/owner-response-recorded',
+  'conductor/owner-continuation-consumed',
+  'conductor/owner-terminal-rejection',
+  'conductor/owner-response-acknowledged',
+] as const satisfies readonly SessionEventType[]
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** Available only after the Conductor plugin owns both replay projections. */
+    conductorPresentation: true
+  }
+}
 
 /** Projection service required for persistent Conductor child catalogs. */
 export const inject = ['sessionProjections']
@@ -115,4 +134,5 @@ export const inject = ['sessionProjections']
 export function apply(ctx: Context): void {
   ctx.sessionProjections.register(conductorChildrenProjection)
   ctx.sessionProjections.register(conductorUnavailableRunsProjection)
+  ctx.provide('conductorPresentation', true)
 }

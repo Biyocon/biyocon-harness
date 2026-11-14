@@ -8,11 +8,15 @@ import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import SessionStore, { type Config as SessionConfig } from '@deepseek-ai/dsh-session'
 import {
   composeEntries,
+  bundleSessionEventPatches,
   healProfilesModuleFallback,
   initProfile,
   loadProfile,
+  loadOverlayPatches,
   PROFILE_PATCH_FILENAME,
   PROFILE_TEMPLATES,
   readProfileManifest,
@@ -324,4 +328,61 @@ describe('healProfilesModuleFallback', () => {
     const fallback = join(home, 'profiles', 'node_modules')
     expect(lstatSync(join(fallback, 'dsh-app')).isSymbolicLink()).toBe(true)
   })
+})
+
+
+describe('explicit bundle session-event admission', () => {
+  function fixture(metadata: unknown) {
+    const anchor = stageInstallation({ first: { patch: '[]\n', deps: { indirect: '0.0.0' } },
+      second: { patch: '[]\n' }, indirect: { patch: '[]\n' } })
+    for (const [name, types] of [['first', metadata], ['second', ['second/event', 'shared/event']], ['indirect', ['indirect/event']]] as const) {
+      const path = join(anchor, '..', 'node_modules', name, 'package.json')
+      const manifest = JSON.parse(readFileSync(path, 'utf8')) as { dsh: { bundle: Record<string, unknown> } }
+      manifest.dsh.bundle.sessionEventTypes = types
+      writeFileSync(path, JSON.stringify(manifest))
+    }
+    const home = tmp()
+    initProfile(resolveProfileDir('events', home), ['first', 'second'])
+    return { load: () => loadProfile('t', 'events', anchor, home) }
+  }
+
+  it('combines two explicit bundles, deduplicates, and excludes transitive metadata and patch grants', async () => {
+    const profile = fixture(['first/event', 'shared/event', 'first/event']).load()
+    const patches = bundleSessionEventPatches(profile.layers, [{ id: 'session', name: '@deepseek-ai/dsh-session',
+      config: { sessionEventTypes: ['indirect/event'], other: 'preserved' } }])
+    expect(patches).toEqual([{ id: 'session', config: { other: 'preserved',
+      sessionEventTypes: ['first/event', 'shared/event', 'second/event'] } }])
+    expect(profile.layers.map(layer => layer.packageName)).toEqual(['first', 'second'])
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SessionStore, patches[0]!.config as SessionConfig)
+      for (const type of ['first/event', 'shared/event', 'second/event']) expect(ctx.sessions.supportsEventType(type)).toBe(true)
+      expect(ctx.sessions.supportsEventType('indirect/event')).toBe(false)
+    } finally { await ctx.fiber.dispose() }
+    const undeclared = { ...profile.layers[0]! }
+    delete undeclared.sessionEventTypes
+    expect(bundleSessionEventPatches([undeclared],
+      [{ id: 'session', name: '@deepseek-ai/dsh-session' }])).toEqual([{ id: 'session', config: { sessionEventTypes: [] } }])
+    expect(bundleSessionEventPatches([], [{ id: 'session', name: '@deepseek-ai/dsh-session' }]))
+      .toEqual([{ id: 'session', config: { sessionEventTypes: [] } }])
+    expect(bundleSessionEventPatches([], [])).toEqual([])
+    for (const entries of [[], [{ id: 'session', name: '@deepseek-ai/dsh-session', disabled: true }]]) {
+      expect(() => bundleSessionEventPatches(profile.layers, entries)).toThrow('require an enabled')
+    }
+  })
+
+  it.each([null, 42, {}, [''], ['a b'], [' padded'], ['x\n'], [false]])('rejects malformed sessionEventTypes metadata: %j', (types) => {
+    expect(() => fixture(types).load()).toThrow('dsh.bundle.sessionEventTypes')
+  })
+})
+
+
+it('keeps event Config for a !!js false provider while refusing a sole literal-disabled row', () => {
+  const root = tmp()
+  const path = join(root, 'conditional.yml')
+  writeFileSync(path, "- id: session\n  name: '@deepseek-ai/dsh-session'\n  disabled: !!js 'false'\n")
+  const entries = loadOverlayPatches('conditional-test', path) as import('@deepseek-ai/cordis-plugin-loader').EntryOptions[]
+  const layers = [{ packageName: 'explicit', packageDir: root, patchPath: path, patches: [], sessionEventTypes: ['explicit/event'] }]
+  expect(bundleSessionEventPatches(layers, entries)).toEqual([{ id: 'session', config: { sessionEventTypes: ['explicit/event'] } }])
+  expect(() => bundleSessionEventPatches(layers, [{ ...entries[0]!, disabled: true }])).toThrow('require an enabled')
 })

@@ -36,7 +36,16 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml",
-      "presetRoot": "./presets"
+      "presetRoot": "./presets",
+      "sessionEventTypes": [
+        "conductor/checkpoint",
+        "conductor/child",
+        "conductor/owner-question-created",
+        "conductor/owner-response-recorded",
+        "conductor/owner-continuation-consumed",
+        "conductor/owner-terminal-rejection",
+        "conductor/owner-response-acknowledged"
+      ]
     }
   },
   "scripts": {

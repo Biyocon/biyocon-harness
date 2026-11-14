@@ -66,6 +66,20 @@ describe('installed Conductor through the headless example', () => {
   })
   registerOwnerEscalationSnapshots()
 
+  it('refuses a patch-only Conductor producer mount before model requests without bundle admission', async () => {
+    const result = await runLoaderSmoke({
+      label: 'Conductor producer admission', tempDirPrefix: 'conductor-producer-admission-',
+      binScript: driver, libBinScript: driver, configPath,
+      binArgs: [configPath, 'Synthetic task; no model request is permitted.'],
+      tsconfigPath: join(root, 'tsconfig.json'),
+      env: { DSH_SNAPSHOT: 'replay', DSH_TELEMETRY_DISABLED: '1', DSH_CONDUCTOR_MISSING_ADMISSION: '1' },
+      prepare: cwd => cp(shipped, join(cwd, 'installed-presets/conductor'), { recursive: true }),
+    })
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toBe(await readFile(join(expectedDirectory, 'producer-admission.expected.md'), 'utf8'))
+  }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+
+
   it('opens a format-4 session with its earlier chat and starts a distinct Conductor run', async () => {
     const expectedPath = join(expectedDirectory, 'unavailable-run.expected.md')
     const result = await runLoaderSmoke({

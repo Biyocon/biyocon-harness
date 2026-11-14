@@ -11,6 +11,8 @@
         name: '@deepseek-ai/dsh-tool-ralph'
         disabled: true
       - insert:
+          - id: conductor-snapshot-admission
+            name: ./tests/fixtures/conductor-snapshot-admission.ts
           - id: llm-replay
             name: '@deepseek-ai/dsh-llm-replay'
           - id: conductor-roles
@@ -39,6 +41,7 @@
             name: ./tests/fixtures/conductor-snapshot-sandbox.ts
           - id: tool-conductor
             name: '@deepseek-ai/dsh-tool-conductor'
+            inject: [conductorSnapshotAdmission]
             config:
               subagentProvider: spawn
               routeTasks: true

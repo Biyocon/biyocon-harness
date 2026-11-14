@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { KNOWN_SESSION_EVENT_TYPES, Session, SessionId } from '@deepseek-ai/dsh-session'
+import { CONDUCTOR_SESSION_EVENT_TYPES } from '../src/index.ts'
 import { ConductorRunId, SessionConductorRunStore, applyScriptedOwnerAnswer, consumeOwnerContinuation,
   contentHash, createRun, ownerMandateHash, parkOwnerQuestion, recordGate, resumeRun } from '../src/index.ts'
 import { decodeOwnerAcknowledgement, publishOwnerAcknowledgement, decodeOwnerInteractionEvent, publishOwnerInteractions, replayOwnerInteractions } from '../src/owner-events.ts'
@@ -34,7 +35,8 @@ describe('required owner interaction events', () => {
     const session = Session.create(initial.ownerSessionId!)
     publishOwnerInteractions(session, consumed)
     expect(Session.create(initial.ownerSessionId!, session.events).events.slice(0, session.events.length)).toEqual(session.events)
-    expect(session.events.every(event => KNOWN_SESSION_EVENT_TYPES.has(event.type) && event.ignorable === undefined)).toBe(true)
+    expect(session.events.every(event => (KNOWN_SESSION_EVENT_TYPES.has(event.type)
+      || CONDUCTOR_SESSION_EVENT_TYPES.some(type => type === event.type)) && event.ignorable === undefined)).toBe(true)
     expect(KNOWN_SESSION_EVENT_TYPES.has('conductor/owner-future')).toBe(false)
   })
 
@@ -141,7 +143,8 @@ describe('durable owner acknowledgement facts', () => {
     const event = session.events[0]!
     expect(event.type).toBe('conductor/owner-response-acknowledged')
     expect(event.ignorable).toBeUndefined()
-    expect(KNOWN_SESSION_EVENT_TYPES.has(event.type)).toBe(true)
+    expect(KNOWN_SESSION_EVENT_TYPES.has(event.type)).toBe(false)
+    expect(CONDUCTOR_SESSION_EVENT_TYPES).toContain(event.type)
     expect(decodeOwnerAcknowledgement(event.data)).toEqual({ runId: run.runId, questionId: 'naming-question', revision: 2,
       status: key === 'answered' ? 'accepted' : 'rejected' })
     expect(replayOwnerInteractions(run, session.events)).toEqual(run)

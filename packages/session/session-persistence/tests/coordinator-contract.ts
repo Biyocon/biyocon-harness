@@ -15,6 +15,12 @@ import { Context, type Fiber } from '@deepseek-ai/cordis'
 import { scopeTarget } from '@deepseek-ai/dsh-scope'
 import SessionStore, { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+
+declare module '@deepseek-ai/dsh-session/types' {
+  interface SessionEventMap {
+    'optional-storage/record': { value: number }
+  }
+}
 import { meta, oneTurnLog, appendLog } from './contract.ts'
 
 /**
@@ -604,6 +610,18 @@ export function runCoordinatorContract(name: string, makeFixture: () => Promise<
           .rejects.toThrow('message must have role "user"')
 
         const malformedLegacy: { id: string; event: SessionEvent; message: string }[] = [
+          {
+            id: 'invalid-old-abort-extra',
+            event: { type: 'turn/end', seq: 0, time: 1,
+              data: { turn: 1, reason: { kind: 'aborted', extra: true } } } as unknown as SessionEvent,
+            message: 'malformed pre-react-loop turn/end',
+          },
+          {
+            id: 'invalid-old-error-step',
+            event: { type: 'turn/end', seq: 0, time: 1,
+              data: { turn: 1, reason: { kind: 'error', step: -1 } } } as unknown as SessionEvent,
+            message: 'malformed pre-react-loop turn/end',
+          },
           {
             id: 'invalid-old-turn-start',
             event: {
@@ -1351,6 +1369,40 @@ export function runCoordinatorContract(name: string, makeFixture: () => Promise<
         const failure = await ctx.sessionPersistence.load(m.id).then(() => undefined, (error: unknown) => error as Error)
         expect(failure?.name).toBe('SessionFormatUnsupportedError')
         expect(failure?.message).toMatch(/older than the supported v0.*no upgrade path/)
+      } finally {
+        await fiber.dispose()
+        await fix.cleanup()
+      }
+    })
+
+    it('requires a live plugin registration for cold, cached and suffix reads', async () => {
+      const fix = await makeFixture()
+      const { ctx, fiber } = await freshCtx(fix)
+      try {
+        const header = meta('optional-plugin-history', WORK)
+        const events: SessionEvent[] = [...oneTurnLog(), {
+          type: 'optional-storage/record', seq: oneTurnLog().length, time: 99, data: { value: 1 },
+        }]
+        await ctx.sessionPersistence.create(header)
+        await ctx.sessionPersistence.append(header.id, events)
+        await expect(ctx.sessionPersistence.inspect(header.id)).rejects.toThrow('enable the compatible plugin bundle')
+        const release = ctx.sessions.registerEventTypes(['optional-storage/record'])
+        expect((await ctx.sessionPersistence.inspect(header.id)).events).toEqual(events)
+        expect((await ctx.sessionPersistence.readFrom(header.id, events.length)).events).toEqual([])
+        release()
+        await expect(ctx.sessionPersistence.inspect(header.id)).rejects.toThrow('optional-storage/record')
+        await expect(ctx.sessionPersistence.load(header.id)).rejects.toThrow('optional-storage/record')
+        await expect(ctx.sessionPersistence.prepare(header.id)).rejects.toThrow('optional-storage/record')
+        await expect(ctx.sessionPersistence.readFrom(header.id, events.length)).rejects.toThrow('optional-storage/record')
+        expect(ctx.sessions.get(header.id)).toBeUndefined()
+        const releaseLive = ctx.sessions.registerEventTypes(['optional-storage/record'])
+        const live = ctx.sessions.create(header.id, { seed: events, meta: header })
+        await ctx.sessions.flush(live)
+        expect((await ctx.sessionPersistence.inspect(header.id)).events).toEqual(live.events)
+        releaseLive()
+        await expect(ctx.sessionPersistence.inspect(header.id)).rejects.toThrow('optional-storage/record')
+        await expect(ctx.sessionPersistence.load(header.id)).rejects.toThrow('optional-storage/record')
+        await expect(ctx.sessionPersistence.prepare(header.id)).rejects.toThrow('while it is live')
       } finally {
         await fiber.dispose()
         await fix.cleanup()

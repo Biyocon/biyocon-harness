@@ -37,6 +37,8 @@ import { scrubRequestHeaders, stabilizeFixtureMessageIds } from '@deepseek-ai/ds
 import {
   assertEntriesLoaded,
   composeEntries,
+  loadProfile,
+  bundleSessionEventPatches,
   healProfilesModuleFallback,
   loadOverlayPatches,
 } from '@deepseek-ai/dsh-app-boot'
@@ -97,8 +99,6 @@ export function webSnapshotMode(): WebSnapshotMode {
 }
 
 /** The shipped base, Conductor host and web bundle patches over the empty profile root. */
-const BASE_PATCH_PATH = join(REPO_ROOT, 'packages/bundle/base/cordis.patch.yml')
-const CONDUCTOR_PATCH_PATH = join(REPO_ROOT, 'packages/conductor/conductor-host-rc7/cordis.patch.yml')
 const WEB_PATCH_PATH = join(REPO_ROOT, 'packages/bundle/web-app/cordis.patch.yml')
 /** The installation anchor whose dependency surface the profile module fallback mirrors. */
 const INSTALL_ANCHOR = join(REPO_ROOT, 'apps/cli/package.json')
@@ -186,6 +186,10 @@ export interface WebScaffold {
 
 /** Options for {@link launchWebScaffold}. */
 export interface LaunchOptions {
+  /** Omit the optional Conductor host layer to qualify a profile without it. */
+  conductorHostBundle?: boolean
+  /** Install deterministic startup probes before any entry in the shipped tree mounts. */
+  prepareHost?: (ctx: Context, paths: { workspaceCwd: string; persistenceRoot: string }) => Promise<void> | void
   /**
    * Optional product overlay applied after the shipped Web surface and before
    * the scaffold's hermetic test patches, matching the launcher's `--patch`
@@ -367,10 +371,11 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
   // (bundle patches in dsh.profile.bundles order), applied over the SAME empty root (a
   // patch id that stops matching a row fails the boot sweep loudly instead of
   // drifting).
-  const basePatches = [
-    ...loadOverlayPatches('web e2e scaffold', BASE_PATCH_PATH),
-    ...loadOverlayPatches('web e2e scaffold', CONDUCTOR_PATCH_PATH),
-  ]
+  const profile = loadProfile('web e2e scaffold', 'web-e2e', join(REPO_ROOT, 'apps/cli/package.json'), harnessHome, {
+    bundles: ['@deepseek-ai/dsh-base', ...options.conductorHostBundle === false ? [] : ['@deepseek-ai/dsh-conductor-host-rc7']],
+    userLayer: false,
+  })
+  const basePatches = profile.layers.flatMap(layer => layer.patches)
   const surfacePatches = loadOverlayPatches('web e2e scaffold', WEB_PATCH_PATH)
   const extraOverlayPatches = options.extraOverlayPath === undefined
     ? []
@@ -497,6 +502,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       : [{ id: 'llm-deepseek', disabled: true }],
   ]
 
+  patches.push(...bundleSessionEventPatches(profile.layers, composeEntries([patches])))
   // Sessions inherit the gateway's process.cwd() default; run the boot from
   // the temp workspace so tool cwd, session cwd, and fixtures agree.
   const originalCwd = process.cwd()
@@ -527,6 +533,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       },
     })
     await ctx.plugin(Loader)
+    await options.prepareHost?.(ctx, { workspaceCwd, persistenceRoot })
     ctx.loader.builtins.include = Include
     // `cordis:group` beside it, exactly as `boot()` registers it: a group row is
     // how a preset gives one `isolate` realm to a provider and its consumers,

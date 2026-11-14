@@ -127,6 +127,7 @@ export const SERVICE_PAGE: Record<string, string> = {
  * to a model as `cordis_runtime_inspect what:"client"`).
  */
 export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
+  conductorPresentation: 'not a service API: reversible projection-registration availability for Loader inject dependencies — packages/conductor/conductor/README.md owns the lifecycle rule',
   agent: 'not a service: the DX accessor field on Agent.ctx (root accessor defaulting to undefined) — docs/subsystems/core.md owns the Agent handle',
   appExit: 'not a service: launcher-provided bounded process-exit callback — packages/boot/cmdline/README.md owns the launcher contract',
   cmdlineArgs: 'not a service: launcher-provided immutable app argument accessor — packages/boot/cmdline/README.md owns the launcher contract',
@@ -273,6 +274,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   SessionReferenceCandidate: 'session-reference.md',
   SessionReferenceInput: 'session-reference.md',
   SessionEvent: 'session.md',
+  SessionEventType: 'session.md',
   SessionId: 'core.md',
   SessionStartSource: 'core.md',
   SessionLogSnapshot: 'session-query.md',

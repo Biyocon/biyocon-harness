@@ -30,6 +30,22 @@ Entries enumerate non-Conductor source files in the relevant merged PR diffs. Ge
 
 The historical `packages/extensions/tool-cordis/src/api-catalog.ts`, `packages/extensions/cordis-client-runner/src/client/slot-catalog.ts` and `packages/core/session/src/known-event-types.ts` are generated projections, not direct registrations. `scripts/gen-persistence-catalog.ts` generates the event set from `SessionEventMap` declaration merges; extraction first needs the generator change below, then regeneration for the installed package set. The API and slot catalogs also require regeneration. #64's generic implementation remains a dependency because Conductor's critic uses its identity and budget guarantees. Existing owner UI in `ui-user-questions` should move into its own plugin.
 
+### R1 required-event admission
+
+The generic host extension in PR [#115](https://github.com/Biyocon/biyocon-harness/pull/115) implements the required-bundle rule without core importing Conductor. These are active extraction dependencies, not an upstream compatibility claim.
+
+| File | Purpose |
+| --- | --- |
+| `packages/core/session/src/index.ts` | Config admission before activation, fiber-owned reference counts, rejection before required-event append/publication and live-history rechecks after registration changes. |
+| `packages/session/session-persistence/src/coordinator.ts` | Refusal before cold reconstruction/recovery/publication and rechecks for retained/live views; `StoredSuffix.requiredPrefixEvents` prevents watermark bypass. |
+| `packages/session/session-persistence-sqlite/src/index.ts` | Grouped required-prefix type/sequence witnesses for seek reads, without decoding prefix payloads. |
+| `packages/boot/app-boot/src/profile.ts` | Validate/combine explicit bundle `sessionEventTypes`, exclude transitive/patch grants and supply ordinary session Config before activation; exclude only literal `disabled: true`, preserving expression rows. |
+| `apps/cli/src/profile-boot.ts`; `apps/cli/src/dump-config.ts` | Apply the same bundle admission to boot/reload and configuration dumps. |
+| `scripts/gen-persistence-catalog.ts` | Generic manifest flag `dsh.sessionEventRegistration` excludes optional-package events from unconditional runtime admission while preserving the documentation catalog. |
+| `scripts/gen-cordis-catalog.ts` | Generate the event-registration API/docs and point non-operation projection availability at its package README. |
+
+The [decision and supersession audit](../../implemented/architecture/2026-11-13-plugin-required-session-events.md) retain the format and unavailable-run rules. The generated `known-event-types.ts` no longer grants Conductor admission; its explicit host-bundle manifest owns all seven declarations.
+
 ### Package/bundle coupling
 
 | Package path | Current binding | Plugin extraction |

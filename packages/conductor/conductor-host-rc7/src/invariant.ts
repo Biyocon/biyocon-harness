@@ -13,10 +13,9 @@ export const name = 'conductor-host-rc7-invariant'
 /** Service required before the companion can register. */
 export const inject = ['invariants']
 
-// No runtime invariant: the package is a static patch-list carrier (a YAML
-// document of loader rows owned by other packages); it mounts no service,
-// emits no events, and owns no mutable relation to check. Each inserted row's
-// own package carries that row's invariants.
+// No runtime invariant: this static bundle owns manifest declarations and loader
+// rows, not a service or mutable record. The session and Conductor plugins own
+// the resulting event admission and projection relationships.
 const install: InvariantInstaller = () => {}
 
 /**

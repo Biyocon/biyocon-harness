@@ -1,2 +1,2 @@
-/** Optional rc.7 host patch and preset resources; no runtime API. */
+/** Optional rc.7 bundle metadata and resources; composition lives in its manifest. */
 export {}

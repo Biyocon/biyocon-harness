@@ -30,6 +30,22 @@ Biyocon Harness 保持 rc.7 基础；所有者已取消 [#68](https://github.com
 
 历史上的 `packages/extensions/tool-cordis/src/api-catalog.ts`、`packages/extensions/cordis-client-runner/src/client/slot-catalog.ts` 和 `packages/core/session/src/known-event-types.ts` 都是生成投影，而非直接注册。`scripts/gen-persistence-catalog.ts` 从 `SessionEventMap` 声明合并生成事件集合；提取时须先完成下述生成器改动，再按已安装包重新生成。API 和插槽目录也须重新生成。批评者依赖 #64 的身份和预算保证。现有 `ui-user-questions` 中的所有者 UI 应移入独立插件。
 
+### R1 必读事件准入
+
+PR [#115](https://github.com/Biyocon/biyocon-harness/pull/115) 中的通用宿主扩展实现必需 bundle 规则，核心不导入 Conductor。以下是有效的拆分依赖，不代表已兼容上游。
+
+| 文件 | 用途 |
+| --- | --- |
+| `packages/core/session/src/index.ts` | 服务激活前的 Config 事件准入、fiber 所有的引用计数注册、必读事件 append／发布前拒绝，以及注册改变后的活动历史重新检查。 |
+| `packages/session/session-persistence/src/coordinator.ts` | 冷重建／恢复／发布前拒绝，并重新检查保留／活动视图；`StoredSuffix.requiredPrefixEvents` 防止 watermark 绕过。 |
+| `packages/session/session-persistence-sqlite/src/index.ts` | 为寻址读取提供必读前缀类型／序号分组见证，不解码前缀 payload。 |
+| `packages/boot/app-boot/src/profile.ts` | 验证并合并显式 bundle 的 `sessionEventTypes`，排除传递及 patch 声明，在普通会话 Config 激活前传入；仅排除字面量 `disabled: true`，保留表达式行。 |
+| `apps/cli/src/profile-boot.ts`; `apps/cli/src/dump-config.ts` | 启动／重载及配置转储采用同一 bundle 准入结果。 |
+| `scripts/gen-persistence-catalog.ts` | 通用 manifest 标记 `dsh.sessionEventRegistration` 将可选包事件排除在无条件运行时准入之外，同时保留文档目录。 |
+| `scripts/gen-cordis-catalog.ts` | 生成事件注册 API 及其文档，并将无操作 API 的投影注册可用性指向其包 README。 |
+
+[决策与替代审计](../../implemented/architecture/2026-11-13-plugin-required-session-events.md)保留格式及不可用运行规则。生成的 `known-event-types.ts` 不再授予 Conductor 准入；显式宿主 bundle manifest 拥有全部七个声明。
+
 ### Package/bundle coupling
 
 | 包路径 | 当前耦合 | 插件化后的替代方式 |

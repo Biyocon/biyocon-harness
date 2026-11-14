@@ -13,6 +13,7 @@ import {
   collectLogEvents,
   collectSurfaceEventTypes,
   render,
+  renderKnownEventTypes,
 } from '../../../../scripts/gen-persistence-catalog.ts'
 
 /** Create a fixture scan root; `files` maps `packages/…`-relative paths to source. */
@@ -45,6 +46,24 @@ afterEach(() => {
 const OWNER_MANIFEST = '{ "name": "@deepseek-ai/dsh-session" }\n'
 
 describe('gen-persistence-catalog collectLogEvents', () => {
+  it('keeps optional plugin events in the catalog but excludes them from unconditional read admission', () => {
+    const events = collectLogEvents(make({
+      'packages/group/fix/package.json': '{ "dsh": { "sessionEventRegistration": true } }',
+      'packages/group/fix/src/types.ts': merge('    /** Plugin-owned record. */\n    \'fix/optional\': { id: string }'),
+    }))
+    expect(events[0]?.registrationRequired).toBe(true)
+    const annotated = annotateSurface(events, [])
+    expect(render(annotated, [])).toContain('fix/optional')
+    expect(renderKnownEventTypes(annotated)).not.toContain("  'fix/optional',")
+  })
+
+  it('rejects malformed event registration metadata', () => {
+    expect(() => collectLogEvents(make({
+      'packages/group/fix/package.json': '{ "dsh": { "sessionEventRegistration": "true" } }',
+      'packages/group/fix/src/types.ts': merge('    /** Plugin-owned record. */\n    \'fix/optional\': { id: string }'),
+    }))).toThrow('dsh.sessionEventRegistration must be a boolean')
+  })
+
   it('extracts a documented member of the owning top-level interface', () => {
     const events = collectLogEvents(make({
       'packages/core/fix/package.json': OWNER_MANIFEST,
@@ -252,6 +271,7 @@ describe('gen-persistence-catalog annotateSurface + render', () => {
     doc: `Records ${name}.`,
     declaration: `/** Records ${name}. */\n'${name}': { turn: number }`,
     source: 'packages/core/fix/src/types.ts:3',
+    registrationRequired: false,
   })
 
   const envelopeTypes = [
