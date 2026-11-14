@@ -36,10 +36,10 @@ The generic host extension in PR [#115](https://github.com/Biyocon/biyocon-harne
 
 | File | Purpose |
 | --- | --- |
-| `packages/core/session/src/index.ts` | Config admission before activation, fiber-owned reference counts and current-host checks. |
+| `packages/core/session/src/index.ts` | Config admission before activation, fiber-owned reference counts, rejection before required-event append/publication and live-history rechecks after registration changes. |
 | `packages/session/session-persistence/src/coordinator.ts` | Refusal before cold reconstruction/recovery/publication and rechecks for retained/live views; `StoredSuffix.requiredPrefixEvents` prevents watermark bypass. |
 | `packages/session/session-persistence-sqlite/src/index.ts` | Grouped required-prefix type/sequence witnesses for seek reads, without decoding prefix payloads. |
-| `packages/boot/app-boot/src/profile.ts` | Validate/combine explicit bundle `sessionEventTypes`, exclude transitive/patch grants and supply ordinary session Config before activation. |
+| `packages/boot/app-boot/src/profile.ts` | Validate/combine explicit bundle `sessionEventTypes`, exclude transitive/patch grants and supply ordinary session Config before activation; exclude only literal `disabled: true`, preserving expression rows. |
 | `apps/cli/src/profile-boot.ts`; `apps/cli/src/dump-config.ts` | Apply the same bundle admission to boot/reload and configuration dumps. |
 | `scripts/gen-persistence-catalog.ts` | Generic manifest flag `dsh.sessionEventRegistration` excludes optional-package events from unconditional runtime admission while preserving the documentation catalog. |
 | `scripts/gen-cordis-catalog.ts` | Generate the event-registration API/docs and point non-operation projection availability at its package README. |

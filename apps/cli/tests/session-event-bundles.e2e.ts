@@ -31,7 +31,7 @@ export function apply(ctx) {
     }
     await writeFile(join(profile, 'package.json'), JSON.stringify({ name: 'synthetic-event-profile', private: true,
       dsh: { profile: { bundles: ['first', 'second'] } } }))
-    await writeFile(join(profile, 'cordis.patch.yml'), '- id: session\n  config:\n    sessionEventTypes: [patch/event]\n')
+    await writeFile(join(profile, 'cordis.patch.yml'), '- id: session\n  disabled: !!js "false"\n  config:\n    sessionEventTypes: [patch/event]\n')
     const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/(KEY|TOKEN|SECRET|PASSWORD)/i.test(key)))
     const options = { cwd: home, env: { ...cleanEnv, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1' }, extendEnv: false,
       timeout: 20_000, input: '' } as const
@@ -41,5 +41,9 @@ export function apply(ctx) {
     const result = await execa(process.execPath, [bin, '--profile', 'events'], options)
     expect(result.stderr).toBe('')
     expect(JSON.parse(result.stdout)).toEqual({ provider: 'SessionStore', first: true, second: true, indirect: false, patch: false })
+    await writeFile(join(profile, 'cordis.patch.yml'), '- id: session\n  disabled: true\n')
+    const refused = await execa(process.execPath, [bin, '--profile', 'events'], { ...options, reject: false })
+    expect(refused.exitCode).not.toBe(0)
+    expect(refused.stderr).toContain('require an enabled @deepseek-ai/dsh-session provider')
   } finally { await rm(home, { recursive: true, force: true }) }
 })

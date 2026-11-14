@@ -16,6 +16,7 @@ import {
   healProfilesModuleFallback,
   initProfile,
   loadProfile,
+  loadOverlayPatches,
   PROFILE_PATCH_FILENAME,
   PROFILE_TEMPLATES,
   readProfileManifest,
@@ -373,4 +374,15 @@ describe('explicit bundle session-event admission', () => {
   it.each([null, 42, {}, [''], ['a b'], [' padded'], ['x\n'], [false]])('rejects malformed sessionEventTypes metadata: %j', (types) => {
     expect(() => fixture(types).load()).toThrow('dsh.bundle.sessionEventTypes')
   })
+})
+
+
+it('keeps event Config for a !!js false provider while refusing a sole literal-disabled row', () => {
+  const root = tmp()
+  const path = join(root, 'conditional.yml')
+  writeFileSync(path, "- id: session\n  name: '@deepseek-ai/dsh-session'\n  disabled: !!js 'false'\n")
+  const entries = loadOverlayPatches('conditional-test', path) as import('@deepseek-ai/cordis-plugin-loader').EntryOptions[]
+  const layers = [{ packageName: 'explicit', packageDir: root, patchPath: path, patches: [], sessionEventTypes: ['explicit/event'] }]
+  expect(bundleSessionEventPatches(layers, entries)).toEqual([{ id: 'session', config: { sessionEventTypes: ['explicit/event'] } }])
+  expect(() => bundleSessionEventPatches(layers, [{ ...entries[0]!, disabled: true }])).toThrow('require an enabled')
 })

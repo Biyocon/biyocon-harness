@@ -12,12 +12,15 @@ import type {} from '../../../../packages/conductor/tool-conductor/src/owner-con
 const [configPath, task] = process.argv.slice(2)
 if (configPath === undefined || task === undefined) throw new Error('expected config and task')
 const uninstall = installFailLoud('conductor-installed-snapshot')
+const missingAdmission = process.env.DSH_CONDUCTOR_MISSING_ADMISSION === '1'
+let modelRequests = 0
 let ctx: Context | undefined
 try {
   ctx = await boot('conductor-installed-snapshot', resolveConfigPath(configPath, undefined))
   const runtime = ctx
   // This raw example declares its own synthetic vocabulary; profile tests own manifest admission.
-  runtime.sessions.registerEventTypes(CONDUCTOR_SESSION_EVENT_TYPES)
+  if (!missingAdmission) runtime.sessions.registerEventTypes(CONDUCTOR_SESSION_EVENT_TYPES)
+  else runtime.on('agent/request', () => { modelRequests++; throw new Error('unexpected model request before producer admission') })
   const agentOptions = { provider: 'conductor-installed', model: 'conductor-installed' }
   const setup = (agentCtx: Context) => runtime.agentPresets.mount(agentCtx, 'conductor').then(() => undefined)
   if (process.env.DSH_CONDUCTOR_RESUME_RUN_ID === undefined) {
@@ -63,8 +66,14 @@ try {
   await runtime.get('conductorOwnerHostTest')?.settled
   process.stdout.write(`${JSON.stringify(result)}\n`)
 } catch (error: unknown) {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
-  process.exitCode = 1
+  const message = error instanceof Error ? error.message : String(error)
+  const refusal = message.match(/Conductor cannot produce required event type "conductor\/[^\"]+";[^\n]*tool-conductor/)
+  if (missingAdmission && refusal !== null && modelRequests === 0) {
+    process.stdout.write(refusal[0] + '\nModel requests: 0\n')
+  } else {
+    process.stderr.write(message + '\n')
+    process.exitCode = 1
+  }
 } finally {
   await ctx?.fiber.dispose()
   uninstall()

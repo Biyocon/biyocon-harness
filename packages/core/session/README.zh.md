@@ -4,6 +4,8 @@
 
 可选事件包声明 `dsh.sessionEventRegistration: true`，把事件排除在宿主无条件类型集合之外。`SessionStore.Config.sessionEventTypes` 在服务激活前同步准入显式 bundle 的声明。可信原始组合可使用归调用方 fiber 所有的 `registerEventTypes(types)`；注册按引用计数，`supportsEventType(type)` 检查当前宿主。名称不证明 payload 有效，也不授予所有者权限。见[必需插件决策](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md)。
 
+已附加会话在 append 提交或通知观察者前拒绝未准入的必读事件；`enter` 在发布前拒绝包含此类事件的 seed。注册改变时，缓存的 `events` 读取重新检查准入，撤销后拒绝整个读取。`ignorable: true` 仍被接受。独立的 `Session.create()` 仅暂存数据，没有宿主准入；进入存储时应用该存储的策略。生产方在挂载自身 effect 前用 `supportsEventType` 检查全部必需类型。
+
 事件溯源的会话日志和内存存储。`Session` 是 agent（智能体）全部交互历史的仅追加真源，LLM（大语言模型）消息历史由它*派生*。原始日志之上维护一个 **surface** 层（产生消息事件的有序投影），以便高效派生和压缩（compaction）。
 
 可选配套入口 `@deepseek-ai/dsh-session/invariant` 将此包的关系轨迹检查注册到 `ctx.invariants`：序号单调递增、轮次／步骤闭合，以及同一步骤内的工具调用／结果配对。加载或重新加载时，它会回放现有会话；存储校验、快照、冻结、被引用的源事件校验和 surface 准入仍始终由根会话包负责。

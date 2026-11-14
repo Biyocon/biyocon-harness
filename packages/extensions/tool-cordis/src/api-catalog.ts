@@ -1278,14 +1278,14 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: 'registerEventTypes(types: readonly string[]): () => void',
-        description: 'Admit an installed plugin\'s declared event types for persistence reads. Registrations are reference-counted and owned by the calling fiber; this does not validate payloads or make a required event ignorable.',
-        parameters: [{ name: 'types', description: 'event names declared by this plugin\'s SessionEventMap merge.' }],
+        description: 'Admit an installed plugin\'s declared event types for session reads and writes. Registrations are reference-counted and owned by the calling fiber; this does not validate payloads or make a required event ignorable.',
+        parameters: [{ name: 'types', description: 'event names declared by this plugin or its explicit bundle.' }],
         returns: 'the disposer for this registration.',
       },
       {
         signature: 'supportsEventType(type: string): boolean',
-        description: 'Whether this host can read a required event through its built-in vocabulary or a currently mounted plugin. Payload validation belongs to its consumer.',
-        parameters: [{ name: 'type', description: 'event type from a stored envelope.' }],
+        description: 'Whether this host admits a required event through its built-in vocabulary or a currently mounted plugin. Payload validation belongs to its consumer.',
+        parameters: [{ name: 'type', description: 'event type produced or read by a plugin.' }],
         returns: 'whether the type is admitted by this host instance.',
       },
       {
@@ -1307,7 +1307,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Enter a prepared session into the store: install the module-private append publication hooks and add it to the store. Returns the DETACH disposer (hooks + store removal). Does NOT emit `session/created` — the caller yields this disposer inside its effect and THEN calls announce, so a throwing `session/created` listener rolls the attach back instead of leaking it.\n\nRe-checks the id for a duplicate: `prepare` and `enter` are public cross-package primitives and a caller may interleave arbitrary work (or another create) between them, so a stale prepared session must NOT overwrite a live store entry of the same id — its detach disposer would later delete the REAL session. The create convenience and the agent factory call the two back-to-back so they never trip this, but the public API cannot assume that.',
         parameters: [{ name: 'session', description: 'a {@link prepare}d session not yet in the store.' }],
         returns: 'the detach disposer (publication hooks + store removal). When called from a synchronous `session/created` listener, removal and disposal wait until that creation dispatch unwinds.',
-        throws: ['if a session with this id is already in the store.'],
+        throws: ['if the session is already attached, its id is occupied, or its seed contains a required event type this host has not admitted.'],
       },
       {
         signature: 'announce(session: Session): void',

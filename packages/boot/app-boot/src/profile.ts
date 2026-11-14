@@ -493,13 +493,14 @@ export function composeEntries(
 /**
  * Supply bundle-owned event admission to the ordinary session service before activation.
  * Patch-config declarations are replaced; transitive dependencies are not profile layers.
+ * Only literal `disabled: true` excludes a row; Loader evaluates expressions later.
  * @param layers - explicitly loaded profile bundles, after manifest validation.
  * @param entries - fully composed root entries before this final host-owned patch.
  * @returns final session Config patches; refuses declarations without an enabled session service.
  */
 export function bundleSessionEventPatches(layers: readonly ProfileLayer[], entries: readonly EntryOptions[]): PatchOptions[] {
   const sessionEventTypes = [...new Set(layers.flatMap(layer => layer.sessionEventTypes ?? []))]
-  const sessions = entries.filter(entry => entry.name === '@deepseek-ai/dsh-session' && !entry.disabled)
+  const sessions = entries.filter(entry => entry.name === '@deepseek-ai/dsh-session' && entry.disabled !== true)
   if (sessionEventTypes.length > 0 && sessions.length === 0) {
     throw new Error('dsh: bundle sessionEventTypes require an enabled @deepseek-ai/dsh-session provider')
   }

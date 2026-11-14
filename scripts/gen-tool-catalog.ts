@@ -14,6 +14,7 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import { CONDUCTOR_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-conductor'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SqliteSessionQueryEngine from '@deepseek-ai/dsh-session-query-sqlite'
 import GoalService from '@deepseek-ai/dsh-goal'
@@ -439,6 +440,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
       registerCatalogSubagentProvider(ctx, 'mock')
       await ctx.plugin(SkillRegistry)
       await ctx.plugin(SessionStore)
+      ctx.sessions.registerEventTypes(CONDUCTOR_SESSION_EVENT_TYPES)
       await ctx.plugin(CatalogSandboxProvider)
       await ctx.plugin(LocalSubprocessRuntime)
       await ctx.plugin(VmWorkflowEngine, { provider: 'mock' })

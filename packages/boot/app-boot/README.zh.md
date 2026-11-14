@@ -62,3 +62,5 @@ profile 是位于 `$DSH_HOME/profiles/<name>` 下的目录（harness home 由 [`
 profile 显式列出的 bundle 可声明 `dsh.bundle.presetRoot`，其值为非空的包内相对目录。rc.7 宿主解析 realpath，并拒绝包外路径、符号链接逃逸及非目录。传递依赖不提供 preset 根目录。`loadProfile` 接受安装方提供的初始 bundle 及一次性 bundle 拆分迁移；已执行迁移记录于 `dsh.profile.appliedBundleMigrations`，因此尊重之后用户明确移除 bundle 的选择。
 
 显式 profile bundle 还可声明 `dsh.bundle.sessionEventTypes`，其值必须是非空且不含空白／控制字符的事件名称数组。`loadProfile` 只读取显式层，不读取传递依赖；重复名称合并去重。`bundleSessionEventPatches` 将最终准入写入普通 SessionStore Config，覆盖 patch 提供的声明并保留其他配置，在服务激活前生效。声明存在但没有启用的普通会话提供方时拒绝启动。元数据变更需要重新启动。
+
+只有字面量 `disabled: true` 将会话行排除在准入配置之外。使用 `!!js` 表达式的行获得相同 Config；Loader 在激活时求值。仅在没有任何普通会话行可能激活时，启动才拒绝声明。

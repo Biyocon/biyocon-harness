@@ -14,7 +14,11 @@ Status: implemented
 
 目录生成器把声明 `dsh.sessionEventRegistration: true` 的包排除在无条件运行时集合外，文档目录仍保留其声明。显式 profile bundle 用 `dsh.bundle.sessionEventTypes` 声明名称；[app-boot](../../../../packages/boot/app-boot/README.md)验证数组、合并去重并在普通 SessionStore 激活前传入 Config。传递依赖及 patch 不授予名称，声明没有启用的会话提供方时拒绝。现有 rc.7 Loader 支持这一配置流程，无须替换提供方。
 
+只有字面量 `disabled: true` 将会话行排除在 Config 准入之外。表达式行在 Loader 对 `!!js` 求值前获得 Config，因此 false 表达式不会丢弃必需类型集合。
+
 Conductor 事件准入由 bundle manifest 通过会话 Config 唯一拥有。[Conductor](../../../../packages/conductor/conductor/README.md)仅拥有两个投影及其 `conductorPresentation` 可用性；bundle 通过现有行级 `inject` 依赖，在投影注册前阻止会话激活。元数据和投影均无重复注册。仅导入类型或磁盘存在包不授予准入。现有 Biyocon profile 保留显式 bundle。
+
+生产方在挂载工具／控制器 effect 前检查全部七种必需类型，拒绝没有准入的纯 patch 挂载。已附加会话的 append 在改变日志或发送通知前拒绝未准入的必读事件；暂存 seed 在进入存储发布前被验证。注册改变后，已附加的缓存历史读取重新检查准入。独立会话只支持纯暂存，不授予运行权限。这些检查封闭活动读取路径，无须在每次访问时重扫不变历史。
 
 共享[持久化协调器](../../../../packages/session/session-persistence/README.md)在构建冷会话、合成或提交恢复、发布 agent 或回放投影之前检查准入。保留的 preparation 和活动会话检查也重新核验注册。SQLite 后缀读取报告前缀中的必读类型及其首次序号，使投影 watermark 无法隐藏更早的不支持事件。JSONL 检查完整解析前缀。缺少注册时，错误指出事件并要求启用兼容 bundle 或升级宿主，绝不返回部分历史。`ignorable: true` 保持原有语义。
 
@@ -30,10 +34,10 @@ Conductor 事件准入由 bundle manifest 通过会话 Config 唯一拥有。[Co
 
 ## 验证
 
-[无密钥可运行示例](../../../../examples/headless-agent/conductor-event-admission.cordis.snapshot.yml)及其 [snapshot 套件](../../../../examples/headless-agent/tests/conductor-event-admission.snapshot.ts)覆盖真实 bundle patch 的启用与缺失、无 bundle 的普通聊天、启用 bundle 时的格式 4 及无效记录，以及独立进程重启。[Web 启动回归测试](../../../../apps/web/tests/conductor-event-admission.e2e.ts)证明读取先等待投影，再在完整启动结束前成功；拒绝不发布会话，也不改变存储字节或缓存条目。真实 CLI 组合证明两个显式 bundle 可共同工作，而传递及 patch 声明不授予准入。提供方释放、元数据拒绝及冷／缓存／后缀读取在 JSONL 与 SQLite 上均有测试。不执行模型或工具。
+[无密钥可运行示例](../../../../examples/headless-agent/conductor-event-admission.cordis.snapshot.yml)及其 [snapshot 套件](../../../../examples/headless-agent/tests/conductor-event-admission.snapshot.ts)覆盖真实 bundle 启用／缺失的历史、普通聊天、不可用记录及冷重启。[已安装预设 snapshot](../../../../examples/headless-agent/tests/conductor-installed.snapshot.ts)证明生产方在任何模型请求前拒绝。[Web 回归测试](../../../../apps/web/tests/conductor-event-admission.e2e.ts)证明启动顺序、活动写入拒绝及撤销后已附加历史读取拒绝，不改变存储或缓存。真实 CLI 组合覆盖多个显式 bundle、排除传递／patch 授权及表达式／字面量禁用。Unit 覆盖注册释放、seed／append 拒绝及读取恢复。不执行模型或工具。
 
 ## 后果
 
-可选事件生产方须在会话访问前安装并挂载注册插件。SQLite 后缀读取增加一次前缀类型分组查询。打包安装门禁 4a／4b、UI 拆分及适配器另行交付；本次不是公开发布或付费测试资格验证。
+可选事件生产方须在挂载及会话访问前获得准入。SQLite 后缀读取增加一次前缀类型分组查询。打包安装门禁 4a／4b、UI 拆分及适配器另行交付；本次不是公开发布或付费测试资格验证。
 
 替代审计：本决策部分替代[会话格式决策](2026-08-10-session-log-version-mechanism.md)中仅依赖生成列表的准入及推迟注册的备选方案；其格式、ignorable 标记及完整日志拒绝规则仍有效。[不可用历史决策](../bug-fix/2026-11-06-conductor-unsupported-record-history.md)保留严格运行访问，[rc.7 bundle 决策](2026-11-12-conductor-rc7-host-bundle.md)保留资源、信任与迁移规则。没有完整已实现三件套被替代或归档。

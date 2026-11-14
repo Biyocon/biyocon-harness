@@ -2,7 +2,7 @@ import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { WorkflowRunId } from '@deepseek-ai/dsh-workflow'
 import type { WorkflowRun } from '@deepseek-ai/dsh-workflow'
-import { conductorChildrenProjection } from '@deepseek-ai/dsh-conductor'
+import { CONDUCTOR_SESSION_EVENT_TYPES, conductorChildrenProjection } from '@deepseek-ai/dsh-conductor'
 import { ANALYSIS_CHALLENGE_SCHEMA, analysisChallengeHash } from '../../conductor/src/analysis-challenge.ts'
 import { analysisRun } from '../../conductor/tests/intake-fixtures.ts'
 import { observeConductorChildren, publishChildGates } from '../src/children.ts'
@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest'
 describe('concrete Conductor child presentation', () => {
   it.each(['matching', 'hash', 'candidate', 'child', 'attempt'] as const)('publishes only the exact validated challenge: %s', async (match) => {
     const ctx = new Context()
-    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionStore, { sessionEventTypes: [...CONDUCTOR_SESSION_EVENT_TYPES] })
     const session = ctx.sessions.create(SessionId('findings-parent'))
     session.append('turn/start', { turn: 1 })
     const run = analysisRun()
@@ -55,7 +55,7 @@ describe('concrete Conductor child presentation', () => {
 
   it('does not assign a resumed dispatch verdict to an earlier child without a gate', async () => {
     const ctx = new Context()
-    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionStore, { sessionEventTypes: [...CONDUCTOR_SESSION_EVENT_TYPES] })
     const session = ctx.sessions.create(SessionId('resume-parent'))
     session.append('turn/start', { turn: 1 })
     const run = analysisRun()
@@ -78,7 +78,7 @@ describe('concrete Conductor child presentation', () => {
 
   it('keeps rework attempts separate, including their exact verdict and lifecycle', async () => {
     const ctx = new Context()
-    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionStore, { sessionEventTypes: [...CONDUCTOR_SESSION_EVENT_TYPES] })
     const session = ctx.sessions.create(SessionId('parent'))
     session.append('turn/start', { turn: 1 })
     const run = analysisRun('detective', 'recommendations')
@@ -113,7 +113,7 @@ describe('concrete Conductor child presentation', () => {
 
   it('records a failed child without inventing a gate result', async () => {
     const ctx = new Context()
-    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionStore, { sessionEventTypes: [...CONDUCTOR_SESSION_EVENT_TYPES] })
     const session = ctx.sessions.create(SessionId('parent-failed'))
     session.append('turn/start', { turn: 1 })
     const workflow = { id: WorkflowRunId('failed-workflow') } as WorkflowRun
@@ -138,7 +138,7 @@ describe('concrete Conductor child presentation', () => {
 
   it('records a critic child with its own mode and run-wide attempt after an entry-C producer', async () => {
     const ctx = new Context()
-    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionStore, { sessionEventTypes: [...CONDUCTOR_SESSION_EVENT_TYPES] })
     const session = ctx.sessions.create(SessionId('entry-c-parent'))
     session.append('turn/start', { turn: 1 })
     const run = analysisRun('devils-advocate', 'answer')
@@ -161,7 +161,7 @@ describe('concrete Conductor child presentation', () => {
 
   it('marks an interrupted child failed without fabricating a gate', async () => {
     const ctx = new Context()
-    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionStore, { sessionEventTypes: [...CONDUCTOR_SESSION_EVENT_TYPES] })
     const session = ctx.sessions.create(SessionId('interrupted-parent'))
     session.append('turn/start', { turn: 1 })
     const workflow = { id: WorkflowRunId('interrupted-workflow') } as WorkflowRun
@@ -177,7 +177,7 @@ describe('concrete Conductor child presentation', () => {
 
   it('binds a critic verdict to its exact child and skips a budget escalation without one', async () => {
     const ctx = new Context()
-    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionStore, { sessionEventTypes: [...CONDUCTOR_SESSION_EVENT_TYPES] })
     const session = ctx.sessions.create(SessionId('critic-gate-parent'))
     session.append('turn/start', { turn: 1 })
     const run = analysisRun('devils-advocate', 'answer')

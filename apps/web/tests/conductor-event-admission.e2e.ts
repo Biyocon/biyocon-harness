@@ -131,3 +131,38 @@ it.each([true, false])('admits history before Web boot settles, with Conductor b
     await scaffold.close()
   }
 })
+
+it('refuses unadmitted live writes and attached history after event admission is revoked', async () => {
+  const scaffold = await launchWebScaffold({ conductorHostBundle: false })
+  let modelCalls = 0
+  scaffold.ctx.on('agent/request', () => { modelCalls++; throw new Error('unexpected model call in live admission test') })
+  try {
+    const handle = await scaffold.ctx.agents.create({ sessionId: SessionId('synthetic-live-admission'),
+      meta: { cwd: scaffold.workspaceCwd }, agentOptions: { provider: 'synthetic', model: 'synthetic' } })
+    const session = handle.agent.session
+    const record = { runId: ConductorRunId('CON-2026-0091'), record: JSON.stringify({ recordFormatVersion: 4 }) }
+    const before = session.events
+    expect(() => session.append('conductor/checkpoint', record)).toThrow('not admitted')
+    expect(session.events).toBe(before)
+    const history = async () => {
+      const response = await fetch(`http://127.0.0.1:${scaffold.ctx.webServer.port}/api/session.history`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'client-request', rpcId: 'live-admission', method: 'session.history', payload: { sessionId: session.id } }),
+      })
+      return await response.json() as HistoryResponse
+    }
+    const clean = await history()
+    expect(clean.result.ok).toBe(true)
+    if (clean.result.ok) expect(clean.result.value.events.some(item => item.event.type === 'conductor/checkpoint')).toBe(false)
+    const release = scaffold.ctx.sessions.registerEventTypes(['conductor/checkpoint'])
+    session.append('conductor/checkpoint', record)
+    expect(session.events.at(-1)?.type).toBe('conductor/checkpoint')
+    release()
+    const refused = await history()
+    expect(refused.result.ok).toBe(false)
+    if (!refused.result.ok) expect(refused.result.error.message).toContain('not admitted')
+    expect(modelCalls).toBe(0)
+    scaffold.ctx.sessions.registerEventTypes(['conductor/checkpoint'])
+    await handle.dispose()
+  } finally { await scaffold.close() }
+})

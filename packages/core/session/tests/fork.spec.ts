@@ -14,7 +14,7 @@ declare module '@deepseek-ai/dsh-session/types' {
 
 async function setup(): Promise<{ ctx: Context; sessions: SessionStore }> {
   const ctx = new Context()
-  await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionStore, { sessionEventTypes: ['test/log-only', 'test/bracket-open'] })
   return { ctx, sessions: ctx.sessions }
 }
 

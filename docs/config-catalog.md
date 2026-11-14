@@ -1588,7 +1588,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/core/session/src/index.ts:789`](../packages/core/session/src/index.ts)
+Source: [`packages/core/session/src/index.ts:795`](../packages/core/session/src/index.ts)
 
 <a id="deepseek-aidsh-session-persistence-jsonl"></a>
 

@@ -8,7 +8,7 @@ import InvariantRegistry, { InvariantError } from '@deepseek-ai/dsh-invariants'
 
 async function setup(): Promise<{ ctx: Context; fiber: Awaited<ReturnType<Context['plugin']>> }> {
   const ctx = new Context()
-  await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionStore, { sessionEventTypes: ['plugin/marker'] })
   await ctx.plugin(InvariantRegistry)
   const fiber = await ctx.plugin(SessionInvariant)
   return { ctx, fiber }

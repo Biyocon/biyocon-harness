@@ -430,6 +430,7 @@ declare class Session {
    * until the next append; a previously returned array does not grow later.
    * Events and their nested data are deep-frozen at acceptance, so neither a
    * cast nor ordinary JavaScript can rewrite durable history.
+   * Attached sessions reject reads if a required event loses host admission.
    */
   get events(): readonly SessionEvent[];
   /** The next event's sequence number — always the log length (the `seq = log.length` contiguity contract). */
@@ -441,6 +442,7 @@ declare class Session {
    * the log, the append is committed: observer failures are logged and
    * contained per listener, so they do not change the return value or prevent
    * later listeners from observing the same accepted event.
+   * Attached sessions require host admission before committing a required event.
    *
    * @param type - The event type (key of {@link SessionEventMap}).
    * @param data - The event payload; must be JSON-serializable.
@@ -624,18 +626,18 @@ Persistence is intentionally not implemented here — persistence plugins subscr
 
 ```ts cordis-catalog
 /**
- * Admit an installed plugin's declared event types for persistence reads.
+ * Admit an installed plugin's declared event types for session reads and writes.
  * Registrations are reference-counted and owned by the calling fiber; this
  * does not validate payloads or make a required event ignorable.
- * @param types - event names declared by this plugin's SessionEventMap merge.
+ * @param types - event names declared by this plugin or its explicit bundle.
  * @returns the disposer for this registration.
  */
 registerEventTypes(types: readonly string[]): () => void
 
 /**
- * Whether this host can read a required event through its built-in vocabulary
+ * Whether this host admits a required event through its built-in vocabulary
  * or a currently mounted plugin. Payload validation belongs to its consumer.
- * @param type - event type from a stored envelope.
+ * @param type - event type produced or read by a plugin.
  * @returns whether the type is admitted by this host instance.
  */
 supportsEventType(type: string): boolean
@@ -705,7 +707,8 @@ prepare(id?: SessionId, options?: PrepareSessionOptions): Session
  * @returns the detach disposer (publication hooks + store removal). When called from
  *   a synchronous `session/created` listener, removal and disposal wait until
  *   that creation dispatch unwinds.
- * @throws if a session with this id is already in the store.
+ * @throws if the session is already attached, its id is occupied, or its seed
+ *   contains a required event type this host has not admitted.
  */
 enter(session: Session): () => void
 
@@ -765,7 +768,7 @@ fork(source: SessionForkSource, boundary?: number, childSessionId?: SessionId): 
 
 Types: [CreateSessionOptions](persistence.md) · [PrepareSessionOptions](persistence.md) · [SessionId](core.md)
 
-Source: [`packages/core/session/src/index.ts:800`](../../packages/core/session/src/index.ts)
+Source: [`packages/core/session/src/index.ts:806`](../../packages/core/session/src/index.ts)
 
 <a id="session-events"></a>
 

@@ -1,3 +1,4 @@
+import { CONDUCTOR_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-conductor'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjections from '@deepseek-ai/dsh-session-projection'
@@ -10,7 +11,7 @@ import type { ConductorChild } from '../src/child-types.ts'
 describe('durable Conductor child catalog', () => {
   it('replays exact child identities, replaces one child, and clears inherited seed children', async () => {
     const ctx = new Context()
-    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionStore, { sessionEventTypes: [...CONDUCTOR_SESSION_EVENT_TYPES] })
     await ctx.plugin(SessionProjections)
     const fiber = await ctx.plugin(conductor)
     const session = ctx.sessions.create(SessionId('catalog-parent'))
