@@ -14,6 +14,8 @@ Status: proposed
 
 ### 阶段 A：在来源处限制结果，不改变 v5 运行记录
 
+作用域内搜索分页的实现见其独立[决策](../../implemented/feature/2026-11-11-detective-search-pages.md)。下文的 capture 索引和阶段 B 仍属提案；历史价格估算并非实现后的实测结果。
+
 主要通过限制 `glob` 和 `grep` 结果降低价格。验证仅用于 Detective 的 Config 字段（`detectiveGlobMaxResultChars`、`detectiveGrepMaxResultChars`），各初设 4,000 字符，覆盖含标题及继续标记的完整结果，并保留已有条目/单行上限。每页报告 `truncated`、显示数/总数、稳定继续游标及路径/行身份。每个只读页面及快照摘要均记录为工具结果。分页保留完整、不可变的搜索快照，否则明确失败。仍可缩小查询；未返回条目不能算作已检查。宽泛的 `glob` 页面优先采用现有顶层采样以显示其他子树。较小的 `read` 窗口单独评估；`offset` 已提供继续机制。
 
 [搜索 Config](../../../../packages/fs/tool-fs-search/src/index.ts)验证 `globMaxResults`（100 个路径）、`grepMaxMatches`（250 个匹配）、`grepMaxLineBytes`（2,000 字节）、`searchMetaMaxBytes`（65,536 字节）及原始输出上限。[读取 Config](../../../../packages/fs/tool-fs/src/index.ts)验证 `readLimit`（2,000 行）、`readMaxLineLength`（2,000 字符）及 `readMaxBytes`（51,200 字节），并报告截断、支持 `offset`。搜索在条目超限时保存完整格式化结果，但缺少字符上限与游标分页。[通用 spill 策略](../../../../packages/spill/spill-policy/src/index.ts)验证 `maxInlineBytes`，但仅尽力保存、跳过面向模型的 `read`，且没有稳定分页。这些全局插件设置会影响其他角色。将可信的 `childToolContribution` 从 `runSpecialist` 经 `dispatchAnalysisChild` 的 producer 分支传入 `runWorkflowChild`，注册限定于 Detective 的搜索定义并遮蔽继承工具。不支持 `toolContribution` 的 provider 必须拒绝。字符上限与游标需要工具/Conductor 代码，但无需改 agent-loop。新上限须验证为正安全整数，并足以容纳固定的页面标题及继续标记。完整结果与游标须留在子会话拥有的会话证据中，以免冷恢复后对已变化文件重新解释某页。
