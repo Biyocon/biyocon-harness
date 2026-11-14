@@ -1,6 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import { expect, it } from 'vitest'
-import SessionStore from '../src/index.ts'
+import SessionStore, { type Config } from '../src/index.ts'
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
@@ -33,4 +33,29 @@ it('admits plugin events only while a registering fiber remains mounted', async 
   } finally {
     await ctx.fiber.dispose()
   }
+})
+
+
+it('installs configured bundle names before the sessions service becomes injectable', async () => {
+  const ctx = new Context()
+  let observed = false
+  ctx.inject(['sessions'], (child) => {
+    expect(child.sessions.supportsEventType('first/event')).toBe(true)
+    expect(child.sessions.supportsEventType('second/event')).toBe(true)
+    expect(child.sessions.supportsEventType('indirect/event')).toBe(false)
+    observed = true
+  })
+  try {
+    await ctx.plugin(SessionStore, { sessionEventTypes: ['first/event', 'second/event'] })
+    await expect.poll(() => observed).toBe(true)
+  } finally { await ctx.fiber.dispose() }
+})
+
+it('rejects malformed event names at the session Config parser', () => {
+  const parse = SessionStore.Config as (input: unknown) => Config
+  for (const sessionEventTypes of ['x', [''], ['contains space'], ['x\n'], [17]]) {
+    expect(() => parse({ sessionEventTypes })).toThrow()
+  }
+  expect(parse({})).toEqual({ sessionEventTypes: [] })
+  expect(parse({ sessionEventTypes: null })).toEqual({ sessionEventTypes: [] })
 })

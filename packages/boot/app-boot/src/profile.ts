@@ -44,6 +44,8 @@ export interface DshBundleManifest {
   patch: string
   /** Optional rc.7 preset directory inside this explicitly enabled bundle. */
   presetRoot?: string
+  /** Required session event names supplied only by this explicitly enabled bundle. */
+  sessionEventTypes?: string[]
 }
 
 /** The profile half of the `dsh` manifest section: what a profile directory composes. */
@@ -85,6 +87,8 @@ export interface ProfileLayer {
   patches: PatchOptions[]
   /** Real installation-contained preset root declared by this explicit bundle. */
   presetRoot?: string
+  /** Validated event declarations from this explicit profile layer. */
+  sessionEventTypes?: string[]
 }
 
 /** One installation-owned extraction from an existing profile bundle. */
@@ -362,6 +366,15 @@ function bundlePresetRoot(packageDir: string, declared: unknown): string | undef
   return root
 }
 
+/** Validate optional event metadata without interpreting domain names or payloads. */
+function bundleSessionEventTypes(declared: unknown): string[] | undefined {
+  if (declared === undefined) return undefined
+  if (!Array.isArray(declared) || declared.some(type => typeof type !== 'string' || !/^[^\s\x00-\x08\x0e-\x1f\x7f]+$/.test(type))) {
+    throw new Error('dsh: dsh.bundle.sessionEventTypes must be an array of nonempty event names without whitespace or control characters')
+  }
+  return [...new Set(declared as string[])]
+}
+
 /**
  * Resolve a package's root directory from one anchor without depending on the
  * package exporting `./package.json` (`require.resolve` would need that):
@@ -446,9 +459,11 @@ export function loadProfile(
     }
     const patchPath = join(packageDir, declared)
     const presetRoot = bundlePresetRoot(packageDir, bundleManifest.dsh?.bundle?.presetRoot)
+    const sessionEventTypes = bundleSessionEventTypes(bundleManifest.dsh?.bundle?.sessionEventTypes)
     return {
       packageName, packageDir, patchPath, patches: loadOverlayPatches(binName, patchPath),
       ...(presetRoot === undefined ? {} : { presetRoot }),
+      ...(sessionEventTypes === undefined ? {} : { sessionEventTypes }),
     }
   })
   const patchPath = join(dir, PROFILE_PATCH_FILENAME)
@@ -473,4 +488,20 @@ export function composeEntries(
     let index = 0
     warn(message.replace(/%C/g, () => JSON.stringify(args[index++])))
   })
+}
+
+/**
+ * Supply bundle-owned event admission to the ordinary session service before activation.
+ * Patch-config declarations are replaced; transitive dependencies are not profile layers.
+ * @param layers - explicitly loaded profile bundles, after manifest validation.
+ * @param entries - fully composed root entries before this final host-owned patch.
+ * @returns final session Config patches; refuses declarations without an enabled session service.
+ */
+export function bundleSessionEventPatches(layers: readonly ProfileLayer[], entries: readonly EntryOptions[]): PatchOptions[] {
+  const sessionEventTypes = [...new Set(layers.flatMap(layer => layer.sessionEventTypes ?? []))]
+  const sessions = entries.filter(entry => entry.name === '@deepseek-ai/dsh-session' && !entry.disabled)
+  if (sessionEventTypes.length > 0 && sessions.length === 0) {
+    throw new Error('dsh: bundle sessionEventTypes require an enabled @deepseek-ai/dsh-session provider')
+  }
+  return sessions.map(entry => ({ id: entry.id, config: { ...entry.config as Record<string, unknown>, sessionEventTypes } }))
 }

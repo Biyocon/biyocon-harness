@@ -1277,7 +1277,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'In-memory session store (`ctx.sessions`).\n\nPersistence is intentionally not implemented here — persistence plugins subscribe to `session/event` and flush on `session/flush` / dispose.',
     methods: [
       {
-        signature: 'registerEventTypes(types: readonly SessionEventType[]): () => void',
+        signature: 'registerEventTypes(types: readonly string[]): () => void',
         description: 'Admit an installed plugin\'s declared event types for persistence reads. Registrations are reference-counted and owned by the calling fiber; this does not validate payloads or make a required event ignorable.',
         parameters: [{ name: 'types', description: 'event names declared by this plugin\'s SessionEventMap merge.' }],
         returns: 'the disposer for this registration.',

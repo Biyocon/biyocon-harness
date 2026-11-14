@@ -13,9 +13,9 @@ export const name = 'conductor-host-rc7-invariant'
 /** Service required before the companion can register. */
 export const inject = ['invariants']
 
-// No runtime invariant: the provider composes SessionStore and existing Conductor
-// registrations without a new record or mutable domain relation. Session and
-// Conductor invariants own the resulting log and projection relationships.
+// No runtime invariant: this static bundle owns manifest declarations and loader
+// rows, not a service or mutable record. The session and Conductor plugins own
+// the resulting event admission and projection relationships.
 const install: InvariantInstaller = () => {}
 
 /**

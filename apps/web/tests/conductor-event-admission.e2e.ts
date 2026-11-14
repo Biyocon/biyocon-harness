@@ -27,6 +27,9 @@ async function optionalFile(path: string): Promise<Buffer | undefined> {
 it.each([true, false])('admits history before Web boot settles, with Conductor bundle = %s', async (enabled) => {
   const release = Promise.withResolvers<undefined>()
   const paused = Promise.withResolvers<undefined>()
+  const registrationBlocked = Promise.withResolvers<undefined>()
+  const releaseRegistration = Promise.withResolvers<undefined>()
+  const listening = Promise.withResolvers<Context>()
   const ready = Promise.withResolvers<Context>()
   const id = SessionId('synthetic-startup-history')
   const runId = ConductorRunId('CON-2026-0037')
@@ -56,7 +59,11 @@ it.each([true, false])('admits history before Web boot settles, with Conductor b
       } finally { await seed.fiber.dispose() }
       cachePath = join(paths.workspaceCwd, '.dsh-storages/session_projcache.json')
       ctx.on('loader/patch-context', async (entry, next) => {
-        if (entry.options.id === (enabled ? 'conductor-presentation' : 'client-hmr')) {
+        if (enabled && entry.options.id === 'conductor-presentation') {
+          registrationBlocked.resolve(undefined)
+          await releaseRegistration.promise
+        }
+        if (entry.options.id === 'client-hmr') {
           paused.resolve(undefined)
           await release.promise
         }
@@ -65,10 +72,19 @@ it.each([true, false])('admits history before Web boot settles, with Conductor b
       ctx.on('agent/request', () => { modelCalls++; throw new Error('unexpected model request during startup history read') })
       ctx.on('tools/pre-execute', () => { toolCalls++; throw new Error('unexpected tool execution during startup history read') })
       ctx.inject(['webServer', 'apiProxy', 'sessionProjectionCache', 'agentLoop', 'agents', 'sessions'], (child) => { ready.resolve(child) })
+      ctx.inject(['webServer'], (child) => { listening.resolve(child) })
     },
   })
   void launching.then(() => { settled = true }, () => { settled = true })
   try {
+    if (enabled) {
+      await registrationBlocked.promise
+      const early = await listening.promise
+      expect(early.get('sessions')).toBeUndefined()
+      const response = await fetch(`http://127.0.0.1:${early.webServer.port}/api/session.history`, { method: 'POST' })
+      expect(response.status).toBe(404)
+      releaseRegistration.resolve(undefined)
+    }
     await paused.promise
     const ctx = await ready.promise
     expect(settled).toBe(false)
@@ -109,6 +125,7 @@ it.each([true, false])('admits history before Web boot settles, with Conductor b
     expect(modelCalls).toBe(0)
     expect(toolCalls).toBe(0)
   } finally {
+    releaseRegistration.resolve(undefined)
     release.resolve(undefined)
     const scaffold = await launching
     await scaffold.close()

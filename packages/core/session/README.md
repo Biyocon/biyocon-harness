@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Optional event packages declare `dsh.sessionEventRegistration: true` in their manifest so the generator excludes their events from the unconditional host vocabulary. Their mounted plugin calls `ctx.sessions.registerEventTypes(types)` before persistence reads. Registrations follow the calling fiber and are reference-counted; `supportsEventType(type)` checks the current host. This admits event names, not payloads or owner authority. See the [required-plugin decision](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md).
+Optional event packages declare `dsh.sessionEventRegistration: true` to exclude their events from the unconditional host vocabulary. `SessionStore.Config.sessionEventTypes` admits explicit bundle declarations synchronously before service activation. Trusted raw compositions may use fiber-owned `registerEventTypes(types)`; registrations are reference-counted and `supportsEventType(type)` checks the current host. Names grant neither payload validity nor owner authority. See the [required-plugin decision](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md).
 
 Event-sourced session log and in-memory store. A `Session` is the append-only source of truth for an agent's whole interaction history — the LLM message history is *derived* from it. A **surface** layer (an ordered projection of message-producing events) is maintained on top of the raw log for efficient derivation and compaction.
 

@@ -7,6 +7,7 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import { isAbsolute } from 'node:path'
 import { deepFreeze } from '@deepseek-ai/dsh-llm'
 import { scopeOf, scopeTarget } from '@deepseek-ai/dsh-scope'
@@ -784,6 +785,12 @@ export class SessionForkError extends Error {
   }
 }
 
+/** Session admission supplied by the host before this service activates. */
+export interface Config {
+  /** Additional required event names declared by explicitly enabled bundles. */
+  sessionEventTypes: string[]
+}
+
 /**
  * In-memory session store (`ctx.sessions`).
  *
@@ -791,12 +798,16 @@ export class SessionForkError extends Error {
  * subscribe to `session/event` and flush on `session/flush` / dispose.
  */
 export class SessionStore extends Service {
+  static Config: z<Config> = z.object({
+    sessionEventTypes: z.array(z.string().pattern(/^[^\s\x00-\x08\x0e-\x1f\x7f]+$/)).default([]),
+  })
   private store = new Map<SessionId, SessionEntry>()
   private counter = 0
   private readonly registeredEventTypes = new Map<string, { refs: number }>()
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, config: Config = { sessionEventTypes: [] }) {
     super(ctx, 'sessions')
+    this.registerEventTypes(config.sessionEventTypes)
     ctx.inject(['typert'], (typeCtx) => {
       typeCtx.typert.lookups.register('session', {
         parameter: 'session',
@@ -815,7 +826,7 @@ export class SessionStore extends Service {
    * @param types - event names declared by this plugin's SessionEventMap merge.
    * @returns the disposer for this registration.
    */
-  registerEventTypes(types: readonly SessionEventType[]): () => void {
+  registerEventTypes(types: readonly string[]): () => void {
     const names = [...new Set(types)]
     const dispose = this.ctx.effect(() => {
       const entries = names.map((type) => {

@@ -117,6 +117,13 @@ export const CONDUCTOR_SESSION_EVENT_TYPES = [
   'conductor/owner-response-acknowledged',
 ] as const satisfies readonly SessionEventType[]
 
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** Available only after the Conductor plugin owns both replay projections. */
+    conductorPresentation: true
+  }
+}
+
 /** Projection service required for persistent Conductor child catalogs. */
 export const inject = ['sessionProjections']
 
@@ -125,9 +132,7 @@ export const inject = ['sessionProjections']
  * @param ctx - context carrying the shared projection registry.
  */
 export function apply(ctx: Context): void {
-  ctx.inject(['sessions'], (sessionCtx) => {
-    sessionCtx.sessions.registerEventTypes(CONDUCTOR_SESSION_EVENT_TYPES)
-  })
   ctx.sessionProjections.register(conductorChildrenProjection)
   ctx.sessionProjections.register(conductorUnavailableRunsProjection)
+  ctx.provide('conductorPresentation', true)
 }

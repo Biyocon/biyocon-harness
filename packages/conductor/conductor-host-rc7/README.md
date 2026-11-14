@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-The bundle replaces the base `session` provider with a `SessionStore` subclass that registers all seven required Conductor events and both projections synchronously before `sessions` becomes available. History and resume consumers cannot overtake these registrations, even while other Web plugins are still loading. Profiles without the bundle refuse Conductor-bearing sessions before replay while continuing to read ordinary chat. Existing explicit Biyocon profiles retain the bundle. No stored events are migrated; unsupported run formats remain visible as unavailable with the bundle enabled. [Required-event admission](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md) owns this rule.
+This bundle declares seven required names in `dsh.bundle.sessionEventTypes`; app-boot passes the explicit profile declarations to the ordinary session provider before activation. It mounts the sole projection owner, `conductor-presentation`, and uses the Loader's existing `inject` dependency to keep `sessions` unavailable until both projections are registered. No session provider is replaced. Profiles without the bundle refuse Conductor-bearing history while ordinary chat remains readable. No stored events are migrated. [Required-event admission](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md) owns this rule.
 
 Optional Conductor host bundle for Biyocon Harness rc.7. Enable it explicitly between `dsh-base` and the surface bundle in the profile's `dsh.profile.bundles` list. It registers both child and unavailable-run projections before session replay and contributes its package-contained `presets` directory through `dsh.bundle.presetRoot`.
 

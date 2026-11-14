@@ -630,7 +630,7 @@ Persistence is intentionally not implemented here — persistence plugins subscr
  * @param types - event names declared by this plugin's SessionEventMap merge.
  * @returns the disposer for this registration.
  */
-registerEventTypes(types: readonly SessionEventType[]): () => void
+registerEventTypes(types: readonly string[]): () => void
 
 /**
  * Whether this host can read a required event through its built-in vocabulary
@@ -765,7 +765,7 @@ fork(source: SessionForkSource, boundary?: number, childSessionId?: SessionId): 
 
 Types: [CreateSessionOptions](persistence.md) · [PrepareSessionOptions](persistence.md) · [SessionId](core.md)
 
-Source: [`packages/core/session/src/index.ts:793`](../../packages/core/session/src/index.ts)
+Source: [`packages/core/session/src/index.ts:800`](../../packages/core/session/src/index.ts)
 
 <a id="session-events"></a>
 
@@ -794,7 +794,7 @@ Creation announcement during session publication. A synchronous throw vetoes and
 
 Types: [Scoped](scope.md)
 
-Source: [`packages/core/session/src/index.ts:55`](../../packages/core/session/src/index.ts)
+Source: [`packages/core/session/src/index.ts:56`](../../packages/core/session/src/index.ts)
 
 <a id="sessiondisposed--emit"></a>
 
@@ -817,7 +817,7 @@ Emitted once when an announced session leaves the store, including publication r
 
 Types: [Scoped](scope.md)
 
-Source: [`packages/core/session/src/index.ts:65`](../../packages/core/session/src/index.ts)
+Source: [`packages/core/session/src/index.ts:66`](../../packages/core/session/src/index.ts)
 
 <a id="sessionevent--emit"></a>
 
@@ -842,7 +842,7 @@ Post-commit, fire-and-forget append feed. The listener snapshot resolves before 
 
 Types: [Scoped](scope.md)
 
-Source: [`packages/core/session/src/index.ts:77`](../../packages/core/session/src/index.ts)
+Source: [`packages/core/session/src/index.ts:78`](../../packages/core/session/src/index.ts)
 
 <a id="sessionflush--parallel"></a>
 
@@ -864,5 +864,5 @@ Awaited parallel durability checkpoint: every listener runs and the caller await
 
 Types: [Scoped](scope.md)
 
-Source: [`packages/core/session/src/index.ts:86`](../../packages/core/session/src/index.ts)
+Source: [`packages/core/session/src/index.ts:87`](../../packages/core/session/src/index.ts)
 <!-- END GENERATED cordis-surface -->

@@ -9,15 +9,6 @@
   ],
   "references": [
     {
-      "path": "../../core/session"
-    },
-    {
-      "path": "../conductor"
-    },
-    {
-      "path": "../../session/session-projection"
-    },
-    {
       "path": "../../../vendor/cordis"
     },
     {

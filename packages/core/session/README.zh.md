@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-可选事件包在 manifest 中声明 `dsh.sessionEventRegistration: true`，使生成器将其事件排除在无条件宿主类型集合之外。挂载插件在持久化读取前调用 `ctx.sessions.registerEventTypes(types)`。注册归调用方 fiber 所有并按引用计数；`supportsEventType(type)` 检查当前宿主。它仅允许事件名称，不证明 payload 有效或授予所有者权限。见[必需插件决策](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md)。
+可选事件包声明 `dsh.sessionEventRegistration: true`，把事件排除在宿主无条件类型集合之外。`SessionStore.Config.sessionEventTypes` 在服务激活前同步准入显式 bundle 的声明。可信原始组合可使用归调用方 fiber 所有的 `registerEventTypes(types)`；注册按引用计数，`supportsEventType(type)` 检查当前宿主。名称不证明 payload 有效，也不授予所有者权限。见[必需插件决策](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md)。
 
 事件溯源的会话日志和内存存储。`Session` 是 agent（智能体）全部交互历史的仅追加真源，LLM（大语言模型）消息历史由它*派生*。原始日志之上维护一个 **surface** 层（产生消息事件的有序投影），以便高效派生和压缩（compaction）。
 

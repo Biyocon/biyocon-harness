@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-bundle 用 `SessionStore` 子类替换基础 `session` 提供方，在 `sessions` 可用之前同步注册全部七个 Conductor 必读事件及两个投影。即使其他 Web 插件仍在加载，历史读取及 resume 消费方也不能抢先于这些注册执行。不包含该 bundle 的 profile 在回放前拒绝含 Conductor 事件的会话，但继续读取普通聊天。现有显式 Biyocon profile 保留该 bundle。不迁移存储事件；启用 bundle 时，不支持的运行格式仍显示为不可用。[必读事件准入决策](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md)拥有此规则。
+此 bundle 在 `dsh.bundle.sessionEventTypes` 声明七个必读名称；app-boot 在普通会话提供方激活前传入显式 profile 声明。它挂载唯一投影所有者 `conductor-presentation`，并通过 Loader 现有 `inject` 依赖使 `sessions` 在两个投影注册前保持不可用。不替换会话提供方。缺少 bundle 时拒绝含 Conductor 事件的历史，普通聊天仍可读取。不迁移存储事件。见[必读事件准入决策](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md)。
 
 Biyocon Harness rc.7 的可选 Conductor 宿主 bundle。须在 profile 的 `dsh.profile.bundles` 列表中，显式放在 `dsh-base` 与界面 bundle 之间。它在会话回放前注册 subagent 与不可用运行两种投影，并通过 `dsh.bundle.presetRoot` 提供包内的 `presets` 目录。
 

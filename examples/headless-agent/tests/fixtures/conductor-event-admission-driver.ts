@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { boot, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
+import { boot, loadProfile, loadOverlayPatches, bundleSessionEventPatches } from '@deepseek-ai/dsh-app-boot'
+import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { MessageId, freezeMessage } from '@deepseek-ai/dsh-llm'
 import { ConductorRunId, createRun, admitIntake, captureIntakeMaterial, serializeRun,
@@ -28,7 +29,10 @@ async function artifacts(): Promise<Record<string, string>> {
 let ctx: Context | undefined
 try {
   assert.ok(config)
-  ctx = await boot('conductor-event-admission', config, enabled ? loadOverlayPatches('test', patch) : [])
+  const profile = loadProfile('test', enabled ? 'admission-with' : 'admission-without', fileURLToPath(new URL('../../../../apps/cli/package.json', import.meta.url)),
+    join(process.cwd(), '.dsh'), { bundles: enabled ? ['@deepseek-ai/dsh-conductor-host-rc7'] : [], userLayer: false })
+  const admission = bundleSessionEventPatches(profile.layers, loadOverlayPatches('test', config) as EntryOptions[])
+  ctx = await boot('conductor-event-admission', config, [...enabled ? loadOverlayPatches('test', patch) : [], ...admission])
   for (const type of CONDUCTOR_SESSION_EVENT_TYPES) assert.equal(ctx.sessions.supportsEventType(type), enabled)
   let modelCalls = 0
   let toolCalls = 0

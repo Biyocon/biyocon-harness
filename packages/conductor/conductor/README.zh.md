@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-可选 rc.7 宿主 bundle 在访问历史前挂载本包，注册七个必读事件类型及 subagent／不可用运行两个投影。manifest 明确将本包排除在无条件宿主事件准入之外。没有 bundle 时，含 Conductor 事件的历史在重建前被拒绝；普通聊天仍可读取。启用时，无效／不支持的运行记录保留不可用显示及严格的操作拒绝。见[必读事件决策](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md)。
+rc.7 宿主 bundle 在 manifest 声明本包七个必读事件名称。profile 宿主通过普通 SessionStore Config 准入它们；本包不在运行时注册这些名称。仅 `conductor-presentation` 挂载拥有 subagent／不可用运行两个投影，并只在注册后发布 `conductorPresentation`。bundle 使普通会话项在访问历史前依赖此可用性。缺少 bundle 时，在重构前拒绝 Conductor 历史；普通聊天仍可读取。启用 bundle 时，无效／不支持的运行保留不可用显示及严格操作拒绝。见[必读事件决策](../../../.agents/notes/implemented/architecture/2026-11-13-plugin-required-session-events.md)。
 
 Conductor runtime 拥有 run 状态、A–G gate、按缺陷类别的 rework 路由、source/execution baseline 以及显式 closeout record。`SessionConductorRunStore` 在每次转换后向父 Session 日志追加完整的键控 checkpoint 并执行 flush；恢复只接受最后一个已记录 gate 的状态，并拒绝 terminal 或 escalated run。预发布 record 携带显式格式版本。不支持或无效的已保存 record 可只读显示为不可用 runId 和格式号，因此聊天仍可打开；恢复仍会拒绝，且不迁移。新运行使用不同 runId，不修改旧检查点。[此决策](../../../.agents/notes/implemented/bug-fix/2026-11-06-conductor-unsupported-record-history.md)拥有读取与操作的区分。
 

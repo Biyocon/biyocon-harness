@@ -36,7 +36,16 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml",
-      "presetRoot": "./presets"
+      "presetRoot": "./presets",
+      "sessionEventTypes": [
+        "conductor/checkpoint",
+        "conductor/child",
+        "conductor/owner-question-created",
+        "conductor/owner-response-recorded",
+        "conductor/owner-continuation-consumed",
+        "conductor/owner-terminal-rejection",
+        "conductor/owner-response-acknowledged"
+      ]
     }
   },
   "scripts": {
@@ -55,8 +64,6 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-session-projection": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^"
   },
   "devDependencies": {

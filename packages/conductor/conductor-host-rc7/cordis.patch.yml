@@ -1,9 +1,7 @@
-# Consumers cannot obtain sessions before required types and both projections exist.
+# Replay consumers wait for the sole projection owner before sessions activate.
 - id: session
-  disabled: true
+  inject: [conductorPresentation]
 
 - insert:
-    - id: conductor-session
-      name: '@deepseek-ai/dsh-conductor-host-rc7'
     - id: conductor-presentation
       name: '@deepseek-ai/dsh-conductor'

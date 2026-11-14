@@ -36,13 +36,15 @@ PR [#115](https://github.com/Biyocon/biyocon-harness/pull/115) 中的通用宿�
 
 | 文件 | 用途 |
 | --- | --- |
-| `packages/core/session/src/index.ts` | 归调用方 fiber 所有、按引用计数的事件注册及当前宿主准入检查。 |
+| `packages/core/session/src/index.ts` | 服务激活前的 Config 事件准入、fiber 所有的引用计数注册及当前宿主检查。 |
 | `packages/session/session-persistence/src/coordinator.ts` | 冷重建／恢复／发布前拒绝，并重新检查保留／活动视图；`StoredSuffix.requiredPrefixEvents` 防止 watermark 绕过。 |
 | `packages/session/session-persistence-sqlite/src/index.ts` | 为寻址读取提供必读前缀类型／序号分组见证，不解码前缀 payload。 |
+| `packages/boot/app-boot/src/profile.ts` | 验证并合并显式 bundle 的 `sessionEventTypes`，排除传递及 patch 声明，在普通会话 Config 激活前传入。 |
+| `apps/cli/src/profile-boot.ts`; `apps/cli/src/dump-config.ts` | 启动／重载及配置转储采用同一 bundle 准入结果。 |
 | `scripts/gen-persistence-catalog.ts` | 通用 manifest 标记 `dsh.sessionEventRegistration` 将可选包事件排除在无条件运行时准入之外，同时保留文档目录。 |
-| `scripts/gen-cordis-catalog.ts` | 将公共 `SessionEventType` 参数链接到既有文档；生成 API 及子系统目录随之重新生成。 |
+| `scripts/gen-cordis-catalog.ts` | 生成事件注册 API 及其文档，并将无操作 API 的投影注册可用性指向其包 README。 |
 
-[决策与替代审计](../../implemented/architecture/2026-11-13-plugin-required-session-events.md)保留格式及不可用运行规则。生成的 `known-event-types.ts` 不再授予 Conductor 准入；挂载的宿主插件拥有全部七个声明。
+[决策与替代审计](../../implemented/architecture/2026-11-13-plugin-required-session-events.md)保留格式及不可用运行规则。生成的 `known-event-types.ts` 不再授予 Conductor 准入；显式宿主 bundle manifest 拥有全部七个声明。
 
 ### Package/bundle coupling
 

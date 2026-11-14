@@ -20,6 +20,7 @@ import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import {
   boot,
   composeEntries,
+  bundleSessionEventPatches,
   healProfilesModuleFallback,
   installFailLoud,
   loadOptionalPatches,
@@ -157,6 +158,7 @@ function composeProfile(
     if (typeof row.id === 'string') rows.set(row.id, row)
   }
   const composedOverlays = [...overlays]
+  composedOverlays.push(...bundleSessionEventPatches(profile.layers, [...rows.values()]))
   // Patch layers cannot grant system trust; only the installation and explicit
   // profile bundles supply those roots.
   // The SHIPPED root is the part of the roster only this app can resolve: it

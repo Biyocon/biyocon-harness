@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
-import { boot, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
+import { boot, loadOverlayPatches, loadProfile, bundleSessionEventPatches } from '@deepseek-ai/dsh-app-boot'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { ConductorRunId, CONDUCTOR_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-conductor'
 import { collectLogEvents } from '../../../../scripts/gen-persistence-catalog.ts'
@@ -14,7 +14,12 @@ it('registers both replay projections through the actual host bundle before a pr
     const config = join(directory, 'cordis.yml')
     await writeFile(config, "- id: session\n  name: '@deepseek-ai/dsh-session'\n- id: projections\n  name: '@deepseek-ai/dsh-session-projection'\n")
     const patch = fileURLToPath(new URL('../cordis.patch.yml', import.meta.url))
-    const ctx = await boot('test', config, loadOverlayPatches('test', patch), undefined, new URL('../', import.meta.url).href)
+    const profile = loadProfile('test', 'composition', fileURLToPath(new URL('../../../../apps/cli/package.json', import.meta.url)),
+      directory, { bundles: ['@deepseek-ai/dsh-conductor-host-rc7'], userLayer: false })
+    const declarations = profile.layers[0]!.sessionEventTypes
+    expect(declarations).toEqual([...CONDUCTOR_SESSION_EVENT_TYPES])
+    const admission = bundleSessionEventPatches(profile.layers, [{ id: 'session', name: '@deepseek-ai/dsh-session' }])
+    const ctx = await boot('test', config, [...loadOverlayPatches('test', patch), ...admission], undefined, new URL('../', import.meta.url).href)
     try {
       const declared = collectLogEvents().filter(event => event.source.startsWith('packages/conductor/conductor/'))
       expect(declared).toHaveLength(7)

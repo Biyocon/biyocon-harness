@@ -4,7 +4,7 @@ import { boot, installFailLoud, resolveConfigPath } from '@deepseek-ai/dsh-app-b
 import { runFixtureTurn } from '@deepseek-ai/dsh-loader-smoke'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
-import { ConductorRunId } from '@deepseek-ai/dsh-conductor'
+import { ConductorRunId, CONDUCTOR_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-conductor'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-presets'
 import type {} from '../../../../packages/conductor/tool-conductor/src/owner-controller.ts'
@@ -16,6 +16,8 @@ let ctx: Context | undefined
 try {
   ctx = await boot('conductor-installed-snapshot', resolveConfigPath(configPath, undefined))
   const runtime = ctx
+  // This raw example declares its own synthetic vocabulary; profile tests own manifest admission.
+  runtime.sessions.registerEventTypes(CONDUCTOR_SESSION_EVENT_TYPES)
   const agentOptions = { provider: 'conductor-installed', model: 'conductor-installed' }
   const setup = (agentCtx: Context) => runtime.agentPresets.mount(agentCtx, 'conductor').then(() => undefined)
   if (process.env.DSH_CONDUCTOR_RESUME_RUN_ID === undefined) {

@@ -10,6 +10,8 @@ import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import {
   loadOptionalPatches,
+  composeEntries,
+  bundleSessionEventPatches,
   loadOverlayPatches,
   renderConfigDump,
   type ConfigDumpLayer,
@@ -47,6 +49,8 @@ export function runDumpConfig(profile: string, defaultOnly: boolean, patches: re
       layers.push({ label: absolute, patches: loadOverlayPatches(NAME, absolute) })
     }
   }
+  layers.push({ label: 'explicit bundle session event admission', patches: bundleSessionEventPatches(loaded.layers,
+    composeEntries(layers.map(layer => layer.patches))) })
   // The dump anchors on the same empty root file the boot includes.
   process.stdout.write(renderConfigDump(NAME, join(loaded.dir, PROFILE_ROOT_FILENAME), layers))
 }
