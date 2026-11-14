@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-11-11-detective-capture-index.md
+2026-11-11-detective-capture-index.md: 0adf9d240f2396466f7d0e91808d93e654828c55
+2026-11-11-detective-capture-index.zh.md: 40047d872ab10fc526cdabbdd2420c07475fc948

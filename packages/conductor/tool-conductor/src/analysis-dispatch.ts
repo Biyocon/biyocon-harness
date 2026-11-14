@@ -8,6 +8,7 @@ import type {
 import { ROLE_SKILL } from '@deepseek-ai/dsh-conductor-presets'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { SubagentChildToolContribution } from '@deepseek-ai/dsh-subagent'
+import type { ToolGuard } from '@deepseek-ai/dsh-tools'
 import { ANALYSIS_CHALLENGE_OUTPUT_SCHEMA, ANALYSIS_SCHEMA } from './analysis-schema.ts'
 import { runWorkflowChild } from './workflow-child.ts'
 
@@ -26,6 +27,7 @@ interface ProducerDispatch extends CommonDispatch {
   prompt: string
   persona: string
   childToolContribution?: SubagentChildToolContribution
+  childToolGuard?: ToolGuard
 }
 
 /** Host-owned facts and validated limits for one prepared critic attempt. */
@@ -72,9 +74,12 @@ export async function dispatchAnalysisChild(request: AnalysisDispatch): Promise<
   const { ctx, providerName, parent, signal, run } = request
   if (run.admission.purpose !== 'analysis') throw new Error('Conductor analysis dispatch requires an analysis run')
   if (request.mode === 'producer') {
+    const policy = {
+      ...request.childToolGuard === undefined ? {} : { childToolGuard: request.childToolGuard },
+    }
     return await runWorkflowChild(ctx, providerName, parent, signal, request.stage, run,
       request.prompt, ANALYSIS_SCHEMA, request.persona, request.childToolContribution,
-      request.stage === reportProducer(run.admission) ? { analysisMode: 'producer' } : undefined)
+      request.stage === reportProducer(run.admission) ? { ...policy, analysisMode: 'producer' } : policy)
   }
   const criticRoleName = ROLE_SKILL['devils-advocate']
   /* v8 ignore next -- the preset's fixed ROLE_SKILL mapping declares the critic role. */

@@ -5,7 +5,7 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import {
   ConductorRunId, ConductorRunUnavailableError, createRun, executionBaselineHash, executionEffectProfile, conductorChildrenProjection,
-  QualityCommandId, ownerMandateHash, recordGate, SessionConductorRunStore,
+  QualityCommandId, ownerMandateHash, recordGate, SessionConductorRunStore, admitIntake, captureIntakeMaterial,
 } from '@deepseek-ai/dsh-conductor'
 import type { ConductorAdmission, ConductorRun, CapturedReport, QualityCommandBinding } from '@deepseek-ai/dsh-conductor'
 import LlmRuntime, { CallId, createUserMessage, LlmAdapter } from '@deepseek-ai/dsh-llm'
@@ -373,6 +373,41 @@ function analysisResult(request: WorkflowStartRequest): WorkflowResult {
 }
 
 describe('Conductor analysis tool admission and execution policy', () => {
+  it.each(['analysis', 'implementation'] as const)('restores a %s capture with an indexed Detective and complete later evidence', async (purpose) => {
+    const dispatched: string[] = []
+    const h = await setup({ factory: (request) => {
+      dispatched.push((request.args as { prompt: string }).prompt)
+      return purpose === 'analysis' ? analysisResult(request) : successfulResult(request)
+    } })
+    const request = captureIntakeMaterial('current-request', 'Review saved.txt.', { sessionId: h.parent.session.id, eventIndex: 1 })
+    const file = captureIntakeMaterial('saved.txt', 'SAVED_SOURCE_EVIDENCE\n')
+    const admission = admitIntake({ purpose, entry: 'detective', rationale: 'Use the saved intake capture.',
+      ...purpose === 'analysis' ? { deliverable: 'answer' } : {} }, [request, file])
+    const run = createRun(ConductorRunId('CON-2026-5802'), { ...baseArgs, admission })
+    await new SessionConductorRunStore(h.parent.session, () => Promise.resolve()).save(run)
+    const result = await execute(h.ctx, { ...resumeArgs, runId: run.runId, purpose,
+      ...purpose === 'analysis' ? { deliverable: 'answer' } : {} }, h.parent)
+    expect(result.isError, JSON.stringify(result)).toBe(false)
+    const detective = h.engine.requests[0]!
+    const prompt = (detective.args as { prompt: string }).prompt
+    expect(prompt).toContain('"line_count": 1')
+    expect(prompt).not.toContain('SAVED_SOURCE_EVIDENCE')
+    expect(detective.childToolContribution).toBeTypeOf('function')
+    expect(detective.childToolFilter).toEqual({ allow: ['read', 'read_image', 'grep', 'glob'] })
+    for (const name of ['read', 'conductor_read_capture', 'structured_output']) {
+      expect(detective.childToolGuard!({ name } as never)).toBeUndefined()
+    }
+    expect(detective.childToolGuard!({ name: 'write' } as never)).toContain('read-only')
+    for (const later of h.engine.requests.slice(1)) {
+      const laterPrompt = (later.args as { prompt: string }).prompt
+      if (laterPrompt.includes('Dispatch package:')) expect(laterPrompt).toContain('SAVED_SOURCE_EVIDENCE')
+      expect(later.childToolFilter?.allow).not.toContain('conductor_read_capture')
+    }
+    if (purpose === 'analysis') expect(dispatched.find(prompt => prompt.startsWith('{"identity":'))).toContain('SAVED_SOURCE_EVIDENCE')
+    const saved = await new SessionConductorRunStore(h.parent.session, () => Promise.resolve()).load(run.runId)
+    expect(saved!.admission.materials[1]).toEqual(file)
+    await h.ctx.fiber.dispose()
+  })
   it.each([{ acceptanceCriteria: undefined }, { acceptanceCriteria: [] }])('rejects missing analysis criteria before saving or dispatching: $acceptanceCriteria', async ({ acceptanceCriteria }) => {
     const h = await setup()
     const { acceptanceCriteria: _criteria, ...args } = baseArgs
