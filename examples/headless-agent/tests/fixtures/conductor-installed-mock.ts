@@ -1,6 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { CallId, LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { CapturedReport, ConductorAdmission, GateRecord } from '@deepseek-ai/dsh-conductor'
+import { installDetectiveSearchWorldChanges, nextDetectiveSearchPage } from './detective-search-world.ts'
 
 function* call(name: string, value: unknown, outputTokens?: number): Generator<StreamChunk> {
   const id = CallId(`installed-${name}`)
@@ -224,6 +225,13 @@ export class InstalledConductorAdapter extends LlmAdapter {
         return
       }
       if (input.admission.purpose !== 'analysis') throw new Error('Fixture expects an analysis dispatch')
+      if (scenario === 'detective-search-pages' && input.stage === 'detective') {
+        const next = nextDetectiveSearchPage(result)
+        if (next !== undefined) {
+          yield* call(next.name, next.args)
+          return
+        }
+      }
       if (arbiter) {
         const challengeHash = input.analysis_challenges.at(-1)?.hash
         if (challengeHash === undefined || challengeHash !== input.current_challenge_hash) {
@@ -362,4 +370,5 @@ export const inject = ['llm']
 /** Register the external model substitute. */
 export function apply(ctx: Context): void {
   ctx.llm.registerAdapter(['conductor-installed'], new InstalledConductorAdapter())
+  if (process.env.DSH_CONDUCTOR_INTAKE_SCENARIO === 'detective-search-pages') installDetectiveSearchWorldChanges(ctx)
 }

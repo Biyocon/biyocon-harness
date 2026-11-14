@@ -8,13 +8,36 @@ import { PROTOCOL_VERSION } from '@agentclientprotocol/sdk'
 import { runScenario, snapshotSpillRoot, type AgentUnderTest, type InputStep } from '../src/harness.ts'
 import { launchAcpTestAgent } from '../src/launcher.ts'
 
-const fsControl = vi.hoisted(() => ({ cleanupFailure: undefined as Error | undefined }))
+const fsControl = vi.hoisted(() => ({
+  cleanupFailure: undefined as Error | undefined,
+  closedTurnReadDelayMs: 0,
+  pendingRead: undefined as Promise<void> | undefined,
+  readInFlight: false,
+  cleanupDuringRead: false,
+}))
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
   return {
     ...actual,
+    async readFile(...args: Parameters<typeof actual.readFile>) {
+      const content = await actual.readFile(...args)
+      if (fsControl.closedTurnReadDelayMs > 0 && typeof args[0] === 'string' && args[0].endsWith('session.jsonl')
+        && String(content).includes('"type":"turn/end"')) {
+        const delay = fsControl.closedTurnReadDelayMs
+        fsControl.closedTurnReadDelayMs = 0
+        fsControl.pendingRead = new Promise<void>(resolve => setTimeout(resolve, delay))
+        fsControl.readInFlight = true
+        try {
+          await fsControl.pendingRead
+        } finally {
+          fsControl.readInFlight = false
+        }
+      }
+      return content
+    },
     async rm(...args: Parameters<typeof actual.rm>): Promise<void> {
+      if (String(args[0]).includes('acp-snap-') && fsControl.readInFlight) fsControl.cleanupDuringRead = true
       if (String(args[0]).includes('acp-snap-cwd-') && fsControl.cleanupFailure !== undefined) {
         const failure = fsControl.cleanupFailure
         fsControl.cleanupFailure = undefined
@@ -644,6 +667,37 @@ describe('runScenario', () => {
       { agent: AGENT, mode: 'replay', fixtureFile },
     )
     expect(result.sessionLogs[0]?.content).toContain('"data":{"turn":2,"reason":{"kind":"stop"}}')
+  })
+
+  it.each([1, 2])('waitForTurnEnd rejects a late first read of closed turn %s with its own diagnostic', async (turn) => {
+    const { fixtureFile } = await scenario({
+      prompt: 'hang-until-cancel',
+      persistLogsOnCancel: true,
+      logs: [{
+        file: 'project/main/session.jsonl',
+        lines: [
+          { type: 'session', version: 0, id: '{{SID}}', createdAt: 1, delegationDepth: 0 },
+          { type: 'turn/start', seq: 0, time: 1, data: { turn } },
+          { type: 'turn/end', seq: 1, time: 2, data: { turn, reason: { kind: 'stop' } } },
+        ],
+      }],
+    })
+    fsControl.closedTurnReadDelayMs = 50
+    fsControl.cleanupDuringRead = false
+    try {
+      await expect(runScenario({
+        steps: [...boot, { op: 'promptAndCancel', text: 'hang' },
+          { op: 'waitForTurnEnd', minimumTurn: 2, timeoutMs: 20 }],
+      }, { agent: AGENT, mode: 'replay', fixtureFile }))
+        .rejects.toThrow(/did not persist closed turn 2 within 20ms/)
+      expect(fsControl.closedTurnReadDelayMs).toBe(0)
+      expect(fsControl.readInFlight).toBe(false)
+      expect(fsControl.cleanupDuringRead).toBe(false)
+    } finally {
+      fsControl.closedTurnReadDelayMs = 0
+      await fsControl.pendingRead
+      fsControl.pendingRead = undefined
+    }
   })
 
   it.each([false, true])('waitForTurnEnd rejects an earlier closed turn when the requested turn is open: %s', async (open) => {
